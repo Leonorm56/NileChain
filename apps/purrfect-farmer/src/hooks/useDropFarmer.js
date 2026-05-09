@@ -1,0 +1,330 @@
+import BrowserLogger from "@purrfect/shared/lib/BrowserLogger";
+import axios from "axios";
+import { createQueryClient } from "@/lib/createQueryClient";
+import useAppContext from "./useAppContext";
+import useDelayInterceptor from "./useDelayInterceptor";
+import useDropFarmerAuth from "./useDropFarmerAuth";
+import useDropFarmerCloudSync from "./useDropFarmerCloudSync";
+import useDropFarmerCookiesRestore from "./useDropFarmerCookiesRestore";
+import useDropFarmerInstance from "./useDropFarmerInstance";
+import useDropFarmerMeta from "./useDropFarmerMeta";
+import useDropFarmerQueryHelper from "./useDropFarmerQueryHelper";
+import useDropFarmerState from "./useDropFarmerState";
+import useDropFarmerToast from "./useDropFarmerToast";
+import useDropFarmerZoomies from "./useDropFarmerZoomies";
+import useFarmerDataQuery from "./useFarmerDataQuery";
+import { useLayoutEffect } from "react";
+import { useMemo } from "react";
+import usePrimaryFarmerLink from "./usePrimaryFarmerLink";
+import usePrimaryFarmerUserId from "./usePrimaryFarmerUserId";
+import useRefCallback from "./useRefCallback";
+import useStorageState from "./useStorageState";
+import useTabContext from "./useTabContext";
+import useTelegramWebApp from "./useTelegramWebApp";
+import useUnauthorizedInterceptor from "./useUnauthorizedInterceptor";
+import useValuesMemo from "./useValuesMemo";
+
+export default function useDropFarmer() {
+  const app = useAppContext();
+  const farmer = useTabContext();
+  const id = farmer.id;
+  const singleton = farmer.singleton;
+  const {
+    icon,
+    title,
+    cookies,
+    initData,
+    FarmerClass,
+    external = false,
+  } = farmer;
+  const {
+    platform,
+    type,
+    host,
+    autoStart,
+    apiDelay = 200,
+    cacheAuth = true,
+    cacheTelegramWebApp = true,
+    syncToCloud = true,
+    authQueryOptions,
+    metaQueryOptions,
+  } = FarmerClass;
+
+  /** Is Telegram Mini App */
+  const isTelegramMiniApp = platform === "telegram" && type === "webapp";
+
+  /** App */
+  const {
+    captcha,
+    zoomies,
+    settings,
+    account,
+    dispatchToGetPrimaryFarmerLink,
+    telegramUser: appTelegramUser,
+  } = app;
+
+  /** Primary farmer user ID */
+  const { primaryFarmerUserId } = usePrimaryFarmerUserId(FarmerClass.id);
+
+  /** Primary farmer link */
+  const { primaryFarmerLink } = usePrimaryFarmerLink(FarmerClass.id);
+
+  /** Is Primary user */
+  const isPrimaryFarmerUser = primaryFarmerUserId
+    ? primaryFarmerUserId === appTelegramUser?.user?.id
+    : account.isPrimary;
+
+  /** Telegram Link */
+  const telegramLink = primaryFarmerLink
+    ? primaryFarmerLink
+    : account.isPrimary
+      ? FarmerClass.telegramLink
+      : null;
+
+  /** Referral link */
+  const { value: referralLink } = useStorageState(
+    `farmer-referral-link:${id}`,
+    null,
+  );
+
+  /** Can auto-start */
+  const canAutoStart = autoStart
+    ? autoStart
+    : isPrimaryFarmerUser || Boolean(referralLink);
+
+  const {
+    resetStates,
+    initResetCount,
+    hasConfiguredAuthHeaders,
+    setInitResetCount,
+    setHasConfiguredAuthHeaders,
+  } = useDropFarmerState();
+
+  /** Dedicated QueryClient */
+  const queryClient = useMemo(() => createQueryClient(), []);
+
+  /** Logger Instance */
+  const logger = useMemo(() => new BrowserLogger(), []);
+
+  /** Axios Instance */
+  const api = useMemo(() => axios.create(), []);
+
+  /** API Delay */
+  useDelayInterceptor(api, apiDelay);
+
+  /** TelegramWebApp */
+  const {
+    port,
+    telegramWebApp,
+    telegramHash,
+    telegramUser,
+    resetTelegramWebApp,
+  } = useTelegramWebApp({
+    id,
+    host,
+    initData,
+    external,
+    telegramLink,
+    cacheTelegramWebApp,
+    enabled: isTelegramMiniApp && canAutoStart,
+  });
+
+  /** Prepared */
+  const prepared = !isTelegramMiniApp || telegramWebApp !== null;
+
+  /** Join Telegram Link */
+  const joinTelegramLink = useRefCallback(
+    async (...args) => {
+      if (external) {
+        throw new Error("Running external account!");
+      }
+      try {
+        await app.joinTelegramLink(...args);
+      } finally {
+        /** Restore Tab */
+        if (app.farmerMode === "web") {
+          app.setActiveTab(id);
+        }
+      }
+    },
+    [id, external, app.farmerMode, app.joinTelegramLink, app.setActiveTab],
+  );
+
+  /** Update Profile */
+  const updateProfile = useRefCallback(
+    async (...args) => {
+      if (external) {
+        throw new Error("Running external account!");
+      } else if (app.farmerMode === "web") {
+        throw new Error("Profile update is only available in session mode!");
+      } else {
+        const client = app.telegramClient.ref.current;
+        if (!client) return;
+        return client.updateProfile(...args);
+      }
+    },
+    [external, app.farmerMode, app.telegramClient],
+  );
+
+  /** Instance */
+  const instance = useDropFarmerInstance({
+    FarmerClass,
+    id,
+    api,
+    captcha,
+    external,
+    logger,
+    telegramWebApp,
+    joinTelegramLink,
+    updateProfile,
+  });
+
+  /** Data Query */
+  const dataQuery = useFarmerDataQuery();
+
+  /** Auth Query */
+  const { authQuery, authQueryKey, resetAuthCache } = useDropFarmerAuth({
+    enabled: prepared,
+    id,
+    instance,
+    external,
+    cacheAuth,
+    queryClient,
+    telegramHash,
+    authQueryOptions,
+    setHasConfiguredAuthHeaders,
+  });
+
+  /** Meta Query */
+  const { metaQuery, metaQueryKey } = useDropFarmerMeta({
+    id,
+    external,
+    instance,
+    queryClient,
+    telegramHash,
+    metaQueryOptions,
+    authData: authQuery.data,
+    enabled: hasConfiguredAuthHeaders,
+  });
+
+  /** Started */
+  const started = metaQuery.isSuccess;
+
+  /** Status */
+  const status = prepared ? "pending-init" : "pending-mini-app";
+
+  /** Sync Enabled */
+  const syncEnabled = settings.enableCloud && syncToCloud;
+
+  /** Should Sync To Cloud */
+  const shouldSyncToCloud =
+    !external && hasConfiguredAuthHeaders && syncEnabled;
+
+  /** Zoomies */
+  const { isZooming, processNextTask } = useDropFarmerZoomies({
+    id,
+    zoomies,
+    started,
+    telegramWebApp,
+    initResetCount,
+  });
+
+  const {
+    updateQueryData,
+    updateAuthQueryData,
+    updateMetaQueryData,
+    removeQueries,
+    resetQueries,
+  } = useDropFarmerQueryHelper({
+    id,
+    queryClient,
+    authQuery,
+    metaQuery,
+  });
+
+  /** Reset Init */
+  const resetInit = useRefCallback(async () => {
+    await resetAuthCache();
+    await removeQueries();
+    await resetStates();
+    await setInitResetCount((prev) => prev + 1);
+  }, [removeQueries, resetAuthCache, resetStates, setInitResetCount]);
+
+  /** Reset Farmer  */
+  const reset = useRefCallback(async () => {
+    await resetTelegramWebApp();
+    await resetInit();
+  }, [resetTelegramWebApp, resetInit]);
+
+  /** Request for primary farmer link */
+  useLayoutEffect(() => {
+    if (!primaryFarmerLink) {
+      dispatchToGetPrimaryFarmerLink(FarmerClass.id);
+    }
+  }, [FarmerClass.id, primaryFarmerLink, dispatchToGetPrimaryFarmerLink]);
+
+  /** Restore cookies */
+  useDropFarmerCookiesRestore(external, cookies);
+
+  /** Sync to Cloud */
+  useDropFarmerCloudSync({
+    id: FarmerClass.id,
+    title,
+    account,
+    instance,
+    shouldSyncToCloud,
+  });
+
+  /** Create Notification */
+  useDropFarmerToast({
+    id,
+    title,
+    icon,
+    started,
+    onClick: useRefCallback(() => {
+      return singleton ? app.setActiveTab(id) : app.dispatchAndSetActiveTab(id);
+    }, [id, singleton, app.setActiveTab, app.dispatchAndSetActiveTab]),
+  });
+
+  /** Response Interceptor */
+  useUnauthorizedInterceptor(api, reset, initResetCount);
+
+  /** Cleanup */
+  useLayoutEffect(() => () => queryClient.cancelQueries(), [queryClient]);
+
+  return useValuesMemo({
+    id,
+    port,
+    icon,
+    title,
+    status,
+    api,
+    instance,
+    logger,
+    queryClient,
+    telegramWebApp,
+    telegramUser,
+    telegramHash,
+    auth: hasConfiguredAuthHeaders,
+    authQuery,
+    authQueryKey,
+    metaQuery,
+    metaQueryKey,
+    dataQuery,
+    external,
+    zoomies,
+    isZooming,
+    started,
+    farmer,
+    FarmerClass,
+    reset,
+    resetInit,
+    resetTelegramWebApp,
+    removeQueries,
+    updateQueryData,
+    updateAuthQueryData,
+    updateMetaQueryData,
+    processNextTask,
+    joinTelegramLink,
+  });
+}

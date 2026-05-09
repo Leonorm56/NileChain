@@ -1,0 +1,391 @@
+import { clsx } from "clsx";
+import defaultSharedSettings from "@/core/defaultSharedSettings";
+import storage from "../lib/storage";
+import { twMerge } from "tailwind-merge";
+import userAgents from "@purrfect/shared/resources/userAgents.js";
+import { uuid } from "@purrfect/shared/utils";
+
+export * from "@purrfect/shared/utils";
+
+export function downloadFile(filename, data) {
+  const jsonStr = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+export function isExtension() {
+  return window.location.protocol === "chrome-extension:";
+}
+
+export function cn(...inputs) {
+  return twMerge(clsx(inputs));
+}
+
+export function createListener(callback) {
+  const listener = (...args) => callback(listener, ...args);
+
+  return listener;
+}
+
+export function customLogger(...args) {
+  console.log("\n");
+  args.forEach((item, index) => {
+    if (index === 0) {
+      console.log(`%c${item}`, "color:lightblue; font-weight:bold;");
+    } else {
+      console.log(item);
+    }
+  });
+  console.log("\n");
+}
+
+/** Remove Account Storage */
+export async function removeAccountStorage(id) {
+  /** Get all Keys */
+  const keys = Object.keys(await storage.getAll());
+
+  /** Keys to Remove */
+  const keysToRemove = keys.filter((item) => item.startsWith(`account-${id}:`));
+
+  /** Remove Keys */
+  await storage.remove(keysToRemove);
+}
+
+/** Get the storage key for the primary farmer user ID */
+export function getPrimaryFarmerUserIdStorageKey(id) {
+  return `shared:farmer-primary-user-id:${id}`;
+}
+
+/** Get the storage key for the primary farmer link */
+export function getPrimaryFarmerLinkStorageKey(id) {
+  return `shared:farmer-primary-link:${id}`;
+}
+
+/** Get shared settings */
+export async function getSharedSettings() {
+  const sharedSettings = await storage.get(
+    "shared:settings",
+    defaultSharedSettings,
+  );
+
+  return {
+    ...defaultSharedSettings,
+    ...sharedSettings,
+  };
+}
+
+/** Get user agent */
+export async function getUserAgent() {
+  return await storage.get(
+    "shared:user-agent",
+    userAgents[Math.floor(Math.random() * userAgents.length)],
+  );
+}
+
+/** Store user agent */
+export async function storeUserAgent(value) {
+  return await storage.set("shared:user-agent", value);
+}
+
+export function isElementVisible(element) {
+  if (!element) return false;
+
+  /** Get computed Styles */
+  const style = window.getComputedStyle(element);
+
+  const isEnabled = element.disabled !== true;
+  const isDisplayed = style.display !== "none";
+  const isVisible = style.visibility !== "hidden";
+  const hasOpacity = parseFloat(style.opacity) > 0;
+
+  return isEnabled && isDisplayed && isVisible && hasOpacity;
+}
+
+/** Dispatch Click Event on Element */
+export function dispatchClickEventOnElement(element, { clientX, clientY }) {
+  /** Mouse Events */
+  ["mousedown", "click", "mouseup"].forEach((eventType) => {
+    element.dispatchEvent(
+      new MouseEvent(eventType, {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        clientY,
+      }),
+    );
+  });
+
+  const touch = new Touch({
+    identifier: Date.now(),
+    target: element,
+    clientX,
+    clientY,
+    screenX: clientX,
+    screenY: clientY,
+    pageX: clientX,
+    pageY: clientY,
+  });
+
+  /** Touch Events */
+  ["touchstart", "touchend"].forEach((eventType) => {
+    element.dispatchEvent(
+      new TouchEvent(eventType, {
+        bubbles: true,
+        cancelable: true,
+        touches: [touch],
+        changedTouches: [touch],
+      }),
+    );
+  });
+}
+
+export function clickElementCenter(element) {
+  if (element) {
+    const coords = getElementCenter(element);
+    return dispatchClickEventOnElement(element, coords);
+  }
+}
+
+export function getElementCenter(element) {
+  const rect = element.getBoundingClientRect();
+
+  const clientX = rect.left + rect.width / 2;
+  const clientY = rect.top + rect.height / 2;
+
+  return {
+    clientX,
+    clientY,
+  };
+}
+
+export function scrollElementIntoView(element) {
+  element.scrollIntoView({
+    inline: "center",
+    behavior: "smooth",
+  });
+}
+
+/**
+ *
+ * @param {chrome.runtime.Port} port
+ * @param {object} data
+ */
+export function postPortMessage(port, data) {
+  return new Promise((resolve) => {
+    const id = uuid();
+
+    /** Add Listener */
+    port.onMessage?.addListener(
+      createListener((listener, response) => {
+        try {
+          if (response.id === id) {
+            port.onMessage?.removeListener(listener);
+            resolve(response);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }),
+    );
+
+    try {
+      port?.postMessage({
+        ...data,
+        id,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+export function parseHTML(html) {
+  return new DOMParser().parseFromString(html, "text/html");
+}
+
+/** Find Drop Main Script */
+export async function findDropMainScript(url, name = "index") {
+  const htmlResponse = await fetchContent(url);
+  const html = parseHTML(htmlResponse);
+
+  const scripts = html.querySelectorAll("script");
+
+  const indexScript = Array.prototype.find.call(
+    scripts,
+    (script) => script.type === "module" && script.src.includes(name),
+  );
+
+  return indexScript;
+}
+
+/** Get Main Script */
+export async function getDropMainScript(url, name = "index") {
+  const indexScript = await findDropMainScript(url, name);
+
+  if (!indexScript) return;
+
+  const scriptUrl = new URL(indexScript.getAttribute("src"), url);
+  const scriptResponse = await fetchContent(scriptUrl);
+
+  return scriptResponse;
+}
+
+/** Watch Window State Update */
+export function watchWindowStateUpdate(windowId, currentState, updatedState) {
+  return new Promise((res) => {
+    const handleOnBoundsChanged = async (window) => {
+      if (window.id === windowId) {
+        const isCurrentState = window.state === currentState;
+        const isUpdatedState =
+          typeof updatedState === "undefined" ||
+          (await chrome.windows.get(windowId)).state === updatedState;
+
+        const isUpdated = isCurrentState && isUpdatedState;
+
+        if (isUpdated) {
+          chrome.windows.onBoundsChanged.removeListener(handleOnBoundsChanged);
+          res();
+        }
+      }
+    };
+
+    chrome.windows.onBoundsChanged.addListener(handleOnBoundsChanged);
+  });
+}
+
+/** Watch Window Removal */
+export function watchWindowRemoval(windowId) {
+  return new Promise((res) => {
+    const handleOnRemoved = (id) => {
+      if (id === windowId) {
+        chrome.windows.onRemoved.removeListener(handleOnRemoved);
+        res();
+      }
+    };
+
+    chrome.windows.onRemoved.addListener(handleOnRemoved);
+  });
+}
+
+/** Close Window */
+export async function closeWindow(windowId) {
+  const successfulRemoval = watchWindowRemoval(windowId);
+
+  await chrome.windows.remove(windowId);
+  await successfulRemoval;
+}
+
+/** Resize Farmer Window */
+export async function resizeFarmerWindow() {
+  const coords = await getWindowCoords();
+  const currentWindow = await chrome?.windows?.getCurrent();
+
+  await chrome?.windows?.update(currentWindow.id, {
+    ...coords,
+    state: "normal",
+  });
+}
+
+/** Get Window Coords */
+export async function getWindowCoords() {
+  const sharedSettings = await getSharedSettings();
+
+  if (typeof chrome?.system?.display === "undefined") {
+    return {
+      top: 0,
+      left: 0,
+      width: 400,
+      height: 800,
+    };
+  }
+
+  const displays = await chrome.system.display.getInfo();
+  const primaryDisplay =
+    displays.find((display) => display.isPrimary) || displays[0];
+
+  const maxWidth = primaryDisplay.workArea.width;
+  const maxHeight = primaryDisplay.workArea.height;
+
+  const position =
+    sharedSettings.farmerPosition || defaultSharedSettings.farmerPosition;
+  const width = Math.max(
+    270,
+    Math.floor(
+      maxWidth /
+        (sharedSettings.farmersPerWindow ||
+          defaultSharedSettings.farmersPerWindow),
+    ),
+  );
+  const left = Math.max(1, Math.floor(position * width) - width);
+
+  return {
+    top: 0,
+    left,
+    width,
+    height: maxHeight,
+  };
+}
+
+/** Check Task Word */
+export function taskWordIsValid(word, list) {
+  return list.every((item) => word.toUpperCase().includes(item) === false);
+}
+
+export function matchesAccountSearch(search, account) {
+  return (
+    account.user?.["username"]
+      ?.toString()
+      ?.replaceAll("@", "")
+      ?.toLowerCase()
+      ?.includes(search.replaceAll("@", "").toLowerCase()) ||
+    account.title?.toLowerCase()?.includes(search.toLowerCase()) ||
+    account.id.toString().includes(search)
+  );
+}
+
+/**
+ * Check if request is unauthenticated
+ * @param {import("axios").AxiosError} error
+ * @returns {boolean}
+ */
+export function requestIsUnauthorized(error) {
+  return (
+    error.config.ignoreUnauthorizedError !== true &&
+    [401, 403, 418].includes(error?.response?.status)
+  );
+}
+/** Send Webview Message */
+export const sendWebviewMessage = (data) => {
+  console.log("Sending message to Whisker", data);
+  return window.electron.ipcRenderer.sendToHost("webview-message", data);
+};
+
+/** Get Cookies */
+export async function getCookies(options) {
+  if (import.meta.env.VITE_WHISKER) {
+    return await window.electron.ipcRenderer.invoke(
+      "get-session-cookie",
+      options,
+    );
+  }
+
+  return await chrome.cookies.getAll(options);
+}
+
+/** Set Cookies */
+export async function setCookies(cookies = []) {
+  for (const cookie of cookies) {
+    if (import.meta.env.VITE_WHISKER) {
+      await window.electron.ipcRenderer.invoke("set-session-cookie", cookie);
+    } else {
+      await chrome.cookies.set(cookies);
+    }
+  }
+}

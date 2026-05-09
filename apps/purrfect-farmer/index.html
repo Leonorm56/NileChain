@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" class="text-base overscroll-none">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= VITE_APP_NAME %></title>
+    <meta name="description" content="<%= VITE_APP_DESCRIPTION %>" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon-180x180.png" />
+    <link rel="mask-icon" href="/maskable-icon-512x512.png" color="#0A1628" />
+    <meta property="og:title" content="<%= VITE_APP_NAME %>" />
+    <meta property="og:description" content="<%= VITE_APP_DESCRIPTION %>" />
+    <meta property="og:image" content="/maskable-icon-512x512.png" />
+    <meta name="theme-color" content="#ffffff" />
+    <link href="/src/index.css" rel="stylesheet" />
+  </head>
+  <body
+    class="max-h-full overscroll-none bg-white text-[#0A1628] dark:bg-[#0A1628] dark:text-white"
+  >
+    <div id="root">
+      <div class="flex flex-col items-center justify-center gap-4 min-h-dvh">
+        <img src="/icon.png" class="w-28 h-28" />
+        <h1 class="text-lg font-bold font-turret-road"><%= VITE_APP_NAME %></h1>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

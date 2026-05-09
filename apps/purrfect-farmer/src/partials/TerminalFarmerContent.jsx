@@ -1,0 +1,86 @@
+import { HiOutlineWrenchScrewdriver, HiPlay, HiStop } from "react-icons/hi2";
+
+import Container from "@/components/Container";
+import { Dialog } from "radix-ui";
+import FarmerHeader from "@/components/FarmerHeader";
+import TerminalArea from "@/components/TerminalArea";
+import TerminalFarmerContext from "@/contexts/TerminalFarmerContext";
+import { TerminalFarmerPrompt } from "./TerminalFarmerPrompt";
+import { TerminalFarmerTools } from "./TerminalFarmerTools";
+import { cn } from "@/utils";
+import useMirroredState from "@/hooks/useMirroredState";
+import useTerminalFarmer from "@/hooks/useTerminalFarmer";
+
+export const TerminalFarmerContent = () => {
+  const terminalFarmer = useTerminalFarmer();
+  const {
+    isPrimaryFarmerUser,
+    userInputPrompt,
+    referralLink,
+    terminalRef,
+    context,
+    started,
+    toggle,
+  } = terminalFarmer;
+
+  /** Tools Panel State */
+  const [showToolsPanel, setShowToolsPanel, dispatchAndSetShowToolsPanel] =
+    useMirroredState(`${context.id}.toggle-tools-panel`, false);
+
+  return (
+    <TerminalFarmerContext.Provider value={terminalFarmer}>
+      {/* User Input Prompt */}
+      <TerminalFarmerPrompt
+        context={context}
+        userInputPrompt={userInputPrompt}
+      />
+
+      {/* Terminal Farmer Header */}
+      <div className="p-2 border-b dark:border-neutral-700">
+        <FarmerHeader
+          isPrimary={isPrimaryFarmerUser}
+          referralLink={referralLink}
+        />
+      </div>
+
+      <Container className="flex gap-2 items-center p-0">
+        {/* Tools Dialog */}
+        <Dialog.Root
+          open={showToolsPanel}
+          onOpenChange={dispatchAndSetShowToolsPanel}
+        >
+          <Dialog.Trigger
+            className={cn(
+              "flex items-center justify-center gap-2 p-2 w-10 shrink-0",
+              "hover:bg-neutral-100 dark:hover:bg-neutral-700",
+              "text-blue-500",
+            )}
+          >
+            <HiOutlineWrenchScrewdriver className="size-5" />
+          </Dialog.Trigger>
+          <TerminalFarmerTools terminalFarmer={terminalFarmer} />
+        </Dialog.Root>
+
+        {/* Start/Stop Button */}
+        <button
+          onClick={() => toggle(!started)}
+          className={cn(
+            "flex grow min-w-0 items-center justify-center gap-2 p-2",
+            started ? "text-red-500" : "text-green-500",
+          )}
+        >
+          {started ? (
+            <HiStop className="size-5" />
+          ) : (
+            <HiPlay className="size-5" />
+          )}
+          {started ? "Stop" : "Start"}
+        </button>
+
+        <span className="w-10" />
+      </Container>
+
+      <TerminalArea ref={terminalRef} />
+    </TerminalFarmerContext.Provider>
+  );
+};
