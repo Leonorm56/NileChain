@@ -1,0 +1,16 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <!-- NileChain Logo: Flowing water wave with pearl gem -->
+  <defs>
+    <linearGradient id="waveGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0A1628;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2E5FFF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Flowing wave shape inspired by River Nile -->
+  <path d="M0 300 Q100 200 200 250 T400 200 Q500 150 512 200 L512 512 L0 512 Z" fill="url(#waveGradient)"/>
+  <!-- Pearl gem -->
+  <ellipse cx="256" cy="180" rx="60" ry="40" fill="#2E5FFF" stroke="#0A1628" stroke-width="4"/>
+  <ellipse cx="256" cy="170" rx="50" ry="30" fill="#FFFFFF" opacity="0.8"/>
+  <!-- Text -->
+  <text x="256" y="400" text-anchor="middle" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#2E5FFF">NileChain</text>
+</svg>

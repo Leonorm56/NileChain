@@ -1,4 +1,4 @@
-import ShockedCat from "@/assets/images/shocked-cat.png?format=webp";
+import NileChainAlert from "@/assets/images/nilechain-alert.svg";
 import useAppContext from "@/hooks/useAppContext";
 import { memo, useEffect } from "react";
 
@@ -21,10 +21,10 @@ export default memo(function ErrorFallback({ error, resetErrorBoundary }) {
       className="flex flex-col items-center justify-center gap-3 p-4 grow"
     >
       {/* Image */}
-      <img src={ShockedCat} className="h-28" />
+      <img src={NileChainAlert} className="h-28" />
 
       {/* Prompt */}
-      <h4 className="text-3xl font-turret-road">Cat-astrophe!</h4>
+      <h4 className="text-3xl font-turret-road">NileChain Alert!</h4>
 
       {/* Message */}
       <p className="w-full max-w-xs p-4 text-center text-red-800 bg-red-100 rounded-lg">

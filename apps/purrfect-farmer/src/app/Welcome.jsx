@@ -26,7 +26,7 @@ import Donate from "@/partials/Donate";
 import DropButton from "@/components/DropButton";
 import FarmerLinks from "@/partials/FarmerLinks";
 import IPStatus from "@/partials/IPStatus";
-import PurrfectCatIcon from "@/assets/images/purrfect-cat.png?format=webp&h=224";
+import NileChainLogo from "@/assets/images/nilechain-logo.svg";
 import { RiRemoteControlLine } from "react-icons/ri";
 import Settings from "@/partials/Settings";
 import Shutdown from "@/partials/Shutdown";
@@ -107,19 +107,19 @@ export default memo(function Welcome() {
   /** Welcome tabs */
   const tabs = useMirroredTabs("app", ["farmers", "bots"]);
 
-  /** Toggle Purrfect Cat */
-  const { value: showPurrfectCat, storeValue: setShowPurrfectCat } =
-    useStorageState("purrfect-cat", false);
+  /** Toggle NileChain Logo */
+  const { value: showNileChainLogo, storeValue: setShowNileChainLogo } =
+    useStorageState("nilechain-logo", false);
 
-  const [, dispatchAndSetShowPurrfectCat] = useMirroredCallback(
-    "toggle-purrfect-cat",
-    setShowPurrfectCat,
-    [setShowPurrfectCat],
+  const [, dispatchAndSetShowNileChainLogo] = useMirroredCallback(
+    "toggle-nilechain-logo",
+    setShowNileChainLogo,
+    [setShowNileChainLogo],
   );
 
-  const displayPurrfectCat = () => {
-    dispatchAndSetShowPurrfectCat(!showPurrfectCat);
-    toast.success("Meow!");
+  const displayNileChainLogo = () => {
+    dispatchAndSetShowNileChainLogo(!showNileChainLogo);
+    toast.success("NileChain!");
   };
 
   /** Setting tabs */
@@ -275,9 +275,9 @@ export default memo(function Welcome() {
           {/* App Icon */}
           <div className="relative mx-auto">
             <img
-              src={showPurrfectCat ? PurrfectCatIcon : WelcomeIcon}
+              src={showNileChainLogo ? NileChainLogo : WelcomeIcon}
               className="h-28 cursor-pointer"
-              onClick={displayPurrfectCat}
+              onClick={displayNileChainLogo}
             />
           </div>
 

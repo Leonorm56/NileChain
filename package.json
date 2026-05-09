@@ -1,6 +1,6 @@
 {
   "license": "MIT",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "scripts": {
     "build:farmer": "pnpm -F purrfect-farmer build",
     "start:fly": "pnpm -F purrfect-fly start"
