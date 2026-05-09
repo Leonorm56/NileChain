@@ -17,25 +17,36 @@ import { createElement } from "react";
 import farmers from "./farmers";
 import { lazy } from "react";
 
-export const Welcome = lazy(() => import("@/app/Welcome"));
-export const Browser = lazy(() => import("@/app/Browser"));
-export const TelegramWeb = lazy(() => import("@/app/TelegramWeb"));
-export const TelegramCleaner = lazy(() => import("@/app/TelegramCleaner"));
-export const TinyFly = lazy(() => import("@/app/TinyFly"));
-export const HeadlessPicker = lazy(() => import("@/app/HeadlessPicker"));
-export const BackupAndRestore = lazy(() => import("@/app/BackupAndRestore"));
-export const WhiskersToFarmer = lazy(() => import("@/app/WhiskersToFarmer"));
-export const TelegramToPurrfectGram = lazy(
-  () => import("@/app/TelegramToPurrfectGram"),
+// Helper to handle dynamic import failures gracefully
+const safeImport = (importFn) => {
+  return lazy(() =>
+    importFn().catch((err) => {
+      console.error("Failed to load component:", err);
+      // Return empty component on failure
+      return { default: () => null };
+    }),
+  );
+};
+
+export const Welcome = safeImport(() => import("@/app/Welcome"));
+export const Browser = safeImport(() => import("@/app/Browser"));
+export const TelegramWeb = safeImport(() => import("@/app/TelegramWeb"));
+export const TelegramCleaner = safeImport(() => import("@/app/TelegramCleaner"));
+export const TinyFly = safeImport(() => import("@/app/TinyFly"));
+export const HeadlessPicker = safeImport(() => import("@/app/HeadlessPicker"));
+export const BackupAndRestore = safeImport(() => import("@/app/BackupAndRestore"));
+export const WhiskersToFarmer = safeImport(() => import("@/app/WhiskersToFarmer"));
+export const TelegramToNileGram = safeImport(() =>
+  import("@/app/TelegramToPurrfectGram"),
 );
 
-export const ReorderTelegramWeb = lazy(
-  () => import("@/app/ReorderTelegramWeb"),
+export const ReorderTelegramWeb = safeImport(() =>
+  import("@/app/ReorderTelegramWeb"),
 );
 
-export const Spider = lazy(() => import("@/app/Spider"));
-export const ATFAuto = lazy(() => import("@/app/ATFAuto"));
-export const MyCloud = lazy(() => import("@/app/MyCloud"));
+export const Spider = safeImport(() => import("@/app/Spider"));
+export const ATFAuto = safeImport(() => import("@/app/ATFAuto"));
+export const MyCloud = safeImport(() => import("@/app/MyCloud"));
 export const CloudManager = lazy(() => import("@/app/CloudManager"));
 export const LocalTelegramSession = lazy(
   () => import("@/app/LocalTelegramSession"),

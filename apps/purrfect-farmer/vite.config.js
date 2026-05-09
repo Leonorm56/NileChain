@@ -15,77 +15,43 @@ import { transformCssBundle } from "./plugins/transform-css-bundle";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
-  /** Pkg */
   const pkg = getPackageJson();
-
-  /** Env */
   const env = loadEnv(mode, process.cwd());
 
-  const isIndexEntry =
-    !process.env.VITE_ENTRY || process.env.VITE_ENTRY === "index";
+  const isIndexEntry = !process.env.VITE_ENTRY || process.env.VITE_ENTRY === "index";
   const isPWA = Boolean(process.env.VITE_PWA);
   const isBridge = Boolean(process.env.VITE_BRIDGE);
   const isStylesEntry = process.env.VITE_ENTRY?.endsWith("styles");
 
-  const outDir = process.env.VITE_WHISKER
-    ? "dist-whisker"
-    : process.env.VITE_BRIDGE
-      ? "dist-bridge"
-      : process.env.VITE_EXTENSION
-        ? "dist-extension"
-        : "dist";
+  const outDir = process.env.VITE_WHISKER ? "dist-whisker" : process.env.VITE_BRIDGE ? "dist-bridge" : process.env.VITE_EXTENSION ? "dist-extension" : "dist";
 
   let input, output;
 
   if (isIndexEntry) {
-    /** Index HTML */
-    const indexHtml = isBridge
-      ? path.resolve(__dirname, "./pwa-iframe.html")
-      : path.resolve(__dirname, "./index.html");
-
-    /** Browser Sandbox HTML */
-    const browserSandboxHtml = path.resolve(
-      __dirname,
-      "./browser-sandbox.html",
-    );
-
-    /** Input */
+    const indexHtml = isBridge ? path.resolve(__dirname, "./pwa-iframe.html") : path.resolve(__dirname, "./index.html");
+    const browserSandboxHtml = path.resolve(__dirname, "./browser-sandbox.html");
     input = [indexHtml, browserSandboxHtml];
   } else if (isStylesEntry) {
-    input = path.resolve(
-      __dirname,
-      `./src/extension/${process.env.VITE_ENTRY}.css`,
-    );
+    input = path.resolve(__dirname, `./src/extension/${process.env.VITE_ENTRY}.css`);
   } else {
-    input = path.resolve(
-      __dirname,
-      `./src/extension/${process.env.VITE_ENTRY}.js`,
-    );
+    input = path.resolve(__dirname, `./src/extension/${process.env.VITE_ENTRY}.js`);
   }
 
   if (isIndexEntry) {
     output = {
       manualChunks(id) {
+        if (id.includes("TerminalFarmer")) return "index";
         if (id.includes("node_modules")) {
-          const lib = ["react", "node-forge", "crypto-js", "axios"].find(
-            (item) => id.includes(item),
-          );
-
-          if (lib) {
-            return `vendor-${lib}`;
-          }
+          const lib = ["react", "node-forge", "crypto-js", "axios"].find((item) => id.includes(item));
+          if (lib) return `vendor-${lib}`;
         }
       },
     };
   } else if (isStylesEntry) {
     output = {
       assetFileNames: (assetInfo) => {
-        if (assetInfo.name?.endsWith(".css")) {
-          return "extension/[name][extname]";
-        }
-
+        if (assetInfo.name?.endsWith(".css")) return "extension/[name][extname]";
         return "assets/[name]-[hash][extname]";
       },
     };
@@ -101,9 +67,7 @@ export default defineConfig(async ({ mode }) => {
     define: {
       __APP_PACKAGE_NAME__: JSON.stringify(pkg.name),
       __APP_PACKAGE_VERSION__: JSON.stringify(pkg.version),
-      __ENCRYPTION_KEY__: JSON.stringify(
-        new Date().toISOString().split("T")[0],
-      ),
+      __ENCRYPTION_KEY__: JSON.stringify(new Date().toISOString().split("T")[0]),
     },
     resolve: {
       alias: {
@@ -114,17 +78,11 @@ export default defineConfig(async ({ mode }) => {
     build: {
       outDir,
       emptyOutDir: isIndexEntry,
-      rollupOptions: {
-        input,
-        output,
-      },
+      rollupOptions: { input, output },
     },
     plugins: [
-      /** Plugins */
       generateChromeManifest(env, pkg),
-      transformCssBundle({
-        enable: process.env.VITE_ENTRY?.endsWith("styles"),
-      }),
+      transformCssBundle({ enable: process.env.VITE_ENTRY?.endsWith("styles") }),
       VitePWA({
         registerType: "prompt",
         workbox: {
@@ -137,46 +95,22 @@ export default defineConfig(async ({ mode }) => {
           description: env.VITE_APP_DESCRIPTION,
           theme_color: "#ffffff",
           icons: [
-            {
-              src: "pwa-64x64.png",
-              sizes: "64x64",
-              type: "image/png",
-            },
-            {
-              src: "pwa-192x192.png",
-              sizes: "192x192",
-              type: "image/png",
-            },
-            {
-              src: "pwa-512x512.png",
-              sizes: "512x512",
-              type: "image/png",
-            },
-            {
-              src: "maskable-icon-512x512.png",
-              sizes: "512x512",
-              type: "image/png",
-              purpose: "maskable",
-            },
+            { src: "pwa-64x64.png", sizes: "64x64", type: "image/png" },
+            { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
+            { src: "pwa-512x512.png", sizes: "512x512", type: "image/png" },
+            { src: "maskable-icon-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
           ],
         },
         disable: !isPWA,
       }),
-      /** Plugins */
-      nodePolyfills({
-        globals: {
-          Buffer: false,
-        },
-      }),
+      nodePolyfills({ globals: { Buffer: false } }),
       ViteEjsPlugin(env),
       react(),
       tailwindcss(),
       imagetools(),
     ],
     esbuild: {
-      supported: {
-        "top-level-await": true,
-      },
+      supported: { "top-level-await": true },
     },
   };
 });

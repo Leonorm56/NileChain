@@ -1,4 +1,4 @@
-import NileChainAlert from "@/assets/images/nilechain-alert.svg";
+import NileChainAlert from "@/assets/images/nilechain-alert.png?format=webp";
 import useAppContext from "@/hooks/useAppContext";
 import { memo, useEffect } from "react";
 

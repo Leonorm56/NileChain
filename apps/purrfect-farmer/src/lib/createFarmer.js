@@ -1,6 +1,13 @@
-import { createElement, lazy } from "react";
+import { createElement, lazy, Suspense } from "react";
 
-const TerminalFarmer = lazy(() => import("@/partials/TerminalFarmer"));
+// Wrap lazy imports with Suspense to handle loading state gracefully
+const TerminalFarmer = lazy(() =>
+  import("@/partials/TerminalFarmer").catch((err) => {
+    console.error("Failed to load TerminalFarmer:", err);
+    // Return a fallback component if import fails
+    return import("@/components/ErrorFallback");
+  }),
+);
 
 /**
  * Get all static properties from a class and its parent classes
@@ -36,7 +43,7 @@ export function createFarmer(FarmerClass, options) {
     ...getAllStaticProperties(FarmerClass),
     FarmerClass,
     tabType: "farmer",
-    component: createElement(TerminalFarmer),
+    component: createElement(Suspense, { fallback: null }, createElement(TerminalFarmer)),
     netRequest: {
       ...(FarmerClass.netRequest || {}),
       ...(FarmerClass.host

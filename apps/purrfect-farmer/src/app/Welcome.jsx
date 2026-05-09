@@ -26,7 +26,7 @@ import Donate from "@/partials/Donate";
 import DropButton from "@/components/DropButton";
 import FarmerLinks from "@/partials/FarmerLinks";
 import IPStatus from "@/partials/IPStatus";
-import NileChainLogo from "@/assets/images/nilechain-logo.svg";
+import NileChainLogo from "@/assets/images/nilechain-logo.png?format=webp&h=224";
 import { RiRemoteControlLine } from "react-icons/ri";
 import Settings from "@/partials/Settings";
 import Shutdown from "@/partials/Shutdown";
