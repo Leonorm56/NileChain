@@ -1,6 +1,12 @@
-markdown# NileChain
+<p align="center">
+  <img src="apps/purrfect-farmer/src/assets/images/nilechain-logo.png" alt="NileChain Logo" width="128" height="128">
+</p>
 
-**Advanced Telegram Mini-Apps Automation Tool**
+<h1 align="center">NileChain</h1>
+
+<p align="center">
+  <strong>Advanced Telegram Mini-Apps Automation Tool</strong>
+</p>
 
 Uganda's Premier Crypto Farming Tool.
 
