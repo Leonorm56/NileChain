@@ -273,10 +273,10 @@ export default memo(function Welcome() {
       <div className="flex flex-col overflow-auto grow">
         <Container className="flex flex-col gap-2 my-auto p-2">
           {/* App Icon */}
-          <div className="relative mx-auto">
+          <div className="relative mx-auto p-1.5 rounded-2xl border-2 border-nile-gold-500/60 bg-white/30 dark:bg-white/[0.04]">
             <img
               src={showNileChainLogo ? NileChainLogo : WelcomeIcon}
-              className="h-28 cursor-pointer"
+              className="h-28 rounded-xl cursor-pointer"
               onClick={displayNileChainLogo}
             />
           </div>
