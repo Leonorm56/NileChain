@@ -34,7 +34,7 @@ export default memo(function ErrorFallback({ error, resetErrorBoundary }) {
       {/* Reset Button */}
       <button
         onClick={resetErrorBoundary}
-        className="w-full max-w-xs px-4 py-2 text-white bg-orange-500 rounded-lg"
+        className="w-full max-w-xs px-4 py-2 text-white bg-blue-600 rounded-lg"
       >
         Reset
       </button>

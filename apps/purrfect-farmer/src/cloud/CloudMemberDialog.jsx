@@ -40,7 +40,7 @@ const MemberDialogHeader = ({ account }) => (
       <Dialog.Description
         className={cn(
           "px-2 font-bold text-base",
-          "text-center text-orange-500",
+          "text-center text-blue-400",
         )}
       >
         @{account.user?.["username"] || account.id}

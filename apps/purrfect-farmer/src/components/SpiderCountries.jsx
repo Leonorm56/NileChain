@@ -35,7 +35,7 @@ export default function SpiderCountries({
             >
               <span>{item.emoji}</span>
               <span className="flex-1 font-bold">{item.name}</span>
-              <span className="font-bold text-orange-500">${item.price}</span>
+              <span className="font-bold text-blue-400">${item.price}</span>
             </button>
           ))}
         </Container>

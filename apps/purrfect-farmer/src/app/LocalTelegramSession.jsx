@@ -74,7 +74,7 @@ export default function LocalTelegramSession() {
     <Container className={cn("flex flex-col justify-center gap-4 p-4 grow")}>
       <div className="flex flex-col gap-2 justify-center items-center">
         <img src={LocalTelegramSessionIcon} className="size-24" />
-        <h1 className="font-turret-road text-center text-3xl text-orange-500">
+        <h1 className="font-turret-road text-center text-3xl text-blue-400">
           Local Session
         </h1>
       </div>

@@ -304,7 +304,7 @@ export default memo(function Welcome() {
 
           {/* App Version */}
           <p className="text-lg leading-none text-center">
-            <span className={cn("font-turret-road font-bold text-orange-500")}>
+            <span className={cn("font-turret-road font-bold text-blue-400")}>
               v{__APP_PACKAGE_VERSION__}
             </span>
           </p>
@@ -369,10 +369,10 @@ export default memo(function Welcome() {
                   onClick={() => dispatchAndOpenFarmerBot(v)}
                   className={cn(
                     "border border-transparent",
-                    "dark:border-orange-500",
+                    "dark:border-blue-600",
                     "bg-orange-100 dark:bg-transparent",
-                    "text-orange-900 dark:text-orange-500",
-                    "hover:bg-orange-500 dark:hover:bg-orange-500",
+                    "text-orange-900 dark:text-blue-400",
+                    "hover:bg-blue-600 dark:hover:bg-blue-600",
                   )}
                   title={`Open ${
                     import.meta.env.VITE_APP_BOT_NAME

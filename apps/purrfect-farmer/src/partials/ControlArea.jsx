@@ -57,7 +57,7 @@ export default memo(function ControlArea() {
                 className="flex items-center justify-center w-10 h-10 shrink-0"
                 onClick={() => zoomies.dispatchAndRefresh()}
               >
-                <HiOutlineArrowPath className="w-6 h-6 text-orange-500" />
+                <HiOutlineArrowPath className="w-6 h-6 text-blue-400" />
               </button>
 
               {/* Backward Button */}
@@ -65,7 +65,7 @@ export default memo(function ControlArea() {
                 className="flex items-center justify-center w-10 h-10 shrink-0"
                 onClick={() => zoomies.processPreviousTask()}
               >
-                <HiOutlineBackward className="w-6 h-6 text-orange-500" />
+                <HiOutlineBackward className="w-6 h-6 text-blue-400" />
               </button>
 
               {/* Forward Button */}
@@ -73,7 +73,7 @@ export default memo(function ControlArea() {
                 className="flex items-center justify-center w-10 h-10 shrink-0"
                 onClick={() => zoomies.processNextTask()}
               >
-                <HiOutlineForward className="w-6 h-6 text-orange-500" />
+                <HiOutlineForward className="w-6 h-6 text-blue-400" />
               </button>
 
               {/* Cycles */}
@@ -109,14 +109,14 @@ export default memo(function ControlArea() {
                   <FaFire
                     className={cn(
                       "w-7 h-7",
-                      zoomies.enabled ? "text-orange-500" : "text-neutral-400"
+                      zoomies.enabled ? "text-blue-400" : "text-neutral-400"
                     )}
                   />
                 ) : (
                   <FaPaw
                     className={cn(
                       "w-7 h-7",
-                      zoomies.enabled ? "text-orange-500" : "text-neutral-400"
+                      zoomies.enabled ? "text-blue-400" : "text-neutral-400"
                     )}
                   />
                 )}

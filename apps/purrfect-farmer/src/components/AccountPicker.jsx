@@ -26,7 +26,7 @@ const PickerButton = (props) => (
       "text-neutral-500 dark:text-neutral-400",
       "bg-neutral-100 dark:bg-neutral-700",
       "hover:bg-orange-100 hover:text-orange-700",
-      "dark:hover:bg-orange-200 dark:hover:text-orange-500",
+      "dark:hover:bg-orange-200 dark:hover:text-blue-400",
       "flex items-center justify-center",
       "px-3 rounded-xl shrink-0 touch-none",
       props.className,
@@ -65,7 +65,7 @@ const AccountSelector = memo(
               "px-2 py-1 rounded-xl text-left",
               "bg-neutral-100 dark:bg-neutral-700",
               "hover:bg-orange-100 hover:text-orange-700",
-              "dark:hover:bg-orange-200 dark:hover:text-orange-500",
+              "dark:hover:bg-orange-200 dark:hover:text-blue-400",
               "grow min-w-0 min-h-0 flex items-center gap-2",
               "group",
             )}
@@ -118,9 +118,9 @@ const AccountSelector = memo(
 
             {/* Active / running state */}
             {account.active ? (
-              <HiCheckBadge className="shrink-0 text-orange-500 size-4" />
+              <HiCheckBadge className="shrink-0 text-blue-400 size-4" />
             ) : account.running ? (
-              <HiOutlineCheckBadge className="shrink-0 text-orange-500 size-4" />
+              <HiOutlineCheckBadge className="shrink-0 text-blue-400 size-4" />
             ) : null}
           </Dialog.Close>
 
@@ -219,8 +219,8 @@ export default memo(function AccountPicker() {
           <Dialog.Close
             onClick={() => addAccount()}
             className={cn(
-              "bg-purple-100 ",
-              "text-purple-900",
+              "bg-blue-900 ",
+              "text-white",
               "p-2.5 rounded-xl shrink-0 font-bold",
               "flex items-center justify-center gap-2",
             )}

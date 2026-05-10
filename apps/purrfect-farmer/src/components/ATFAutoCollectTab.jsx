@@ -37,7 +37,7 @@ export default function ATFAutoCollectTab() {
             Collected: {mutation.data.results.filter((r) => r.status).length} /{" "}
             {mutation.data.results.length}
           </p>
-          <p className="text-orange-500">
+          <p className="text-blue-400">
             Skipped (no balance):{" "}
             {mutation.data.results.filter((r) => r.skipped).length}
           </p>

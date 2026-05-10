@@ -96,7 +96,7 @@ export default function CloudEnvUpdate() {
       {query.isSuccess ? (
         <CloudEnvForm initialData={query.data} />
       ) : query.isLoading ? (
-        <p className="text-center text-orange-500">Loading...</p>
+        <p className="text-center text-blue-400">Loading...</p>
       ) : query.isError ? (
         <p className="text-center text-red-500">Error: {query.error.message}</p>
       ) : null}

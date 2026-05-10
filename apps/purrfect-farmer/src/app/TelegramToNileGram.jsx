@@ -20,7 +20,7 @@ const TabContent = ({ title, children, ...props }) => (
     <Container className="flex flex-col gap-4 p-4 my-auto">
       <div className="flex flex-col gap-2 justify-center items-center">
         <img src={TelegramIcon} className="size-24" />
-        <h1 className="font-turret-road text-center text-2xl text-orange-500">
+        <h1 className="font-turret-road text-center text-2xl text-blue-400">
           {title}
         </h1>
       </div>

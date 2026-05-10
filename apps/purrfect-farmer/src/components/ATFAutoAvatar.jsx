@@ -16,7 +16,7 @@ export default function ATFAutoAvatar({ account, ...props }) {
       {...props}
       className={cn(
         "size-10 shrink-0 rounded-full",
-        "bg-orange-500 text-white",
+        "bg-blue-600 text-white",
         "flex items-center justify-center",
         "font-bold text-sm cursor-grab active:cursor-grabbing",
         "touch-none select-none",

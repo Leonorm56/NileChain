@@ -66,7 +66,7 @@ export default function CloudLoginForm() {
 
       <div className="flex flex-col">
         {/* Sub Title */}
-        <h2 className="text-3xl text-center font-turret-road text-orange-500 leading-none">
+        <h2 className="text-3xl text-center font-turret-road text-blue-400 leading-none">
           Cloud Manager
         </h2>
       </div>

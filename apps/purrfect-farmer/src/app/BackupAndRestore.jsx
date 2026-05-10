@@ -15,7 +15,7 @@ const TabContent = ({ title, children, ...props }) => (
   <Tabs.Content {...props} className={cn("flex flex-col gap-4")}>
     <div className="flex flex-col gap-2 justify-center items-center">
       <img src={AppIcon} className="size-24" />
-      <h1 className="font-turret-road text-center text-3xl text-orange-500">
+      <h1 className="font-turret-road text-center text-3xl text-blue-400">
         {title}
       </h1>
     </div>

@@ -17,7 +17,7 @@ export default function Onboarding() {
         className={cn(
           "leading-none font-turret-road",
           "text-2xl text-center",
-          "text-orange-500"
+          "text-blue-400"
         )}
       >
         {import.meta.env.VITE_APP_NAME}{" "}
@@ -31,14 +31,14 @@ export default function Onboarding() {
 
       {/* Get Started */}
       <PrimaryButton
-        className="bg-orange-500"
+        className="bg-blue-600"
         onClick={() => dispatchAndConfigureSettings("onboarded", true, false)}
       >
         Get Started
       </PrimaryButton>
 
       {/* Connect */}
-      <Connect className="hover:bg-orange-500" />
+      <Connect className="hover:bg-blue-600" />
     </div>
   );
 }

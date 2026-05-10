@@ -129,7 +129,7 @@ export default memo(function TabContent({ tab }) {
       >
         {/* Unpublished status */}
         {tab.FarmerClass && !tab.FarmerClass.published ? (
-          <div className="bg-orange-500 p-2 text-center font-bold">
+          <div className="bg-blue-600 p-2 text-center font-bold">
             Under development
           </div>
         ) : null}

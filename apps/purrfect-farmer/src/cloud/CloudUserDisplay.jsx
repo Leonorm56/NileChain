@@ -52,7 +52,7 @@ export default function CloudUserDisplay() {
               open={openServerUpdate}
               onOpenChange={setOpenServerUpdate}
             >
-              <Dialog.Trigger className="text-orange-500">
+              <Dialog.Trigger className="text-blue-400">
                 Server
               </Dialog.Trigger>
 

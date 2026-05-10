@@ -60,7 +60,7 @@ export default function IPStatus() {
         className={cn(
           "inline-flex items-center gap-2",
           {
-            pending: "text-orange-500",
+            pending: "text-blue-400",
             success: "text-green-600 dark:text-green-500",
             error: "text-red-500",
           }[ipQuery.status]

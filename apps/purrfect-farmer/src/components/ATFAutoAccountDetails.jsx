@@ -121,7 +121,7 @@ export default function ATFAutoAccountDetails({ account }) {
             </span>
 
             {/* Jetton */}
-            <span className="inline-flex items-center gap-1 text-orange-500 dark:text-orange-400">
+            <span className="inline-flex items-center gap-1 text-blue-400 dark:text-orange-400">
               <img src={ATFIcon} className="size-4 rounded-full" />
               {balances.jetton.toFixed(2)} ATF
             </span>

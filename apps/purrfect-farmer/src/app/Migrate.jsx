@@ -124,7 +124,7 @@ export default function Migrate() {
     <Container className={cn("flex flex-col justify-center gap-4 p-4 grow")}>
       <div className="flex flex-col gap-2 justify-center items-center">
         <img src={AppIcon} className="size-24" />
-        <h1 className="font-turret-road text-center text-3xl text-orange-500">
+        <h1 className="font-turret-road text-center text-3xl text-blue-400">
           Migrate to V2
         </h1>
       </div>

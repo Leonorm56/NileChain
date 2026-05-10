@@ -19,8 +19,8 @@ const BoosterTabTrigger = ({ title, value }) => (
     className={cn(
       "px-4 py-2 truncate",
       "font-bold cursor-pointer",
-      "text-neutral-500 dark:text-neutral-400 hover:text-orange-500",
-      "data-[state=active]:text-orange-500 border-b-2 border-b-transparent",
+      "text-neutral-500 dark:text-neutral-400 hover:text-blue-400",
+      "data-[state=active]:text-blue-400 border-b-2 border-b-transparent",
       "data-[state=active]:border-b-orange-500",
       "focus:outline-none focus:ring-0",
     )}
@@ -93,7 +93,7 @@ function BoosterHeader({ account }) {
         className={cn(
           "size-10 shrink-0 rounded-full",
           "flex items-center justify-center",
-          "text-neutral-400 hover:text-orange-500 cursor-pointer",
+          "text-neutral-400 hover:text-blue-400 cursor-pointer",
           "transition-colors",
         )}
       >

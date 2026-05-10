@@ -11,7 +11,7 @@ export default function CloudTelegramSessionStatus() {
         "text-center flex items-center justify-center gap-2",
         cloudTelegramSession
           ? "text-green-600 dark:text-green-500"
-          : "text-orange-500"
+          : "text-blue-400"
       )}
     >
       <HiOutlineBolt className="w-4 h-4" /> Cloud Telegram Session:{" "}

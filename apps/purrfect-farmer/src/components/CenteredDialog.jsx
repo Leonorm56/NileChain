@@ -25,9 +25,9 @@ export default function CenteredDialog({
         >
           {/* Icon */}
           {Icon ? (
-            <Icon className="flex size-10 text-orange-500 mx-auto" />
+            <Icon className="flex size-10 text-blue-400 mx-auto" />
           ) : null}
-          <Dialog.Title className="font-bold text-center text-xl text-orange-500 font-turret-road truncate">
+          <Dialog.Title className="font-bold text-center text-xl text-blue-400 font-turret-road truncate">
             {title}
           </Dialog.Title>
           <Dialog.Description className="sr-only">

@@ -19,8 +19,8 @@ export default memo(function SettingsActions({
         onClick={() => dispatchAndReloadApp(true)}
         className={cn(
           "mt-1",
-          "bg-purple-100 ",
-          "text-purple-900",
+          "bg-blue-900 ",
+          "text-white",
           "p-2.5 rounded-xl shrink-0 font-bold",
           "flex items-center justify-center gap-2"
         )}
