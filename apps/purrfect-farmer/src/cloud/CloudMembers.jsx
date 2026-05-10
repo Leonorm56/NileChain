@@ -73,7 +73,7 @@ export default function CloudMembers() {
                       "text-blue-500 dark:text-blue-400",
                       "flex items-center justify-center",
                       "px-3 rounded-lg shrink-0",
-                      "bg-neutral-100 dark:bg-[#1B2D45]",
+                      "border bg-neutral-100 dark:bg-neutral-800",
                     )}
                   >
                     {account.title}
@@ -84,7 +84,7 @@ export default function CloudMembers() {
                   <Dialog.Trigger
                     className={cn(
                       "flex items-center min-w-0 min-h-0",
-                      "gap-2 p-2 rounded-lg grow bg-neutral-100 dark:bg-[#1B2D45]",
+                      "gap-2 p-2 rounded-lg grow bg-neutral-100 dark:bg-neutral-800",
                       "text-left",
                     )}
                   >
@@ -105,7 +105,7 @@ export default function CloudMembers() {
                 <span
                   className={cn(
                     "flex items-center justify-center",
-                    "bg-neutral-100 dark:bg-[#1B2D45]",
+                    "border bg-neutral-100 dark:bg-neutral-800",
                     "px-3 rounded-lg shrink-0",
                   )}
                 >

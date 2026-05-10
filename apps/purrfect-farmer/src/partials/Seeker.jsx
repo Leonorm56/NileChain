@@ -37,7 +37,7 @@ export default memo(function Seeker() {
                   key={server.id}
                   role="button"
                   className={cn(
-                    "bg-neutral-100 dark:bg-[#1B2D45]",
+                    "border bg-neutral-100 dark:bg-neutral-800",
                     "flex items-center gap-2 p-2 px-4 cursor-pointer rounded-xl"
                   )}
                   onClick={() =>

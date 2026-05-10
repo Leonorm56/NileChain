@@ -45,7 +45,7 @@ function App() {
           <TabButtonList tabs={app.openedTabs} />
 
           {/* Tabs Contents Wrapper */}
-          <div className="relative min-w-0 min-h-0 overflow-hidden grow">
+          <div className="relative min-w-0 min-h-0 overflow-hidden grow border-t border-b">
             {app.openedTabs.map((tab) => (
               <TabContent
                 key={tab.reloadedAt ? `${tab.id}-${tab.reloadedAt}` : tab.id}

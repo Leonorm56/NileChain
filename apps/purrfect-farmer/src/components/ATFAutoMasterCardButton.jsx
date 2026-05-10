@@ -14,7 +14,7 @@ export function ATFAutoMasterCardButton({ icon: Icon, children, ...props }) {
       <span
         className={cn(
           "flex justify-center items-center shrink-0",
-          "bg-neutral-100 dark:bg-black rounded-full aspect-square size-full",
+          "border bg-neutral-100 dark:bg-black rounded-full aspect-square size-full",
         )}
       >
         <Icon className="size-6" />

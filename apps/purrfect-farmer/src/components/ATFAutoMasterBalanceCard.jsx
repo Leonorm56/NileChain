@@ -33,7 +33,7 @@ export function ATFAutoMasterBalanceCard() {
     <div
       className={cn(
         "p-2 rounded-2xl relative",
-        "bg-neutral-950 text-white",
+        "border bg-neutral-950 text-white",
         "flex flex-col items-center justify-center gap-2",
       )}
     >
@@ -44,7 +44,7 @@ export function ATFAutoMasterBalanceCard() {
         className={cn(
           "absolute top-3 left-3",
           "p-1.5 rounded-full flex items-center justify-center",
-          "bg-[#0A1628] hover:bg-[#0D1B2A]",
+          "border bg-neutral-950 hover:bg-neutral-900",
           "cursor-pointer transition-colors",
         )}
       >
@@ -63,7 +63,7 @@ export function ATFAutoMasterBalanceCard() {
             className={cn(
               "absolute top-3 right-3 flex items-center justify-center",
               "p-1.5 rounded-full",
-              "bg-[#0A1628] hover:bg-[#0D1B2A]",
+              "border bg-neutral-950 hover:bg-neutral-900",
               "cursor-pointer transition-colors",
             )}
           >

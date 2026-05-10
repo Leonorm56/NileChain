@@ -24,7 +24,7 @@ function ToolButton({ icon: Icon, children, ...props }) {
     <Dialog.Close
       {...props}
       className={cn(
-        "bg-neutral-100 dark:bg-[#1B2D45]",
+        "border bg-neutral-100 dark:bg-neutral-800",
         "flex items-center gap-2.5 p-2.5 cursor-pointer rounded-xl",
         "text-left",
       )}

@@ -33,7 +33,7 @@ const FarmerActionButton = ({ variant, ...props }) => (
       variant === "activate"
         ? "text-green-500 dark:text-green-400"
         : "text-red-500 dark:text-red-400",
-      "bg-neutral-100 dark:bg-[#1B2D45]",
+      "border bg-neutral-100 dark:bg-neutral-800",
       "px-3 rounded-lg shrink-0",
     )}
   />
@@ -138,7 +138,7 @@ export default function CloudFarmers() {
           <Collapsible.Root key={group.id} className="flex flex-col gap-2">
             <Collapsible.Trigger
               className={cn(
-                "bg-neutral-100 dark:bg-[#1B2D45]",
+                "border bg-neutral-100 dark:bg-neutral-800",
                 "flex items-center gap-2 p-2 cursor-pointer rounded-xl",
                 "border border-transparent",
                 "data-[state=open]:border-blue-500",
@@ -167,7 +167,7 @@ export default function CloudFarmers() {
                             "text-blue-500 dark:text-blue-400",
                             "flex items-center justify-center",
                             "px-3 rounded-lg shrink-0",
-                            "bg-neutral-100 dark:bg-[#1B2D45]",
+                            "border bg-neutral-100 dark:bg-neutral-800",
                           )}
                         >
                           {account.title}
@@ -178,7 +178,7 @@ export default function CloudFarmers() {
                         <Dialog.Trigger
                           className={cn(
                             "flex items-center min-w-0 min-h-0",
-                            "gap-2 p-2 rounded-lg grow bg-neutral-100 dark:bg-[#1B2D45]",
+                            "gap-2 p-2 rounded-lg grow bg-neutral-100 dark:bg-neutral-800",
                             "text-left",
                           )}
                         >

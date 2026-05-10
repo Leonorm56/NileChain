@@ -24,7 +24,7 @@ const PickerButton = (props) => (
     {...props}
     className={cn(
       "text-neutral-500 dark:text-neutral-400",
-      "bg-neutral-100 dark:bg-[#1B2D45]",
+      "border bg-neutral-100 dark:bg-neutral-800",
       "hover:bg-orange-100 hover:text-orange-700",
       "dark:hover:bg-orange-200 dark:hover:text-blue-400",
       "flex items-center justify-center",
@@ -63,7 +63,7 @@ const AccountSelector = memo(
             onClick={() => launchAccount(account.id)}
             className={cn(
               "px-2 py-1 rounded-xl text-left",
-              "bg-neutral-100 dark:bg-[#1B2D45]",
+              "border bg-neutral-100 dark:bg-neutral-800",
               "hover:bg-orange-100 hover:text-orange-700",
               "dark:hover:bg-orange-200 dark:hover:text-blue-400",
               "grow min-w-0 min-h-0 flex items-center gap-2",

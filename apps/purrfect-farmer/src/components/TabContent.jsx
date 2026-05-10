@@ -20,7 +20,7 @@ const LinkButton = (props) => {
         "flex items-center justify-center gap-2",
         "h-10 font-bold",
         "text-blue-500 dark:text-blue-300",
-        "border-b dark:border-[#1B2D45]",
+        "border-b dark:border-neutral-600",
         "shrink-0",
       )}
     />

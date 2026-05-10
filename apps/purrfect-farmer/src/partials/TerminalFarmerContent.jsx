@@ -36,7 +36,7 @@ export const TerminalFarmerContent = () => {
       />
 
       {/* Terminal Farmer Header */}
-      <div className="p-2 border-b dark:border-[#1B2D45]">
+      <div className="p-2 border-b dark:border-neutral-600">
         <FarmerHeader
           isPrimary={isPrimaryFarmerUser}
           referralLink={referralLink}
@@ -52,7 +52,7 @@ export const TerminalFarmerContent = () => {
           <Dialog.Trigger
             className={cn(
               "flex items-center justify-center gap-2 p-2 w-10 shrink-0",
-              "hover:bg-neutral-100 dark:hover:bg-[#1B2D45]",
+              "hover:bg-neutral-100 dark:hover:bg-neutral-800",
               "text-blue-500",
             )}
           >

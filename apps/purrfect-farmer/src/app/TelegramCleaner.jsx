@@ -56,7 +56,7 @@ const ConversationItem = ({ conversation, onLeave }) => {
     <div key={conversation.id} className="flex items-center gap-2">
       <ConversationIcon conversation={conversation} />
 
-      <h3 className="font-semibold grow min-w-0 truncate bg-neutral-100 dark:bg-[#1B2D45] rounded-lg px-4 py-2">
+      <h3 className="font-semibold grow min-w-0 truncate border bg-neutral-100 dark:bg-neutral-800 rounded-lg px-4 py-2">
         {conversation.title}
       </h3>
       <button

@@ -22,7 +22,7 @@ export default function CloudCenteredDialog({
             "w-full max-w-sm",
             "my-auto overflow-hidden",
             "flex flex-col gap-2 p-4",
-            "bg-white dark:bg-[#0D1B2A] rounded-xl",
+            "border bg-white dark:bg-neutral-900 rounded-xl",
             props.className
           )}
         >
@@ -46,7 +46,7 @@ export default function CloudCenteredDialog({
           {/* Cancel Button */}
           <Dialog.Close
             className={cn(
-              "px-4 py-2 bg-neutral-200 dark:bg-[#0A1628] rounded-lg"
+              "px-4 py-2 bg-neutral-200 dark:bg-neutral-950 rounded-lg"
             )}
           >
             Cancel

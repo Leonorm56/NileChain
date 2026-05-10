@@ -34,7 +34,7 @@ export default memo(function ControlArea() {
       {zoomies.enabled && zoomies.current.drop ? (
         <>
           {/* Controls */}
-          <div className="border-t dark:border-[#1B2D45] shrink-0">
+          <div className="border-t dark:border-neutral-600 shrink-0">
             <Container className={cn("flex items-center gap-2 px-2 py-0")}>
               {/* Drop Button */}
               <button
@@ -97,7 +97,7 @@ export default memo(function ControlArea() {
       ) : null}
 
       {/* Utils Control */}
-      <div className="border-t dark:border-[#1B2D45] shrink-0">
+      <div className="border-t dark:border-neutral-600 shrink-0">
         <Container className="flex gap-2 px-2 py-0">
           <ContextMenu.Root>
             <ContextMenu.Trigger asChild>
@@ -129,7 +129,7 @@ export default memo(function ControlArea() {
                 alignOffset={5}
                 className={cn(
                   "flex flex-col gap-2 p-2",
-                  "text-white rounded-lg bg-[#0A1628]",
+                  "text-white rounded-lg bg-neutral-950",
                   "w-[--(--radix-context-menu-content-available-width)]",
                   "max-w-48",
                   "z-50"
@@ -140,7 +140,7 @@ export default memo(function ControlArea() {
                   className={cn(
                     "flex items-center gap-2 p-2",
                     "rounded-lg cursor-pointer",
-                    "bg-[#0D1B2A] hover:bg-blue-500"
+                    "border bg-neutral-900 hover:bg-blue-500"
                   )}
                 >
                   <HiOutlineFire className="w-4 h-4" /> Quick Run

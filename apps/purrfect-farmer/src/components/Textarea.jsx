@@ -7,7 +7,7 @@ export default memo(function Textarea(props) {
     <TextareaAutosize
       {...props}
       className={cn(
-        "bg-neutral-100 dark:bg-[#1B2D45]",
+        "border bg-neutral-100 dark:bg-neutral-800",
         "p-2.5 rounded-lg font-bold w-full min-w-0",
         "focus:outline-hidden focus:ring-3 focus:ring-blue-300",
         "disabled:opacity-50",

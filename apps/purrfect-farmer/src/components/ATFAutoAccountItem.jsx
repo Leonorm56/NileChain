@@ -17,7 +17,7 @@ const ActionButton = (props) => (
     {...props}
     className={cn(
       "text-neutral-500 dark:text-neutral-400",
-      "hover:bg-neutral-300 dark:hover:bg-[#0D1B2A]0",
+      "hover:bg-neutral-300 dark:hover:bg-neutral-900",
       "hover:text-black dark:hover:text-white",
       "p-1.5 rounded-lg shrink-0",
       "transition-colors",
@@ -52,7 +52,7 @@ export default memo(function ATFAutoAccountItem({
         className={cn(
           "flex gap-2 items-center",
           "p-1.5 rounded-xl",
-          "bg-neutral-100 dark:bg-[#1B2D45]",
+          "border bg-neutral-100 dark:bg-neutral-800",
           "hover:bg-neutral-200 dark:hover:bg-neutral-600",
           "transition-colors group",
         )}

@@ -23,7 +23,7 @@ export default function CloudPanel() {
   return (
     <div className="flex flex-col grow overflow-auto">
       {/* Heading */}
-      <div className="border-b shrink-0 dark:border-[#1B2D45]">
+      <div className="border-b shrink-0 dark:border-neutral-600">
         <Container className="flex items-center gap-2 p-2">
           <Dialog.Root open={openEnvUpdate} onOpenChange={setOpenEnvUpdate}>
             <Dialog.Trigger className="text-blue-400 size-8 flex items-center justify-center">

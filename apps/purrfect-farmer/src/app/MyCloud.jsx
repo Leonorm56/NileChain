@@ -28,7 +28,7 @@ const MyCloudActionButton = ({ variant, ...props }) => (
       variant === "activate"
         ? "text-green-500 dark:text-green-400"
         : "text-red-500 dark:text-red-400",
-      "bg-neutral-100 dark:bg-[#1B2D45]",
+      "border bg-neutral-100 dark:bg-neutral-800",
       "px-3 rounded-lg shrink-0",
     )}
   />
@@ -118,7 +118,7 @@ const MyCloudFarmers = () => {
           <button
             onClick={() => launchFarmer(farmer)}
             className={cn(
-              "bg-neutral-100 dark:bg-[#1B2D45]",
+              "border bg-neutral-100 dark:bg-neutral-800",
               "flex items-center gap-2 p-2 text-left",
               "grow min-w-0 cursor-pointer rounded-xl",
               "border border-transparent",

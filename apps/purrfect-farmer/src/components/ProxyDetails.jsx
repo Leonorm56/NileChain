@@ -24,7 +24,7 @@ const ProxyDetailsItem = ({ label, value }) => {
     <div
       className={cn(
         "p-2.5 flex items-center gap-2 rounded-xl",
-        "bg-neutral-200 dark:bg-[#243B55]"
+        "border bg-neutral-200 dark:bg-neutral-700"
       )}
     >
       {/* Details */}
@@ -61,7 +61,7 @@ const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
     <Collapsible.Root
       {...props}
       className={cn(
-        "bg-neutral-100 dark:bg-[#1B2D45]",
+        "border bg-neutral-100 dark:bg-neutral-800",
         "flex flex-col gap-2",
         "p-2 rounded-xl",
         rootClassName
@@ -70,7 +70,7 @@ const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
       <Collapsible.Trigger
         className={cn(
           "p-2 flex items-center gap-2 rounded-xl",
-          "bg-neutral-200 dark:bg-[#243B55]",
+          "border bg-neutral-200 dark:bg-neutral-700",
           "border border-transparent hover:border-blue-500"
         )}
       >

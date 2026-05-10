@@ -25,7 +25,7 @@ const DialogContent = styled(Dialog.Content)`
   position: fixed;
   inset-inline: 0px;
   z-index: 999920;
-  background-color: #262626;
+  background-color: #192940;
   color: white;
   display: flex;
   flex-direction: column;
@@ -61,14 +61,14 @@ const DialogTitle = styled(Dialog.Title)`
 `;
 
 const DialogDescription = styled(Dialog.Description)`
-  color: #ccc;
+  color: #a8bcd4;
   text-align: center;
   font-size: 12px;
   margin: 0px;
 `;
 
 const BaseToolbarButton = styled.button`
-  background-color: #404040;
+  background-color: #2a3d59;
   color: white;
   display: flex;
   align-items: center;
@@ -87,7 +87,7 @@ const BaseToolbarButton = styled.button`
   &:hover,
   &:focus,
   &.active {
-    background-color: #193cb8;
+    background-color: #1a4a8a;
   }
 `;
 

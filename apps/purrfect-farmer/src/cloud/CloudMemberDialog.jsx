@@ -101,7 +101,7 @@ const MemberDialogFarmer = ({ account, farmer }) => {
     <div
       className={cn(
         "p-2 flex items-center gap-2 rounded-xl",
-        "bg-neutral-100 dark:bg-[#1B2D45]",
+        "border bg-neutral-100 dark:bg-neutral-800",
       )}
     >
       {/* Farmer Icon */}
@@ -233,7 +233,7 @@ export default function CloudMemberDialog({ account, farmer }) {
         <Dialog.Close
           disabled={kickMemberMutation.isPending}
           className={cn(
-            "px-4 py-2 bg-neutral-200 dark:bg-[#0A1628] rounded-lg",
+            "px-4 py-2 bg-neutral-200 dark:bg-neutral-950 rounded-lg",
             "disabled:opacity-60",
           )}
         >

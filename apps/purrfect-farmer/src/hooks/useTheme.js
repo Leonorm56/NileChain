@@ -11,7 +11,7 @@ export default function useTheme(theme) {
     document.documentElement.classList.toggle("dark", isDark);
     document
       .querySelector("meta[name=theme-color]")
-      .setAttribute("content", isDark ? "#262626" : "#ffffff");
+      .setAttribute("content", isDark ? "#0b1526" : "#f0f4fa");
   }, [theme, systemIsDark]);
 }
 

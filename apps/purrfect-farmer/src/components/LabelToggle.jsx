@@ -7,7 +7,7 @@ export default memo(function LabelToggle({ children, ...props }) {
   return (
     <label
       className={cn(
-        "bg-neutral-100 dark:bg-[#1B2D45]",
+        "border bg-neutral-100 dark:bg-neutral-800",
         "flex items-center gap-4 p-2 cursor-pointer rounded-xl",
         props.disabled && "opacity-50"
       )}

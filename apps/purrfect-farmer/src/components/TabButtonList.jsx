@@ -30,13 +30,8 @@ export default memo(function TabButtonList({ tabs }) {
   );
 
   return (
-    <div className="border-b dark:border-[#1B2D45]">
-      <Container
-        className={cn(
-          "flex items-center gap-2 p-0 pr-2 shrink-0",
-          "border-b dark:border-[#1B2D45]"
-        )}
-      >
+    <div className="border-b dark:border-neutral-600">
+      <Container className="flex items-center gap-2 p-0 pr-2 shrink-0">
         <div
           className={cn(
             "grow basis-0",
@@ -46,7 +41,7 @@ export default memo(function TabButtonList({ tabs }) {
           )}
         >
           {/* Main */}
-          <div className="sticky left-0 px-2 bg-white z-1 dark:bg-[#0D1B2A] shrink-0">
+          <div className="sticky left-0 px-2 bg-neutral-50 z-1 dark:bg-neutral-900 shrink-0">
             <TabButton
               key={tabs[0].id}
               tab={tabs[0]}
@@ -83,7 +78,7 @@ export default memo(function TabButtonList({ tabs }) {
               className={cn(
                 "flex items-center justify-center",
                 "shrink-0 p-2 rounded-full",
-                "bg-neutral-100 dark:bg-[#1B2D45]"
+                "border bg-neutral-100 dark:bg-neutral-800"
               )}
             >
               <LiaUser className="size-5" />

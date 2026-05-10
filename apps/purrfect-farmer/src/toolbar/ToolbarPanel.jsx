@@ -60,7 +60,7 @@ const Image = styled.img`
 `;
 
 const Button = styled(BaseButton)`
-  background-color: #262626;
+  background-color: #192940;
   color: white;
   font-family: "Noto Sans";
 

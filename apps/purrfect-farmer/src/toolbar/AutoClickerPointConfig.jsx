@@ -39,7 +39,7 @@ const DialogDescription = styled(Dialog.Description)`
   font-family: "Noto Sans";
   font-size: 12px;
   text-align: center;
-  color: #252525;
+  color: #192940;
   margin: 0;
 `;
 
@@ -58,7 +58,7 @@ const DialogClose = styled(Dialog.Close)`
 
 const Input = styled.input`
   font-size: 12px;
-  background-color: #f5f5f5;
+  background-color: #dee6f0;
   color: black;
   padding: 8px;
   border-radius: 8px;
@@ -72,7 +72,7 @@ const Input = styled.input`
 
 const Select = styled.select`
   font-size: 12px;
-  background-color: #f5f5f5;
+  background-color: #dee6f0;
   color: black;
   padding: 8px;
   border-radius: 8px;

@@ -60,7 +60,7 @@ const Container = styled.div`
 
 const Button = styled.button`
   box-sizing: border-box;
-  background-color: #262626;
+  background-color: #192940;
   color: white;
   border-radius: 999px;
   display: flex;
