@@ -237,3 +237,4 @@ if (!isWhisker) {
   /** Always Setup Extension  */
   setupExtension();
 }
+

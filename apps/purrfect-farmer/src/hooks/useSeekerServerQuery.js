@@ -25,3 +25,4 @@ export default function useSeekerServerQuery(app) {
         .then((res) => res.data),
   });
 }
+

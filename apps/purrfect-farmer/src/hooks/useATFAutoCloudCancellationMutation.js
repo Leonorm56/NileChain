@@ -12,3 +12,4 @@ export default function useATFAutoCloudCancellationMutation() {
         .then((res) => res.data),
   });
 }
+

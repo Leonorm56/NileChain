@@ -12,3 +12,4 @@ export default function useATFAutoCloudStatusMutation() {
         .then((res) => res.data),
   });
 }
+

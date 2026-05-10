@@ -8,3 +8,4 @@ export default function ATFAutoAccountDetailsDialog({ account }) {
     </CenteredDialog>
   );
 }
+

@@ -421,3 +421,4 @@ export default memo(function FarmerLinks() {
     </BottomDialog.Container>
   );
 });
+

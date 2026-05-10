@@ -8,3 +8,4 @@ const defaultAccounts = [
 ];
 
 export default defaultAccounts;
+

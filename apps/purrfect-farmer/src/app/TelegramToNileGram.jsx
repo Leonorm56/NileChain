@@ -30,7 +30,7 @@ const TabContent = ({ title, children, ...props }) => (
   </Tabs.Content>
 );
 
-export default function TelegramToPurrfectGram() {
+export default function TelegramToNileGram() {
   const tabs = useMirroredTabs("telegram-web-transfer", [
     "nile-gram",
     "telegram-web",
@@ -163,3 +163,4 @@ export default function TelegramToPurrfectGram() {
     </Tabs>
   );
 }
+

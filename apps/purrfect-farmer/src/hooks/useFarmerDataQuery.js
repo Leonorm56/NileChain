@@ -17,3 +17,4 @@ export default function useFarmerDataQuery() {
         .then((res) => res.data),
   });
 }
+

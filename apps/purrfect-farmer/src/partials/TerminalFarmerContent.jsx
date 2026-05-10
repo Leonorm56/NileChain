@@ -84,3 +84,4 @@ export const TerminalFarmerContent = () => {
     </TerminalFarmerContext.Provider>
   );
 };
+

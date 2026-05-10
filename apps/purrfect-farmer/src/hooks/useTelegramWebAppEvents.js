@@ -87,3 +87,4 @@ export default function useTelegramWebAppEvents(ref) {
     return () => window.removeEventListener("message", handler);
   }, [openTelegramLink]);
 }
+

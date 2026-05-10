@@ -382,3 +382,4 @@ export default function TelegramLogin({
     <CgSpinner className="w-5 h-5 mx-auto animate-spin" />
   );
 }
+

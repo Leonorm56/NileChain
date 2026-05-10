@@ -47,3 +47,4 @@ export default memo(function FarmerInit({
     </div>
   );
 });
+

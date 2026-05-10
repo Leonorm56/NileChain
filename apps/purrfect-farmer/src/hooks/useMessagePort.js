@@ -112,3 +112,4 @@ export default function useMessagePort(isActive = true) {
     [ports, dispatch, addMessageHandlers, removeMessageHandlers]
   );
 }
+

@@ -241,3 +241,4 @@ export default memo(function Settings({ tabs }) {
     </BottomDialog.Container>
   );
 });
+

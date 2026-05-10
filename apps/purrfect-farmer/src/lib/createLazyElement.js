@@ -4,3 +4,4 @@ import { createElement, lazy } from "react";
 export const createLazyElement = (callback) => {
   return createElement(lazy(callback));
 };
+

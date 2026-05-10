@@ -96,3 +96,4 @@ export default memo(function TabButtonList({ tabs }) {
     </div>
   );
 });
+

@@ -13,3 +13,4 @@ export default function useCloudQueryOptions(appContext) {
     cloudServer: settings.cloudServer,
   };
 }
+

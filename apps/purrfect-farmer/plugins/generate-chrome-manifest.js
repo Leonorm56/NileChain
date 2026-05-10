@@ -155,7 +155,7 @@ export function generateChromeManifest(env, pkg) {
 
         content_security_policy: {
           extension_pages:
-            "script-src 'self' 'unsafe-eval'; object-src 'self';",
+            "script-src 'self'; object-src 'self';",
           sandbox:
             "sandbox allow-scripts allow-forms allow-popups allow-modals;",
         },
@@ -184,3 +184,5 @@ export function generateChromeManifest(env, pkg) {
     },
   };
 }
+
+

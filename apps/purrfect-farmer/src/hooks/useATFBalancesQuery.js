@@ -11,3 +11,4 @@ export default function useATFBalancesQuery(address) {
     enabled: enableRequests && Boolean(address),
   });
 }
+

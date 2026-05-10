@@ -8,3 +8,4 @@ export const WEB_PLATFORM_EXCLUDED_HOSTS = [
   "game.mars2049.online",
   "walletbot.me",
 ];
+

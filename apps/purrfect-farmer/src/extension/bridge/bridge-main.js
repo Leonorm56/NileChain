@@ -21,3 +21,4 @@ if (import.meta.env.VITE_BRIDGE) {
   /** Listen for Bridge */
   window.addEventListener("message", handleBridge);
 }
+

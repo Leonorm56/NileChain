@@ -10,3 +10,4 @@ export default function useTelegramLoginMutation(form) {
       cloudBackend.post("/api/telegram/login", data).then((res) => res.data),
   });
 }
+

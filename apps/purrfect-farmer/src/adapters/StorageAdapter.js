@@ -111,3 +111,4 @@ export default class StorageAdapter {
     this.emitter.off(event, listener);
   }
 }
+

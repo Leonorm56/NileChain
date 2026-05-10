@@ -11,3 +11,4 @@ export default function useCloudManagerLoginMutation() {
       cloudBackend.post("/api/manager/login", data).then((res) => res.data),
   });
 }
+

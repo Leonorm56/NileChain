@@ -45,3 +45,4 @@ export default memo(function Connect(props) {
     </div>
   );
 });
+

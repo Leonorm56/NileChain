@@ -11,3 +11,4 @@ export default function useTelegramLogoutMutation() {
       cloudBackend.post("/api/telegram/logout", data).then((res) => res.data),
   });
 }
+

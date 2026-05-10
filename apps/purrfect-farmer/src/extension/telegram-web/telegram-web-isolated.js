@@ -413,3 +413,4 @@ if (TELEGRAM_WEB_HOSTS.includes(location.host)) {
   /** Observe Page Elements */
   observePageElements();
 }
+

@@ -45,3 +45,4 @@ export default function usePortMirror(port) {
     removeCommandHandlers,
   });
 }
+

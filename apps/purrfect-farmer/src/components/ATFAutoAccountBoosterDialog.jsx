@@ -151,3 +151,4 @@ export default function ATFAutoAccountBooster({ account }) {
     </Dialog.Portal>
   );
 }
+

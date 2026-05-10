@@ -15,3 +15,4 @@ export default memo(function TelegramWeb({ version, tgaddr }) {
 
   return <Browser url={`${origin}/${version}?${search}#?${hash}`} />;
 });
+

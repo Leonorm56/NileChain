@@ -15,3 +15,4 @@ export default function useParsedProxy(proxy) {
     };
   }, [proxy]);
 }
+

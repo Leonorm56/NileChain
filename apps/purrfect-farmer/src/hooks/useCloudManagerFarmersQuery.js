@@ -15,3 +15,4 @@ export default function useCloudManagerFarmersQuery() {
         .then((res) => res.data),
   });
 }
+

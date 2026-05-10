@@ -12,3 +12,4 @@ export default function useCloudManagerEnvQuery() {
       cloudBackend.get("/api/manager/env", { signal }).then((res) => res.data),
   });
 }
+

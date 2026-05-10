@@ -69,3 +69,4 @@ const TabsContent = (props) => (
 Tabs.Content = TabsContent;
 
 export default Tabs;
+

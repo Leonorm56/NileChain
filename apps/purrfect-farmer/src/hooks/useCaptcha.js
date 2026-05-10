@@ -6,3 +6,4 @@ export default function useCaptcha(enabled, provider, apiKey) {
     return enabled ? new CaptchaSolver(provider, apiKey) : null;
   }, [enabled, provider, apiKey]);
 }
+

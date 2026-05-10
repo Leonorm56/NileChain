@@ -94,3 +94,4 @@ export const TerminalFarmerTools = ({ terminalFarmer }) => {
     </BottomDialog>
   );
 };
+

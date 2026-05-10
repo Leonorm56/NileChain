@@ -26,3 +26,4 @@ export default memo(function DropLayout() {
     </div>
   );
 });
+

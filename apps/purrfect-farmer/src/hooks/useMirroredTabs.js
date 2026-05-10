@@ -35,3 +35,4 @@ export default function useMirroredTabs(
     rootProps: useValuesMemo({ value, onValueChange: dispatchAndSetValue }),
   });
 }
+

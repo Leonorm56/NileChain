@@ -125,3 +125,4 @@ const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
 };
 
 export default ProxyDetails;
+

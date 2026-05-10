@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
 
   apps/purrfect-farmer:
     dependencies:

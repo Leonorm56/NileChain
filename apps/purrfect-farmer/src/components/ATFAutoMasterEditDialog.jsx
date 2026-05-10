@@ -101,3 +101,4 @@ export default function ATFAutoMasterEditDialog({ onSave }) {
     </CenteredDialog>
   );
 }
+

@@ -11,3 +11,4 @@ export default function useCloudManagerServerUpdateMutation() {
       cloudBackend.post("/api/manager/update-server").then((res) => res.data),
   });
 }
+

@@ -12,3 +12,4 @@ export default function useCloudManagerMemberSubscriptionMutation(form) {
         .then((res) => res.data),
   });
 }
+

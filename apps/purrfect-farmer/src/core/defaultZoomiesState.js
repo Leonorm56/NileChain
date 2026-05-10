@@ -4,3 +4,4 @@ const defaultZoomiesState = {
 };
 
 export default defaultZoomiesState;
+

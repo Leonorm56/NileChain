@@ -159,3 +159,4 @@ export default class SessionMessenger {
     });
   }
 }
+

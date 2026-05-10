@@ -21,3 +21,4 @@ export default class TelegramWebClient extends BaseTelegramWebClient {
       );
   }
 }
+

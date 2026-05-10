@@ -27,3 +27,4 @@ export default function ATFAutoAvatar({ account, ...props }) {
     </div>
   );
 }
+

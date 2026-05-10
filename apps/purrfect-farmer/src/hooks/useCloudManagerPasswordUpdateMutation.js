@@ -12,3 +12,4 @@ export default function useCloudManagerPasswordUpdateMutation(form) {
         .then((res) => res.data),
   });
 }
+

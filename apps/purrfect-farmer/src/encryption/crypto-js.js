@@ -12,3 +12,4 @@ export function decryptData(cipher) {
 
   return JSON.parse(bytes);
 }
+

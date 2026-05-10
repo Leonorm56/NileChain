@@ -10,3 +10,4 @@ export default function useCloudManagerEnvMutation(form) {
       cloudBackend.post("/api/manager/env", data).then((res) => res.data),
   });
 }
+

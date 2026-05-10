@@ -54,3 +54,4 @@ export default function useBaseSettings(key, defaultValue, shared = false) {
     updateSettings,
   });
 }
+

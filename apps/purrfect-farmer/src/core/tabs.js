@@ -8,7 +8,7 @@ import MyCloudIcon from "@/assets/images/my-cloud.png?format=webp&w=80";
 import ReorderTelegramWebIcon from "@/assets/images/reorder-telegram-web.png?format=webp&w=80";
 import SpiderIcon from "@/assets/images/spider-logo.png?format=webp&w=80";
 import TelegramCleanerIcon from "@/assets/images/telegram-cleaner.png?format=webp&w=80";
-import TelegramToPurrfectGramIcon from "@/assets/images/telegram-to-purrfect-gram.png?format=webp&w=80";
+import TelegramToNileGramIcon from "@/assets/images/telegram-to-purrfect-gram.png?format=webp&w=80";
 import TelegramWebAIcon from "@/assets/images/telegram-web-a.png?format=webp&w=80";
 import TelegramWebKIcon from "@/assets/images/telegram-web-k.png?format=webp&w=80";
 import TinyFlyIcon from "@/assets/images/fly.png?format=webp&w=80";
@@ -37,7 +37,7 @@ export const HeadlessPicker = safeImport(() => import("@/app/HeadlessPicker"));
 export const BackupAndRestore = safeImport(() => import("@/app/BackupAndRestore"));
 export const WhiskersToFarmer = safeImport(() => import("@/app/WhiskersToFarmer"));
 export const TelegramToNileGram = safeImport(() =>
-  import("@/app/TelegramToPurrfectGram"),
+  import("@/app/TelegramToNileGram"),
 );
 
 export const ReorderTelegramWeb = safeImport(() =>
@@ -189,8 +189,8 @@ export const utils = [
       {
         id: "telegram-to-purrfect-gram",
         title: "Telegram to Nile Gram",
-        icon: TelegramToPurrfectGramIcon,
-        component: createElement(TelegramToPurrfectGram),
+        icon: TelegramToNileGramIcon,
+        component: createElement(TelegramToNileGram),
       },
 
       /** Reorder Telegram Web */
@@ -233,3 +233,4 @@ export default [
   ...utils.map((u) => u.list).flat(),
   ...farmers,
 ];
+

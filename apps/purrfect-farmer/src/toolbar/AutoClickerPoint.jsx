@@ -96,3 +96,4 @@ export default memo(function AutoClickerPoint({
     </Draggable>
   );
 });
+

@@ -25,3 +25,4 @@ export default function useCloudSubscriptionQuery(context) {
         .then((res) => res.data),
   });
 }
+

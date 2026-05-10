@@ -20,3 +20,4 @@ export default function useMyCloudActivateFarmerMutation() {
         .then((res) => res.data),
   });
 }
+

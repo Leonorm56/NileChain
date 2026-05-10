@@ -8,3 +8,4 @@ export default memo(function FullSpinner() {
     </div>
   );
 });
+

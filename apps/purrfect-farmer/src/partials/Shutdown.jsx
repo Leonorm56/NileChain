@@ -23,3 +23,4 @@ export default memo(function Shutdown() {
     </PromptDialog>
   );
 });
+

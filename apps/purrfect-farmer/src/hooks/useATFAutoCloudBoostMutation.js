@@ -12,3 +12,4 @@ export default function useATFAutoCloudBoostMutation() {
         .then((res) => res.data),
   });
 }
+

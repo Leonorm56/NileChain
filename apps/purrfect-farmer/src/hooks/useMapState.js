@@ -26,3 +26,4 @@ export default function useMapState() {
     [map, addMapItems, removeMapItems]
   );
 }
+

@@ -14,3 +14,4 @@ export default function useTheme(theme) {
       .setAttribute("content", isDark ? "#262626" : "#ffffff");
   }, [theme, systemIsDark]);
 }
+

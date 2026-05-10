@@ -16,3 +16,4 @@ export default function useSeekerQuery() {
       seekerBackend.get("/api/servers", { signal }).then((res) => res.data),
   });
 }
+

@@ -31,3 +31,4 @@ export default function PWAUpdate() {
     </PrimaryButton>
   ) : null;
 }
+

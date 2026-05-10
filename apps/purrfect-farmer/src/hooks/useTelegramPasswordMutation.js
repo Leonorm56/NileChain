@@ -10,3 +10,4 @@ export default function useTelegramPasswordMutation(form) {
       cloudBackend.post("/api/telegram/password", data).then((res) => res.data),
   });
 }
+

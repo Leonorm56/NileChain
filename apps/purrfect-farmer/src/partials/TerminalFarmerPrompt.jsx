@@ -72,3 +72,4 @@ export const TerminalFarmerPrompt = ({ context, userInputPrompt }) => {
     </Dialog.Root>
   );
 };
+

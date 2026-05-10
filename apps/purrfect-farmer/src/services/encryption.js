@@ -5,3 +5,4 @@ const worker = new EncrypterWorker();
 const encryption = wrap(worker);
 
 export { encryption };
+

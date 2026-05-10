@@ -15,3 +15,4 @@ export default function useCloudServerQuery() {
       cloudBackend.get("/api/server", { signal }).then((res) => res.data),
   });
 }
+

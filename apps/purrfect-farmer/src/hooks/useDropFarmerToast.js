@@ -39,3 +39,4 @@ export default function useDropFarmerToast({
     };
   }, [id, title, icon, started, onToastClick]);
 }
+

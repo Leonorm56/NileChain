@@ -47,3 +47,4 @@ export default function Dropzone({ title = "file", onData }) {
     </div>
   );
 }
+

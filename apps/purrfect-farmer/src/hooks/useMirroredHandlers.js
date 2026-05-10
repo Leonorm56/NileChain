@@ -18,3 +18,4 @@ export default function useMirroredHandlers(handlers, mirror) {
     mirrorToUse.removeCommandHandlers,
   ]);
 }
+

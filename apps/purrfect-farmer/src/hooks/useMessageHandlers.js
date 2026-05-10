@@ -15,3 +15,4 @@ export default function useMessageHandlers(handlers, messaging) {
     };
   }, [messagingToUse, handlers]);
 }
+

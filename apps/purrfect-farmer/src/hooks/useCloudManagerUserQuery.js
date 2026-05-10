@@ -12,3 +12,4 @@ export default function useCloudManagerUserQuery() {
       cloudBackend.get("/api/manager/user", { signal }).then((res) => res.data),
   });
 }
+

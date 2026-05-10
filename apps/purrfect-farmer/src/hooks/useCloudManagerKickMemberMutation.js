@@ -13,3 +13,4 @@ export default function useCloudManagerKickMemberMutation() {
         .then((res) => res.data),
   });
 }
+

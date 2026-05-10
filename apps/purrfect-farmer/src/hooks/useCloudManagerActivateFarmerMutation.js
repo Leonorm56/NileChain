@@ -13,3 +13,4 @@ export default function useCloudManagerActivateFarmerMutation() {
         .then((res) => res.data),
   });
 }
+

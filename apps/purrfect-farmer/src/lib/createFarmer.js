@@ -56,3 +56,4 @@ export function createFarmer(FarmerClass, options) {
     ...options,
   };
 }
+

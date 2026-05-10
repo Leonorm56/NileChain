@@ -20,3 +20,4 @@ const Progress = ({ current, max }) => {
 };
 
 export { Progress };
+

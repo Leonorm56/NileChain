@@ -243,3 +243,4 @@ export default function CloudMemberDialog({ account, farmer }) {
     </BottomDialog.Container>
   );
 }
+

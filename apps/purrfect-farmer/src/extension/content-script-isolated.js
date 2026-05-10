@@ -176,3 +176,4 @@ if (!TELEGRAM_WEB_HOSTS.includes(location.host)) {
   /** Watch Mini-App */
   watchTelegramMiniApp(initialize);
 }
+

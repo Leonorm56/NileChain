@@ -10,3 +10,4 @@ export default function useCloudManagerUpdateProxiesMutation() {
       cloudBackend.post("/api/manager/update-proxies").then((res) => res.data),
   });
 }
+

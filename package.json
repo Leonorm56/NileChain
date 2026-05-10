@@ -1,8 +1,11 @@
 {
   "license": "MIT",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "scripts": {
     "build:farmer": "pnpm -F purrfect-farmer build",
     "start:fly": "pnpm -F purrfect-fly start"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.5"
   }
 }

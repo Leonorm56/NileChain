@@ -29,3 +29,4 @@ export default function useAppQuery(options, client) {
     [query, queryClient, queryKey, updateQueryData]
   );
 }
+

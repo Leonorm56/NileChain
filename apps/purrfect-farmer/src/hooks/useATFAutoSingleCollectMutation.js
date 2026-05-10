@@ -65,3 +65,4 @@ export default function useATFAutoSingleCollectMutation() {
 
   return mutation;
 }
+
