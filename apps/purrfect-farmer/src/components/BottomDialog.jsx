@@ -9,7 +9,7 @@ function BottomDialogContainer(props) {
       <Dialog.Content
         {...props}
         className={cn(
-          "bg-white dark:bg-neutral-800",
+          "bg-white dark:bg-[#0D1B2A]",
           "fixed z-50 inset-x-0 bottom-0 h-5/6 rounded-t-xl",
           "flex flex-col",
           props.className,

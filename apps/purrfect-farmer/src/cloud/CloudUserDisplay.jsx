@@ -29,7 +29,7 @@ export default function CloudUserDisplay() {
         <p className="text-center text-red-500">Error...</p>
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-4 p-3 text-white rounded-full bg-neutral-900">
+          <div className="flex items-center gap-4 p-3 text-white rounded-full bg-[#0A1628]">
             {/* User Photo */}
             <img className="rounded-full w-11 h-11 shrink-0" src={UserIcon} />
 

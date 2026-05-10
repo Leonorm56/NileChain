@@ -55,7 +55,7 @@ const AccountChooserItem = memo(function AccountChooserItem({
     <label
       className={cn(
         "flex items-center gap-2 p-2 rounded-xl",
-        "bg-neutral-100 dark:bg-neutral-700",
+        "bg-neutral-100 dark:bg-[#1B2D45]",
         "cursor-pointer",
         disabled && "opacity-60",
       )}

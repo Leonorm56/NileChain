@@ -20,7 +20,7 @@ export default function CenteredDialog({
           className={cn(
             "my-auto flex flex-col w-full",
             "max-w-sm gap-2 p-4",
-            "bg-white dark:bg-neutral-800 rounded-xl",
+            "bg-white dark:bg-[#0D1B2A] rounded-xl",
           )}
         >
           {/* Icon */}
@@ -38,7 +38,7 @@ export default function CenteredDialog({
 
           <Dialog.Close
             className={cn(
-              "px-4 py-2 font-bold bg-neutral-200 dark:bg-neutral-900 rounded-xl",
+              "px-4 py-2 font-bold bg-neutral-200 dark:bg-[#0A1628] rounded-xl",
             )}
           >
             Cancel

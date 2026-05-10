@@ -6,7 +6,7 @@ const Select = memo(function Select(props) {
     <select
       {...props}
       className={cn(
-        "bg-neutral-100 dark:bg-neutral-700",
+        "bg-neutral-100 dark:bg-[#1B2D45]",
         "p-2.5 rounded-lg font-bold w-full min-w-0",
         "focus:outline-hidden focus:ring-3 focus:ring-blue-300",
         "disabled:opacity-50",
@@ -17,7 +17,7 @@ const Select = memo(function Select(props) {
 });
 
 const SelectItem = memo(function SelectItem(props) {
-  return <option {...props} className="bg-white dark:bg-neutral-800" />;
+  return <option {...props} className="bg-white dark:bg-[#0D1B2A]" />;
 });
 
 Select.Item = SelectItem;

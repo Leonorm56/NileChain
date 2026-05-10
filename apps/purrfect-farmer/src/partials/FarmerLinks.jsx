@@ -60,7 +60,7 @@ const LinkContextItem = (props) => (
     className={cn(
       "flex items-center gap-2 p-2",
       "rounded-lg cursor-pointer",
-      "bg-neutral-800 hover:bg-blue-500",
+      "bg-[#0D1B2A] hover:bg-blue-500",
       props.className,
     )}
   />
@@ -73,7 +73,7 @@ const LinkHeaderButton = (props) => (
       "flex items-center justify-center w-10 h-10",
       "rounded-lg shrink-0",
       "bg-blue-100 text-blue-800",
-      "dark:bg-neutral-700 dark:text-blue-200",
+      "dark:bg-[#1B2D45] dark:text-blue-200",
       props.className,
     )}
   />
@@ -250,7 +250,7 @@ export default memo(function FarmerLinks() {
                           className={cn(
                             "flex items-center",
                             "gap-2 p-2 rounded-lg",
-                            "bg-neutral-100 dark:bg-neutral-700",
+                            "bg-neutral-100 dark:bg-[#1B2D45]",
                             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
                             showAsGrid
                               ? "flex-col justify-center"
@@ -298,7 +298,7 @@ export default memo(function FarmerLinks() {
                           alignOffset={5}
                           className={cn(
                             "flex flex-col gap-2 p-2",
-                            "text-white rounded-lg bg-neutral-900",
+                            "text-white rounded-lg bg-[#0A1628]",
                             "max-w-[--(--radix-context-menu-content-available-width)]",
                             "w-48",
                             "z-50",
@@ -346,7 +346,7 @@ export default memo(function FarmerLinks() {
                           {/* Delete */}
                           <LinkContextItem
                             onClick={() => deleteLink(link)}
-                            className={cn("bg-neutral-800 hover:bg-red-500")}
+                            className={cn("bg-[#0D1B2A] hover:bg-red-500")}
                           >
                             <HiOutlineTrash className="w-4 h-4" /> Delete
                           </LinkContextItem>
@@ -381,7 +381,7 @@ export default memo(function FarmerLinks() {
         >
           <Dialog.Content
             className={cn(
-              "bg-white dark:bg-neutral-800",
+              "bg-white dark:bg-[#0D1B2A]",
               "flex flex-col w-full max-w-sm gap-2 p-4 rounded-xl",
             )}
           >
@@ -410,7 +410,7 @@ export default memo(function FarmerLinks() {
             {/* Cancel Button */}
             <Dialog.Close
               className={cn(
-                "px-4 py-2 bg-neutral-200 dark:bg-neutral-900 rounded-lg",
+                "px-4 py-2 bg-neutral-200 dark:bg-[#0A1628] rounded-lg",
               )}
             >
               Cancel

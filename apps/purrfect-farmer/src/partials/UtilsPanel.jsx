@@ -125,7 +125,7 @@ export default memo(function UtilsPanel() {
                   onClick={() => launchTab(tab)}
                   key={tab.id}
                   className={cn(
-                    "bg-neutral-100 dark:bg-neutral-700",
+                    "bg-neutral-100 dark:bg-[#1B2D45]",
                     "flex items-center gap-2 p-2 cursor-pointer rounded-xl",
                     "text-left",
                   )}

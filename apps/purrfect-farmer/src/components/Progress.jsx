@@ -5,7 +5,7 @@ const Progress = ({ current, max }) => {
     <>
       <ProgressPrimitive.Root
         value={current}
-        className="w-full h-2 overflow-hidden border border-neutral-300 dark:border-neutral-700 rounded-full"
+        className="w-full h-2 overflow-hidden border border-neutral-300 dark:border-[#1B2D45] rounded-full"
       >
         <ProgressPrimitive.Indicator
           className="bg-blue-600 h-full transition-all duration-500"

@@ -21,7 +21,7 @@ export default memo(function Connect(props) {
         className={cn(
           "grid grid-cols-3 rounded-full overflow-hidden",
           "text-center",
-          "bg-neutral-100 dark:bg-neutral-700",
+          "bg-neutral-100 dark:bg-[#1B2D45]",
           "divide-x dark:divide-neutral-600",
           "font-turret-road font-bold"
         )}

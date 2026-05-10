@@ -58,7 +58,7 @@ const TelegramWebButton = memo(
       className={cn(
         "p-2",
         "rounded-full",
-        "bg-neutral-100 dark:bg-neutral-700",
+        "bg-neutral-100 dark:bg-[#1B2D45]",
         "hover:bg-blue-500 dark:hover:bg-blue-800",
         "hover:text-white",
         "inline-flex items-center justify-center gap-1",

@@ -18,7 +18,7 @@ export default memo(function PromptDialog({
           "p-4 overflow-auto bg-black/50",
         )}
       >
-        <Dialog.Content className="flex flex-col w-full max-w-sm gap-2 p-4 bg-white dark:bg-neutral-800 rounded-xl">
+        <Dialog.Content className="flex flex-col w-full max-w-sm gap-2 p-4 bg-white dark:bg-[#0D1B2A] rounded-xl">
           {/* Title */}
           <Dialog.Title
             className={cn(
@@ -41,7 +41,7 @@ export default memo(function PromptDialog({
           <Dialog.Close
             onClick={onCloseButtonClick}
             className={cn(
-              "px-4 py-2 bg-neutral-200 dark:bg-neutral-900 rounded-lg",
+              "px-4 py-2 bg-neutral-200 dark:bg-[#0A1628] rounded-lg",
             )}
           >
             Cancel

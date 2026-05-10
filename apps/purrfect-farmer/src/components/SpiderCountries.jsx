@@ -29,7 +29,7 @@ export default function SpiderCountries({
               className={cn(
                 "flex items-center gap-2",
                 "p-2.5 text-left rounded-xl",
-                "bg-neutral-100 dark:bg-neutral-700",
+                "bg-neutral-100 dark:bg-[#1B2D45]",
                 "hover:bg-neutral-200 dark:hover:bg-neutral-600"
               )}
             >

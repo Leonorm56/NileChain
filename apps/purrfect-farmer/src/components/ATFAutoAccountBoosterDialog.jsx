@@ -34,7 +34,7 @@ function BoosterHeader({ account }) {
     <div
       className={cn(
         "flex gap-2 items-center shrink-0 p-3",
-        "border-b border-neutral-200 dark:border-neutral-700",
+        "border-b border-neutral-200 dark:border-[#1B2D45]",
       )}
     >
       {/* Avatar */}
@@ -117,7 +117,7 @@ export default function ATFAutoAccountBooster({ account }) {
           onInteractOutside={(ev) => ev.preventDefault()}
           className={cn(
             "flex flex-col w-full h-full max-w-md max-h-[90vh]",
-            "bg-white dark:bg-neutral-800 rounded-xl overflow-hidden",
+            "bg-white dark:bg-[#0D1B2A] rounded-xl overflow-hidden",
           )}
         >
           {/* Header */}

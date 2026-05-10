@@ -61,7 +61,7 @@ const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
     <Collapsible.Root
       {...props}
       className={cn(
-        "bg-neutral-100 dark:bg-neutral-700",
+        "bg-neutral-100 dark:bg-[#1B2D45]",
         "flex flex-col gap-2",
         "p-2 rounded-xl",
         rootClassName

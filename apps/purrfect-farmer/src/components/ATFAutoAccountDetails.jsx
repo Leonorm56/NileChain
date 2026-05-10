@@ -26,7 +26,7 @@ const InfoButton = (props) => (
 );
 
 const InfoRow = ({ label, value, canCopy, valueClassName, rightContent }) => (
-  <div className="flex gap-2 p-2 items-center rounded-xl bg-neutral-100 dark:bg-neutral-700">
+  <div className="flex gap-2 p-2 items-center rounded-xl bg-neutral-100 dark:bg-[#1B2D45]">
     <div className="flex flex-col gap-1 grow min-w-0">
       <span className="font-bold text-neutral-500 dark:text-neutral-400">
         {label}
@@ -108,7 +108,7 @@ export default function ATFAutoAccountDetails({ account }) {
       />
 
       {/* Balances */}
-      <div className="flex flex-col gap-1 p-2 rounded-xl bg-neutral-100 dark:bg-neutral-700">
+      <div className="flex flex-col gap-1 p-2 rounded-xl bg-neutral-100 dark:bg-[#1B2D45]">
         <span className="font-bold text-neutral-500 dark:text-neutral-400">
           Balances
         </span>
