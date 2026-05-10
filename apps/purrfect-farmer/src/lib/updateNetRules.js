@@ -37,3 +37,4 @@ export default async function updateNetRules() {
   await storeUserAgent(userAgent);
 }
 
+

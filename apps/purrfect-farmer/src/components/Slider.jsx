@@ -51,3 +51,4 @@ const Slider = forwardRef(
 
 export default memo(Slider);
 
+

@@ -70,3 +70,4 @@ Tabs.Content = TabsContent;
 
 export default Tabs;
 
+

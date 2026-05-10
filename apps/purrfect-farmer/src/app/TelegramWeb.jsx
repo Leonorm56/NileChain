@@ -11,8 +11,9 @@ export default memo(function TelegramWeb({ version, tgaddr }) {
   const origin =
     client === "telegram-web"
       ? "https://web.telegram.org"
-      : "https://gram.purrfectfarmer.com";
+      : "https://gram.nilechain.com";
 
   return <Browser url={`${origin}/${version}?${search}#?${hash}`} />;
 });
+
 

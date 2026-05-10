@@ -8,3 +8,4 @@ export default memo(function FarmerNotification({ t, id, title, onClick }) {
   );
 });
 
+

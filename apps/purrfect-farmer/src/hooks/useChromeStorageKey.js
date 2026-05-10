@@ -6,3 +6,4 @@ export default function useChromeStorageKey(key, shared = false) {
   return shared ? `shared:${key}` : `account-${account.id}:${key}`;
 }
 
+

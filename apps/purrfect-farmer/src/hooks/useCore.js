@@ -373,7 +373,7 @@ export default function useCore() {
         });
 
         await chrome?.tabs?.update(tabs[0].id, {
-          url: `https://gram.purrfectfarmer.com/${v}?account=${account.id}`,
+          url: `https://gram.nilechain.com/${v}?account=${account.id}`,
           active: true,
         });
       },
@@ -780,4 +780,5 @@ export default function useCore() {
     dispatchAndCloseFarmerTabs,
   });
 }
+
 

@@ -85,7 +85,7 @@ export default function TelegramToNileGram() {
           /** Open Telegram Web (Sender) */
           openTelegramWeb(
             receiver === "telegram-web"
-              ? "https://gram.purrfectfarmer.com/k"
+              ? "https://gram.nilechain.com/k"
               : "https://web.telegram.org/k"
           );
         });
@@ -115,7 +115,7 @@ export default function TelegramToNileGram() {
           openTelegramWeb(
             receiver === "telegram-web"
               ? "https://web.telegram.org/k"
-              : "https://gram.purrfectfarmer.com/k"
+              : "https://gram.nilechain.com/k"
           );
         });
       };
@@ -163,4 +163,5 @@ export default function TelegramToNileGram() {
     </Tabs>
   );
 }
+
 
