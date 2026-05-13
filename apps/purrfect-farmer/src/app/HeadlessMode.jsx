@@ -58,6 +58,7 @@ const createRunner = ({ FarmerClass, logger, captcha, controller }) => {
         userAgents[Math.floor(this.random() * userAgents.length)];
       this.controller = controller;
 
+      this.setCloudMode(true);
       this.registerDelayInterceptor();
       this.configureApi?.();
     }
@@ -126,9 +127,26 @@ const createRunner = ({ FarmerClass, logger, captcha, controller }) => {
       };
     }
 
-    /** Farm Accounts */
-    static farm(accounts) {
-      const results = accounts.map((account) => this.execute(account));
+    /** Farm Accounts in batches */
+    static batchSize = 10;
+    static batchGap = 30; // seconds between batches
+
+    static async farm(accounts) {
+      const size = this.batchSize;
+      const gap = this.batchGap;
+      const results = [];
+
+      for (let i = 0; i < accounts.length; i += size) {
+        const batch = accounts.slice(i, i + size);
+        logger.info(`Batch ${Math.floor(i / size) + 1}/${Math.ceil(accounts.length / size)} — ${batch.length} accounts`);
+        batch.forEach((account) => {
+          results.push(this.execute(account));
+        });
+        if (i + size < accounts.length) {
+          await utils.delayForSeconds(gap);
+        }
+      }
+      logger.success(`All ${accounts.length} accounts processed`);
       return results;
     }
   };

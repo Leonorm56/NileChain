@@ -68,6 +68,12 @@ export default class BaseFarmer {
 
     this.controller = new AbortController();
     this.signal = this.controller.signal;
+    this._cloudMode = false;
+  }
+
+  /** Set Cloud Mode */
+  setCloudMode(cloudMode = false) {
+    this._cloudMode = cloudMode;
   }
 
   /** Set Prompt Functions */

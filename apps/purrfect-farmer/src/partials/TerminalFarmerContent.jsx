@@ -9,6 +9,7 @@ import { TerminalFarmerPrompt } from "./TerminalFarmerPrompt";
 import { TerminalFarmerTools } from "./TerminalFarmerTools";
 import { cn } from "@/utils";
 import useMirroredState from "@/hooks/useMirroredState";
+import useStorageState from "@/hooks/useStorageState";
 import useTerminalFarmer from "@/hooks/useTerminalFarmer";
 
 export const TerminalFarmerContent = () => {
@@ -27,6 +28,12 @@ export const TerminalFarmerContent = () => {
   const [showToolsPanel, setShowToolsPanel, dispatchAndSetShowToolsPanel] =
     useMirroredState(`${context.id}.toggle-tools-panel`, false);
 
+  /** Balance */
+  const { value: balance } = useStorageState(
+    `farmer-storage:${context.id}:adclicker-balance`,
+    null,
+  );
+
   return (
     <TerminalFarmerContext.Provider value={terminalFarmer}>
       {/* User Input Prompt */}
@@ -42,6 +49,12 @@ export const TerminalFarmerContent = () => {
           referralLink={referralLink}
         />
       </div>
+
+      {balance ? (
+        <div className="px-3 py-1 text-xs text-center text-nile-gold-500 dark:text-nile-gold-400 font-bold border-b dark:border-neutral-600">
+          Balance: {balance}
+        </div>
+      ) : null}
 
       <Container className="flex gap-2 items-center p-0">
         {/* Tools Dialog */}

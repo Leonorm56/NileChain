@@ -9,7 +9,7 @@ const CHANNEL_LINKS = [
   "https://t.me/AdclickersbotPaymentChannel",
 ];
 
-const SUPPORTED_TASKS = ["Join Chats", "View Posts", "Message Bots"];
+const SUPPORTED_TASKS = ["Join Chats", "Message Bots", "View Posts"];
 
 export default class ADCLICKERFarmer extends BaseDirectFarmer {
   static id = "adclicker";
@@ -32,14 +32,12 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
 
   async logUserInfo() {
     this.logger.newline();
-
     try {
       const me = await this.client.getMe();
       this.logger.keyValue("User", `${me.username || me.firstName || "(no-name)"} (${me.id})`);
     } catch {
       this.logCurrentUser();
     }
-
     let balance = "—";
     try {
       const msgs = await this.client.getMessages(this.entity, { limit: 5 });
@@ -54,53 +52,234 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
   async subscribeToChannels() {
     for (const link of CHANNEL_LINKS) {
       if (this.signal.aborted) break;
-      await this.joinWithCheck(link);
-      await this.utils.delayForSeconds(3, { signal: this.signal });
+      const name = link.replace("https://t.me/", "");
+      try {
+        const entity = await this.client.getEntity(name);
+        await this.client.invoke(
+          new Api.channels.GetParticipant({ channel: entity, participant: "me" }),
+        );
+      } catch {
+        await this.joinTelegramLink(link);
+      }
     }
   }
 
-  async joinWithCheck(link) {
+  async _jitterDelay(base, { signal } = {}) {
+    const delay = this._cloudMode ? base + base * Math.random() : base;
+    await this.utils.delayForSeconds(delay, { signal });
+  }
+
+  get _maxPerTask() {
+    return this._cloudMode ? 2 : 3;
+  }
+
+  _className(obj) {
+    if (!obj || typeof obj !== "object") return typeof obj;
+    const ctor = obj.constructor;
+    return ctor?.name || Object.prototype.toString.call(obj).slice(8, -1);
+  }
+
+  _fetchVerificationUrl(url, label = "verification") {
+    return fetch(url, { method: "GET", redirect: "follow" }).catch(() => null);
+  }
+
+  async _sendInteraction(host, headersFn, { webId, sessionId, tgInitData, baseUrl, actions }) {
     try {
-      const name = link.replace("https://t.me/", "");
-      const entity = await this.client.getEntity(name);
-      await this.client.invoke(
-        new Api.channels.GetParticipant({ channel: entity, participant: "me" }),
-      );
-      this.logger.info(`${name} - Already joined`);
+      await fetch(`${host}/api/interaction`, {
+        method: "POST", headers: headersFn(), credentials: "include",
+        body: JSON.stringify({
+          webId, sessionId, isTelegramWebApp: true, telegramInitData: tgInitData,
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          deviceType: "Desktop", browser: "Chrome", operatingSystem: "Windows",
+          screenResolution: "1920x1080", url: baseUrl,
+          startTime: new Date().toISOString(), endTime: new Date().toISOString(),
+          timeSpent: 0, actions, isAdBlocker: false,
+        }),
+      });
+    } catch {}
+  }
+
+  async _verifyViaDirectApi(webviewUrl) {
+    let tgInitData;
+    try {
+      const extracted = this.utils.extractTgWebAppData(webviewUrl);
+      tgInitData = extracted.initData;
     } catch {
-      this.logger.info(`${link} - Joining...`);
-      await this.joinTelegramLink(link);
+      return false;
     }
+    if (!tgInitData) return false;
+
+    const parsed = new URL(webviewUrl);
+    const baseUrl = `${parsed.origin}${parsed.pathname}${parsed.search}`;
+    const host = parsed.origin;
+
+    let pageResp;
+    try {
+      pageResp = await fetch(baseUrl, { method: "GET", redirect: "follow", credentials: "include" });
+    } catch {
+      return false;
+    }
+
+    const html = await pageResp.text();
+    const webIdMatch = html.match(/webId:\s*"([^"]+)"/);
+    const sessionMatch = html.match(/sessionId:\s*"([^"]+)"/);
+    const csrfMatch = html.match(/"CSRF-Token":\s*"([^"]+)"/);
+    const actionMatch = html.match(/const action = "([^"]+)"/);
+    if (!webIdMatch || !csrfMatch || !sessionMatch) return false;
+
+    const webId = webIdMatch[1];
+    const csrfToken = csrfMatch[1];
+    const sessionId = sessionMatch[1];
+    const action = actionMatch ? actionMatch[1] : "verify";
+
+    const headers = (extra = {}) => ({
+      "Content-Type": "application/json",
+      "CSRF-Token": csrfToken,
+      ...extra,
+    });
+
+    // Send dom_loaded interaction (page sends this on load)
+    await this._sendInteraction(host, headers, { webId, sessionId, tgInitData, baseUrl, actions: [{
+      type: "dom_loaded", data: "Document fully loaded",
+      element: null, timestamp: new Date().toISOString(), url: baseUrl,
+    }] }).catch(()=>{});
+
+    return false;
+  }
+
+  async _invokeVerificationUrl(startBtn, message) {
+    const rawBtn = startBtn?.button || startBtn;
+
+    if (rawBtn.data) {
+      try {
+        const answer = await this.client.invoke(
+          new Api.messages.GetBotCallbackAnswer({
+            peer: this.entity,
+            msgId: message.id,
+            data: rawBtn.data,
+          }),
+        );
+        if (answer.url) {
+          this._fetchVerificationUrl(answer.url, "callback-url");
+        }
+        return answer;
+      } catch {
+        return null;
+      }
+    }
+
+    if (rawBtn.url) {
+      try {
+        const result = await this.client.invoke(
+          new Api.messages.RequestWebView({
+            platform: "android",
+            bot: this.entity,
+            peer: this.entity,
+            url: rawBtn.url,
+            fromBotMenu: false,
+          }),
+        );
+        if (result.url) {
+          const bypassed = await this._verifyViaDirectApi(result.url);
+          if (bypassed) {
+            this._directVerificationDone = true;
+            return result;
+          }
+          this._fetchVerificationUrl(result.url, "webview-url");
+        }
+        return result;
+      } catch {
+        this._fetchVerificationUrl(rawBtn.url, "direct-url");
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  async handleVerification(message) {
+    if (!message?.message?.includes("Verification Required")) return false;
+    this._directVerificationDone = false;
+    this.logger.info("Verification required, solving captcha...");
+
+    const btns = message.buttons?.flat() || [];
+    const startBtn = btns.find((b) => b.text?.includes("Start Verification"));
+    if (!startBtn) return false;
+
+    await this._invokeVerificationUrl(startBtn, message);
+
+    if (this._directVerificationDone) {
+      this.logger.info("Captcha solved");
+      return true;
+    }
+
+    for (let i = 0; i < 15; i++) {
+      if (this.signal.aborted) return false;
+      await this._jitterDelay(2, { signal: this.signal });
+      const msgs = await this.client.getMessages(this.entity, { limit: 5 });
+      for (const msg of msgs) {
+        const b = msg.buttons?.flat() || [];
+        const labels = b.map((x) => x.text || x.url || "");
+
+        if (b.some((x) => {
+          const raw = x?.button || x;
+          return raw.url && raw.className?.includes("WebView");
+        })) {
+          const webviewBtn = b.find((x) => {
+            const raw = x?.button || x;
+            return raw.url && raw.className?.includes("WebView");
+          });
+          await this._invokeVerificationUrl(webviewBtn, message);
+          if (this._directVerificationDone) return true;
+        }
+
+        if (labels.some((l) => SUPPORTED_TASKS.some((t) => l.includes(t))) ||
+            msg.message?.includes("verified") || msg.message?.includes("✅")) {
+          this.lastMessage = msg;
+          return true;
+        }
+      }
+    }
+
+    this.logger.warn("Verification did not complete");
+    return false;
   }
 
   async verifyAccount() {
-    let message = this.lastMessage;
-    if (!message) return;
+    const earnings = await this.navigateToEarnings();
+    if (!earnings) return;
 
-    const hasMenu = message.buttons?.flat().some(
-      (btn) => btn.text?.includes("Earnings") || btn.text?.includes("Ads"),
-    );
-    if (hasMenu) return;
+    const btnTexts = earnings.buttons?.flat().map((b) => b.text) || [];
+    const testTask = btnTexts.find((b) => SUPPORTED_TASKS.some((t) => b.includes(t)));
+    if (testTask) {
+      try {
+        const taskMsg = await this.clickButton(earnings, testTask, {
+          hasButtons: true,
+          timeout: 15000,
+        });
 
-    const gxgsport = await this.client.getEntity("gxgsport_bot");
-    const msgs = await this.client.getMessages(gxgsport, { limit: 1 });
-    if (!msgs.length) return;
+        if (taskMsg.message?.includes("Verification Required")) {
+          this.logger.info("Account needs verification");
+          const verified = await this.handleVerification(taskMsg);
+          if (verified) {
+            await this.navigateToEarnings();
+          } else {
+            this.logger.warn("Verification failed");
+          }
+          return;
+        }
 
-    const msg = msgs[0];
-    const age = Date.now() / 1000 - msg.date;
-    if (age > 30) {
-      this.logger.warn(`@gxgsport_bot latest msg is ${Math.round(age)}s old (max 30s)`);
-      return;
+        const homeBtn = taskMsg.buttons?.flat().find(
+          (b) => b.text?.includes("Home") || b.text?.includes("Back"),
+        );
+        if (homeBtn && !SUPPORTED_TASKS.some((t) => homeBtn.text.includes(t))) {
+          await taskMsg.click({ text: (input) => input.includes(homeBtn.text) });
+          await this._jitterDelay(1, { signal: this.signal });
+        }
+      } catch (e) {
+        this.logger.warn(`Verification check failed: ${e.message}`);
+      }
     }
-
-    this.logger.info("Forwarding message to verify...");
-    await this.waitForReply(
-      () => this.client.forwardMessages(this.entity, {
-        messages: [msg.id],
-        fromPeer: gxgsport,
-      }),
-      { timeout: 20000, filter: (msg) => msg.buttonCount > 0 },
-    );
   }
 
   async navigateToEarnings() {
@@ -110,16 +289,14 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
       return SUPPORTED_TASKS.some((t) => btns.some((b) => b.includes(t)));
     };
 
-    // Already on the task list — return as-is
     if (isTaskList(this.lastMessage)) return this.lastMessage;
 
-    // If we see "Earnings" button, click it directly instead of /start
-    const curBtns = this.lastMessage?.buttons?.flat().map((b) => b.text) || [];
-    const earnBtn = curBtns.find((b) => b.includes("Earnings"));
+    const curBtnTexts = this.lastMessage?.buttons?.flat().map((b) => b.text) || [];
+    const earnBtn = curBtnTexts.find((b) => b.includes("Earnings"));
     if (earnBtn) {
       try {
         await this.lastMessage.click({ text: (input) => input.includes("Earnings") });
-        await this.utils.delayForSeconds(2, { signal: this.signal });
+        await this._jitterDelay(2, { signal: this.signal });
         const msgs = await this.client.getMessages(this.entity, { limit: 1 });
         if (msgs.length) {
           this.lastMessage = msgs[0];
@@ -128,13 +305,12 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
       } catch {}
     }
 
-    // Fallback: send /start and navigate to Earnings
     for (let attempt = 0; attempt < 3; attempt++) {
       const menu = await this.sendStart();
       if (!menu) continue;
 
-      const menuBtns = menu.buttons?.flat().map((b) => b.text) || [];
-      const eBtn = menuBtns.find((b) => b.includes("Earnings"));
+      const menuBtnTexts = menu.buttons?.flat().map((b) => b.text) || [];
+      const eBtn = menuBtnTexts.find((b) => b.includes("Earnings"));
       if (!eBtn) continue;
 
       try {
@@ -142,23 +318,21 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
       } catch {
         continue;
       }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      await this._jitterDelay(2, { signal: this.signal });
 
       const msgs = await this.client.getMessages(this.entity, { limit: 1 });
       if (!msgs.length) continue;
 
-      const msg = msgs[0];
-      this.lastMessage = msg;
-      const btns = msg.buttons?.flat().map((b) => b.text) || [];
-      this.logger.info(`After Earnings: "${msg.message?.slice(0, 100)}" buttons: ${JSON.stringify(btns)}`);
+      this.lastMessage = msgs[0];
+      const btns = msgs[0].buttons?.flat().map((b) => b.text) || [];
 
-      if (isTaskList(msg)) return msg;
+      if (isTaskList(msgs[0])) return msgs[0];
 
       const homeBtn = btns.find((b) => b.includes("Home") || b.includes("Back"));
       if (!homeBtn) continue;
 
-      await msg.click({ text: (input) => input.includes(homeBtn) });
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      await msgs[0].click({ text: (input) => input.includes(homeBtn) });
+      await this._jitterDelay(2, { signal: this.signal });
     }
 
     return this.lastMessage;
@@ -168,7 +342,10 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
     if (!message?.message) return;
     const match = message.message.match(/Main Balance\s*:\s*([\d.]+)\s*USD/);
     if (match) {
-      this.logger.keyValue("BALANCE", `${match[1]} USD`);
+      const bal = `${match[1]} USD`;
+      this.logger.keyValue("BALANCE", bal);
+      try { chrome?.action?.setBadgeText?.({ text: bal }); } catch {}
+      try { this.storage?.set?.("adclicker-balance", bal); } catch {}
     }
   }
 
@@ -179,38 +356,46 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
     await this.showBalance(message);
 
     if (message.message?.includes("No tasks are available")) {
-      this.logger.info("No tasks available — checking for notification toggle");
-      const notifBtn = message.buttons?.flat().find(
-        (b) => b.text?.includes("🔔"),
-      );
+      const notifBtn = message.buttons?.flat().find((b) => b.text?.includes("🔔"));
       if (notifBtn) {
-        this.logger.info(`Clicking notification button: "${notifBtn.text}"`);
         await message.click({ text: notifBtn.text });
-        await this.utils.delayForSeconds(2, { signal: this.signal });
+        await this._jitterDelay(2, { signal: this.signal });
       }
       return;
     }
 
-    const MAX_PER_TASK = 3;
+    const maxPerTask = this._maxPerTask;
 
     for (const taskType of SUPPORTED_TASKS) {
       let processed = 0;
-      while (!this.signal.aborted && processed < MAX_PER_TASK) {
+      while (!this.signal.aborted && processed < maxPerTask) {
         const btn = message.buttons?.flat().find(
           (b) => b.text?.includes(taskType),
         );
         if (!btn) break;
 
-        this.logger.info(`Processing: ${taskType}`);
+        this.logger.info(`--- ${taskType} ---`);
 
         try {
           const isMessageBots = taskType.includes("Message Bots");
           const taskMsg = await this.clickButton(message, btn.text, {
-            hasButtons: !isMessageBots,
+            hasButtons: true,
+            timeout: 20000,
           });
 
           if (taskMsg.message?.includes("No tasks")) {
-            this.logger.info(`No more ${taskType} tasks`);
+            this.logger.info(`No more ${taskType}`);
+            break;
+          }
+
+          if (taskMsg.message?.includes("Verification Required")) {
+            this.logger.info("Verification required during task");
+            const verified = await this.handleVerification(taskMsg);
+            if (verified) {
+              message = await this.navigateToEarnings();
+              if (!message) break;
+              continue;
+            }
             break;
           }
 
@@ -220,7 +405,7 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
           }
 
           if (!reward) {
-            this.logger.info(`No reward from ${taskType}, moving on`);
+            this.logger.info(`No reward from ${taskType}`);
             break;
           }
 
@@ -228,7 +413,6 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
           this.logger.success(`Done ${taskType}`);
           processed++;
 
-          // Navigate to Earnings to get fresh task list
           message = await this.navigateToEarnings();
           if (!message) break;
         } catch (error) {
@@ -237,7 +421,7 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
           break;
         }
 
-        await this.utils.delayForSeconds(3, { signal: this.signal });
+        await this._jitterDelay(3, { signal: this.signal });
       }
 
       message = await this.navigateToEarnings();
@@ -250,28 +434,30 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
     }
 
     const btns = message.buttons?.flat().map((b) => ({ text: b.text, url: !!b.url })) || [];
-    this.logger.info(`${taskName} msg: "${message.message?.slice(0, 120)}" btns: ${JSON.stringify(btns)}`);
+    const urlName = (u) => u.replace("https://t.me/", "").replace(/[?#].*$/, "");
 
     const urlButtons = message.buttons?.flat().filter((btn) => btn.url) || [];
     for (const btn of urlButtons) {
+      const name = urlName(btn.url);
+      if (taskName.includes("Join")) this.logger.info(`Joining chat ${name}`);
+      else if (taskName.includes("View")) this.logger.info(`Viewing post ${name}`);
       await this.joinWithCheck(btn.url);
-      await this.utils.delayForSeconds(3, { signal: this.signal });
+      await this._jitterDelay(3, { signal: this.signal });
     }
 
-    // Click action button (e.g. 👁️ View Post) before confirming
     const actionBtn = message.buttons?.flat().find(
       (b) => !b.url && !b.text?.includes("✅") && !b.text?.includes("🔴") && !b.text?.includes("⏩") && !b.text?.includes("✉️"),
     );
     if (actionBtn) {
       await message.click({ text: (input) => input.includes(actionBtn.text) });
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      await this._jitterDelay(2, { signal: this.signal });
     }
 
     const confirmBtn = btns.find((b) => b.text.includes("✅"));
-    if (!confirmBtn) { this.logger.info("✅ confirm btn not found"); return null; }
+    if (!confirmBtn) return null;
 
     await message.click({ text: (input) => input.includes("✅") });
-    await this.utils.delayForSeconds(2, { signal: this.signal });
+    await this._jitterDelay(2, { signal: this.signal });
 
     try {
       const msgs = await this.client.getMessages(this.entity, { limit: 1 });
@@ -285,15 +471,11 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
   }
 
   async handleMessageBots(taskMsg) {
-    const btns = taskMsg?.buttons?.flat().map((b) => ({ text: b.text, url: !!b.url })) || [];
-    this.logger.info(`Message Bots msg: "${taskMsg?.message?.slice(0, 400)}" btns: ${JSON.stringify(btns)}`);
-
     const msgBtn = taskMsg?.buttons?.flat().find(
       (b) => b.text?.includes("✉️") || b.text?.includes("Message Bot"),
     );
-    if (!msgBtn) { this.logger.warn("No Message Bot button found"); return null; }
+    if (!msgBtn) { this.logger.warn("No Message Bot button"); return null; }
 
-    // Figure out target bot from URL
     let targetBot;
     if (msgBtn.url) {
       const match = msgBtn.url.match(/t\.me\/([a-zA-Z0-9_]+)/);
@@ -304,35 +486,27 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
       if (match) targetBot = match[1];
     }
     if (!targetBot) { this.logger.warn("Could not determine target bot"); return null; }
-    this.logger.info(`Target bot: @${targetBot}`);
 
-    // 1. Click ✉️ Message Bot
-    this.logger.info("Clicking ✉️ Message Bot...");
+    this.logger.info(`Messaging bot @${targetBot}`);
     await taskMsg.click({ text: (input) => input.includes("✉️") });
 
-    // 2. Press ✅ Started
-    this.logger.info("Pressing ✅ Started...");
-    await this.utils.delayForSeconds(2, { signal: this.signal });
+    await this._jitterDelay(2, { signal: this.signal });
     await taskMsg.click({ text: (input) => input.includes("✅") });
 
-    // 3. Wait for "🔎 Forward..." prompt, then start the target bot and forward
-    this.logger.info("Waiting for forward prompt...");
     for (let i = 0; i < 15; i++) {
       if (this.signal.aborted) return null;
       const msgs = await this.client.getMessages(this.entity, { limit: 5 });
       if (msgs.some((m) => m.message?.includes("🔎 Forward any message from"))) {
-        this.logger.info("Forward prompt received, starting target bot...");
         let targetEntity;
         try { targetEntity = await this.client.getEntity(targetBot); }
         catch { this.logger.warn(`Could not find bot @${targetBot}`); return null; }
 
         await this.client.sendMessage(targetEntity, { message: "/start" });
-        await this.utils.delayForSeconds(3, { signal: this.signal });
+        await this._jitterDelay(3, { signal: this.signal });
 
         const botMsgs = await this.client.getMessages(targetEntity, { limit: 1 });
         if (!botMsgs.length) { this.logger.warn(`No messages from @${targetBot}`); return null; }
 
-        this.logger.info(`Forwarding @${targetBot} message...`);
         const fwdMsg = await this.waitForReply(
           () => this.client.forwardMessages(this.entity, {
             messages: [botMsgs[0].id],
@@ -348,18 +522,11 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
 
         return fwdMsg || this.lastMessage;
       }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      await this._jitterDelay(2, { signal: this.signal });
     }
 
     this.logger.warn("Forward prompt not received");
     return null;
-
-    try {
-      const msgs = await this.client.getMessages(this.entity, { limit: 1 });
-      if (msgs.length > 0) { this.lastMessage = msgs[0]; return msgs[0]; }
-    } catch {}
-
-    return fwdMsg || this.lastMessage;
   }
 
   createTools() {
