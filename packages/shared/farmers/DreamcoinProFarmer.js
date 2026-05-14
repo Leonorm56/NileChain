@@ -239,13 +239,14 @@ export default class DreamcoinProFarmer extends BaseFarmer {
       this.logger.keyValue("Balance", `DC ${balance.dc}, USDT $${balance.usdt}`);
     }
     if (characters) {
-      const active = characters.owned_characters?.find((c) => c.is_active)
-        ?.character;
+      const own = characters.owned_characters || [];
+      const active = own.find((c) => c.is_active)?.character;
+      const totalEarns = own.reduce((s, c) => s + (c.character?.earns_usdt || 0), 0);
       this.logger.keyValue(
         "Characters",
-        `${characters.owned_characters?.length || 0} owned`,
+        `${own.length} owned ($${totalEarns}/day)`,
       );
-      if (active) this.logger.keyValue("Active", active.name);
+      if (active) this.logger.keyValue("Active", `${active.name} ($${active.earns_usdt || 0}/day)`);
     }
     if (mining) {
       this.logger.keyValue("Mining", mining.mining?.status || "idle");
@@ -318,14 +319,17 @@ export default class DreamcoinProFarmer extends BaseFarmer {
       (c) => c.price_currency === "DC" && c.price <= balance.dc,
     );
     if (available.length > 0) {
+      for (const c of available) {
+        this.logger.info(`Buyable: ${c.name} — DC ${c.price}, earns $${c.earns_usdt || 0}/day`);
+      }
       const item = this.utils.randomItem(available);
       try {
         await this.buyCharacter(item.id);
         await this.setCharacter(item.id);
-        this.logger.info(`Bought & equipped character #${item.id}`);
+        this.logger.success(`Bought & equipped ${item.name} (DC ${item.price})`);
         return;
       } catch {
-        this.logger.warn("Character purchase failed");
+        this.logger.warn(`Failed to buy ${item.name}`);
       }
     }
     await this._setActiveCharacter(characters);
@@ -333,13 +337,18 @@ export default class DreamcoinProFarmer extends BaseFarmer {
 
   async _setActiveCharacter(characters) {
     const owned = characters.owned_characters || [];
+    for (const oc of owned) {
+      if (oc.character) {
+        this.logger.info(`Owned: ${oc.character.name} — earns $${oc.character.earns_usdt || 0}/day${oc.is_active ? " [ACTIVE]" : ""}`);
+      }
+    }
     const best = owned
       .filter((c) => c.character)
       .sort((a, b) => (b.character.earns_usdt || 0) - (a.character.earns_usdt || 0))[0];
     if (best && !best.is_active) {
       try {
         await this.setCharacter(best.character.id);
-        this.logger.info(`Equipped ${best.character.name}`);
+        this.logger.success(`Equipped ${best.character.name} ($${best.character.earns_usdt || 0}/day)`);
       } catch {
         this.logger.warn("Failed to set active character");
       }
