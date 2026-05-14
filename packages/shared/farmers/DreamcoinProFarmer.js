@@ -437,25 +437,24 @@ export default class DreamcoinProFarmer extends BaseFarmer {
           const status = task.status;
           const partner = task.partner;
           const details = task.details || {};
-          const name = partner?.name || details?.current_day ? `Day ${details.current_day}` : `Task ${task.id}`;
+          const name = partner?.name || (details?.current_day ? `Day ${details.current_day}` : `Task ${task.id}`);
 
           this.logger.info(`[${status}] ${name}`);
 
           if (status === "NOT_STARTED") {
+            const payload = partner?.id ? { details: { validation_type: "subscription", partner_id: partner.id } } : {};
             if (partner?.link) {
               if (this.validateTelegramTask(partner.link)) {
                 await this.tryToJoinTelegramLink(partner.link);
                 await this.utils.delayForSeconds(2, { signal: this.signal });
               }
             }
-            await this.claimTask(task.id);
+            await this.claimTask(task.id, payload);
             this.logger.success(`Completed: ${name}`);
-          } else if (status === "DONE") {
-            await this.claimTask(task.id);
-            this.logger.success(`Claimed: ${name}`);
           } else if (status === "STARTED") {
-            await this.claimTask(task.id);
-            this.logger.success(`Claimed started: ${name}`);
+            const payload = partner?.id ? { details: { partner_id: partner.id } } : {};
+            await this.claimTask(task.id, payload);
+            this.logger.success(`Claimed: ${name}`);
           } else {
             this.logger.info(`Skipped ${status}: ${name}`);
           }
