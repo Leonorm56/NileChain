@@ -23,7 +23,12 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
   static singleton = true;
   static rating = 3;
 
-  sendStart() {
+  async sendStart() {
+    // Sync the message ID counter by fetching recent messages before sending
+    // (avoids MSGID_DECREASE_RETRY after subscribing to channels)
+    try {
+      await this.client.getMessages(this.entity, { limit: 1 });
+    } catch {}
     return this.sendMessage("/start", {}, { hasButtons: false, timeout: 10000 });
   }
 
