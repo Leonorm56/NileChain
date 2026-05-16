@@ -2,3 +2,11 @@
 *.crx
 *.zip
 *.pem
+dist-extension/dist-extension/
+dist-extension/.gitignore
+dist-extension/response_headers.txt
+dist-extension/verify_page.html
+dist-extension/spacejump-api-logger.user.js
+dist-extension/spacejump-farmer.user.js
+dist-extension/BirdTon-ugmZlH0K.js
+dist-extension/Blum-Ch2S3TnQ.js
