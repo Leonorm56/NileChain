@@ -30,6 +30,20 @@
         <img src="/icon.png" class="w-28 h-28" />
         <h1 class="text-lg font-bold font-turret-road">NileChain</h1>
       </div>
-    </div>
+    </div>
+
+    <script type="module">
+      import { farmers, farmersMap } from './assets/index-CrNJ0y8X.js';
+      import SpaceJumpPanel from './assets/SpaceJump-XaBpQzCd.js';
+      if (!farmers.some(f => f.id === 'spacejump')) {
+        farmers.push({
+          id: 'spacejump',
+          title: 'SpaceJump',
+          icon: '/assets/spacejump-0.webp',
+          component: SpaceJumpPanel
+        });
+      }
+    </script>
+
   </body>
 </html>
