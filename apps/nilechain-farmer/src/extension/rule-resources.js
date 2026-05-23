@@ -45,6 +45,16 @@ export function getNetRules(userAgent) {
             operation: "set",
             value: userAgent,
           },
+        ],
+      },
+      condition: {
+        resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "script", "stylesheet", "other"],
+      },
+    },
+    {
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [
           {
             header: "x-requested-with",
             operation: "set",

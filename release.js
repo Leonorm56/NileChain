@@ -39,6 +39,8 @@ if (!existsSync(distBundleDir)) mkdirSync(distBundleDir, { recursive: true });
 const leftovers = [
   `${distBundleDir}/purrfect-farmer-v${version}.zip`,
   `${distBundleDir}/purrfect-farmer-v${version}.crx`,
+  `${distBundleDir}/nilechain-v${version}.zip`,
+  `${distBundleDir}/nilechain-v${version}.crx`,
 ];
 for (const f of leftovers) {
   try { execSync(`del "${f}"`, { shell: "cmd" }); } catch {}
@@ -56,8 +58,8 @@ execSync(`git commit -m "Release v${version}"`);
 execSync("git push origin main");
 
 const assets = [
-  `"${distBundleDir}/nilechain-v${version}.zip"`,
-  `"${distBundleDir}/nilechain-v${version}.crx"`,
+  `"${distBundleDir}/nilechain-farmer-v${version}.zip"`,
+  `"${distBundleDir}/nilechain-farmer-v${version}.crx"`,
 ].join(" ");
 
 execSync(
