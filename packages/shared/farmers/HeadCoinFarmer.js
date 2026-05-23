@@ -210,7 +210,8 @@ export default class HeadCoinFarmer extends BaseFarmer {
     }
 
     for (let cat = 1; cat <= 5 && !signal.aborted; cat++) {
-      for (let el = 0; el <= 2 && !signal.aborted; el++) {
+      const elements = [2, 0, 1];
+      for (const el of elements) {
         if (coins <= 0) {
           this.logger.info("Not enough money to upgrade");
           break;
