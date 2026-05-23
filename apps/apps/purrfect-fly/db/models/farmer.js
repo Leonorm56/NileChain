@@ -1,0 +1,100 @@
+"use strict";
+
+import { Model } from "sequelize";
+import utils from "../../lib/utils.js";
+
+/**
+ * @param {import("sequelize").Sequelize} sequelize
+ * @param {import("sequelize").DataTypes} DataTypes
+ */
+export default (sequelize, DataTypes) => {
+  class Farmer extends Model {
+    /**
+     * Helper method for defining associations.
+     * This method is not a part of Sequelize lifecycle.
+     * The `models/index` file will call this method automatically.
+     */
+    static associate(models) {
+      Farmer.belongsTo(models.Account, { as: "account" });
+    }
+
+    static _getSubscriptionInclude(required) {
+      return [
+        {
+          required: true,
+          association: "account",
+          include: [
+            {
+              required,
+              association: "subscriptions",
+              where: {
+                active: true,
+              },
+            },
+          ],
+        },
+      ];
+    }
+
+    static findWithActiveSubscription(farmer, accountId, required = true) {
+      return this.findOne({
+        where: {
+          farmer,
+          accountId,
+        },
+        include: this._getSubscriptionInclude(required),
+      });
+    }
+
+    static findAllWithActiveSubscription({ required = true, ...options } = {}) {
+      return this.findAll({
+        ...options,
+        include: this._getSubscriptionInclude(required),
+      });
+    }
+
+    setHeaders(headers = {}) {
+      this.headers = Object.assign(this.headers || {}, headers);
+
+      return this;
+    }
+
+    setAuthorizationHeader(value) {
+      this.headers = Object.assign(this.headers || {}, {
+        Authorization: value,
+      });
+
+      return this;
+    }
+
+    get initDataUnsafe() {
+      return utils.getInitDataUnsafe(this.initData);
+    }
+
+    get telegramWebApp() {
+      return {
+        initData: this.initData,
+        initDataUnsafe: this.initDataUnsafe,
+      };
+    }
+  }
+
+  Farmer.init(
+    {
+      accountId: DataTypes.BIGINT,
+      active: DataTypes.BOOLEAN,
+      farmer: DataTypes.STRING,
+      initData: DataTypes.STRING,
+      headers: DataTypes.JSON,
+      cookies: DataTypes.JSON,
+      options: DataTypes.JSON,
+      errorCount: DataTypes.INTEGER,
+      isBanned: DataTypes.BOOLEAN,
+    },
+    {
+      sequelize,
+      modelName: "Farmer",
+    },
+  );
+  return Farmer;
+};

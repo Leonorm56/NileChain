@@ -46,19 +46,19 @@ jobs:
         run: pnpm run build:farmer
 
       - name: Setup 404 page
-        run: cp apps/purrfect-farmer/dist/index.html apps/purrfect-farmer/dist/404.html
+        run: cp apps/nilechain-farmer/dist/index.html apps/nilechain-farmer/dist/404.html
 
       - name: Upload a Build Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/purrfect-farmer/dist
+          path: apps/nilechain-farmer/dist
 
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            apps/purrfect-farmer/dist-bundle/*.crx
-            apps/purrfect-farmer/dist-bundle/*.zip
+            apps/nilechain-farmer/dist-bundle/*.crx
+            apps/nilechain-farmer/dist-bundle/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
 

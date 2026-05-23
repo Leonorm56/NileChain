@@ -1,0 +1,106 @@
+{
+  "manifest_version": 3,
+  "name": "NileChain",
+  "description": "Telegram Mini-Apps automation tool.",
+  "version": "1.0.38",
+  "icons": {
+    "16": "nile-icon-16.png",
+    "32": "nile-icon-32.png",
+    "48": "nile-icon-48.png",
+    "128": "nile-icon-128.png"
+  },
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "unlimitedStorage",
+    "webRequest",
+    "declarativeNetRequest",
+    "proxy",
+    "cookies",
+    "windows",
+    "sidePanel",
+    "notifications",
+    "webNavigation",
+    "webRequestAuthProvider",
+    "system.display",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "extension/chrome-service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "nile-icon-16.png",
+      "32": "nile-icon-32.png",
+      "48": "nile-icon-48.png",
+      "128": "nile-icon-128.png"
+    },
+    "default_title": "Open NileChain",
+    "default_popup": "index.html"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "core",
+        "enabled": true,
+        "path": "rule_resources/core.json"
+      }
+    ]
+  },
+  "host_permissions": [
+    "*://*/*",
+    "ws://*/*",
+    "wss://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*.woff",
+        "assets/*.woff2",
+        "browser-sandbox.html"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "extension/content-script-isolated.js"
+      ],
+      "css": [
+        "extension/content-script-styles.css"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "extension/content-script-main.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals;"
+  },
+  "sandbox": {
+    "pages": []
+  }
+}

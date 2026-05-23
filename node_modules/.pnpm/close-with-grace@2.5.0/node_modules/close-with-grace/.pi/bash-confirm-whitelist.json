@@ -1,0 +1,10 @@
+{
+  "entries": [
+    {
+      "command": "npm test",
+      "addedAt": "2026-02-20T20:40:09.507Z",
+      "note": "Always accept"
+    }
+  ],
+  "version": 1
+}

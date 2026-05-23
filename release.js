@@ -10,15 +10,15 @@ const [major, minor, patch] = pkg.version.split(".").map(Number);
 pkg.version = `${major}.${minor}.${patch + 1}`;
 writeFileSync("package.json", JSON.stringify(pkg, null, 2));
 
-const extPkg = JSON.parse(readFileSync("apps/purrfect-farmer/package.json", "utf8"));
+const extPkg = JSON.parse(readFileSync("apps/nilechain-farmer/package.json", "utf8"));
 extPkg.version = pkg.version;
-writeFileSync("apps/purrfect-farmer/package.json", JSON.stringify(extPkg, null, 2));
+writeFileSync("apps/nilechain-farmer/package.json", JSON.stringify(extPkg, null, 2));
 
 const version = pkg.version;
-const distBundleDir = "apps/purrfect-farmer/dist-bundle";
+const distBundleDir = "apps/nilechain-farmer/dist-bundle";
 
 // Ensure dist.pem exists for CRX signing
-const pemPath = "apps/purrfect-farmer/dist.pem";
+const pemPath = "apps/nilechain-farmer/dist.pem";
 if (!existsSync(pemPath)) {
   const crypto = require("crypto");
   const key = crypto.generateKeyPairSync("rsa", {
