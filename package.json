@@ -1,6 +1,6 @@
 {
   "license": "MIT",
-  "version": "1.0.44",
+  "version": "1.0.45",
   "scripts": {
     "build:farmer": "pnpm -F nilechain-farmer build",
     "start:fly": "pnpm -F purrfect-fly start"

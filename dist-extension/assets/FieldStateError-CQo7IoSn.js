@@ -1,0 +1,1 @@
+import{o as e}from"./rolldown-runtime-DzIHmmIB.js";import{Dn as t,ar as n,ir as r}from"./index-CImU3FY9.js";var i=e(r(),1),a=t(),o=(0,i.memo)(function({fieldState:e,...t}){return e.error?.message?(0,a.jsx)(`p`,{...t,className:n(`text-red-500`,t.className),children:e.error?.message}):null});export{o as t};
