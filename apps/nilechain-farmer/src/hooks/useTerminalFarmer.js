@@ -200,6 +200,14 @@ export default function useTerminalFarmer() {
     }
   }, [isZooming, zoomies.quickRun, startFarmer, processNextTask]);
 
+  /** Stop farmer when extension popup closes */
+  useEffect(() => {
+    return () => {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+    };
+  }, []);
+
   /** Store primary link */
   useEffect(() => {
     if (referralLink && isPrimaryFarmerUser) {

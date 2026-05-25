@@ -2,13 +2,20 @@ import { createFarmer } from "@/lib/createFarmer";
 import { customLogger } from "@/utils";
 import path from "path-browserify";
 
-const farmersGlob = import.meta.glob(
-  "../../node_modules/@purrfect/shared/farmers/*.js",
-  {
-    eager: true,
-    import: "default",
-  },
-);
+// Import farmers directly — the pnpm symlink breaks import.meta.glob on this system
+import ADCLICKERFarmer from "@purrfect/shared/farmers/ADCLICKERFarmer.js";
+import ATFFarmer from "@purrfect/shared/farmers/ATFFarmer.js";
+import DreamcoinProFarmer from "@purrfect/shared/farmers/DreamcoinProFarmer.js";
+import HeadCoinFarmer from "@purrfect/shared/farmers/HeadCoinFarmer.js";
+import SpaceJumpFarmer from "@purrfect/shared/farmers/SpaceJumpFarmer.js";
+
+const farmerClasses = [
+  ADCLICKERFarmer,
+  ATFFarmer,
+  DreamcoinProFarmer,
+  HeadCoinFarmer,
+  SpaceJumpFarmer,
+];
 
 const farmersIconGlob = import.meta.glob(
   "../../node_modules/@purrfect/shared/assets/images/farmers/*.png",
@@ -31,7 +38,7 @@ const farmerIcons = Object.entries(farmersIconGlob).reduce(
   new Map(),
 );
 
-const farmers = Object.values(farmersGlob).map((Farmer) =>
+const farmers = farmerClasses.map((Farmer) =>
   createFarmer(Farmer, {
     icon: Farmer.id === "spacejump" ? "/spacejump-icon.png" : farmerIcons.get(Farmer.id),
   }),

@@ -13,7 +13,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
   static path = "/headcoinweb166/index.html";
   static singleton = true;
   static cacheAuth = false;
-  static interval = "*/10 * * * *";
+  static interval = "*/10 * * * * *";
   static rating = 3;
   static startupDelay = 30;
   static published = true;
@@ -36,9 +36,19 @@ export default class HeadCoinFarmer extends BaseFarmer {
     };
   }
 
+  buildUpgradePayload(categIndex, elementIndex) {
+    return {
+      textqueryid: this.telegramWebApp?.initData || "",
+      numbcateg: String(categIndex),
+      numbelement: String(elementIndex),
+      timestamp: String(Date.now()),
+    };
+  }
+
   async post(endpoint, extra, signal) {
+    const params = new URLSearchParams(this.buildPayload(extra));
     return this.api
-      .post(`${API_BASE}/${endpoint}`, this.buildPayload(extra), {
+      .post(`${API_BASE}/${endpoint}`, params.toString(), {
         signal,
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       })
@@ -96,8 +106,22 @@ export default class HeadCoinFarmer extends BaseFarmer {
     return this.post("claimdailybonus.php", {}, signal);
   }
 
+  async refreshWebAppData() {
+    await this.updateWebAppData();
+  }
+
   async upgradeElement(categIndex, elementIndex, signal) {
-    return this.post("levelupelement.php", { numbcateg: categIndex, numbelement: elementIndex }, signal);
+    const params = new URLSearchParams(this.buildUpgradePayload(categIndex, elementIndex));
+    return this.api
+      .post(`${API_BASE}/levelupelement.php`, params.toString(), {
+        signal,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Origin": "https://headgun.org",
+          "Referer": "https://headgun.org/",
+        },
+      })
+      .then((r) => r.data);
   }
 
   // ---- Process ----
@@ -115,21 +139,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
 
     this._logInfo(state, O);
 
-    await this._claimMined(state, O, signal);
-    await this._claimDailyBonus(state, O, signal);
-    await this._completeTasks(signal);
     await this._upgradeCards(O, signal);
-    await this._selectCEO(state, signal);
-
-    const finalState = await this.executeTask("Refresh state", () => this.fetchGameState(signal));
-    if (finalState?.length >= 20) {
-      this.logger.newline();
-      this.logger.keyValue("Final Coins", parseInt(finalState[O.COINS], 10) || 0);
-      this.logger.keyValue("Final Profit/h", parseInt(finalState[O.PROFIT_PER_HOUR], 10) || 0);
-      this.logger.newline();
-    }
-
-    this.logger.log("HeadCoin cycle complete");
     return true;
   }
 
@@ -138,6 +148,11 @@ export default class HeadCoinFarmer extends BaseFarmer {
     this.logCurrentUser();
     this.logger.keyValue("Coins", parseInt(state[O.COINS], 10) || 0);
     this.logger.keyValue("Profit/h", parseInt(state[O.PROFIT_PER_HOUR], 10) || 0);
+    const authDate = this.getInitDataUnsafe()?.auth_date;
+    if (authDate) {
+      const ageMin = Math.round((Date.now() / 1000 - authDate) / 60);
+      this.logger.keyValue("InitData age", `${ageMin} min`);
+    }
     this.logger.keyValue("Mined", parseInt(state[O.MINED], 10) || 0);
     this.logger.keyValue("Daily Bonus", parseInt(state[O.DAILY_BONUS_STREAK], 10) > 0 ? "Claimed" : "Available");
     this.logger.newline();
@@ -170,6 +185,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
     this.logger.info(`${tasks.length} tasks available`);
     for (const task of tasks) {
       if (signal.aborted) break;
+      if (/match money/i.test(task.title)) continue;
 
       const status = await this.executeTask(
         `Status: ${task.title}`,
@@ -198,50 +214,103 @@ export default class HeadCoinFarmer extends BaseFarmer {
   }
 
   async _upgradeCards(O, signal) {
-    const fresh = await this.fetchGameState(signal);
-    let coins = parseInt(fresh[O.COINS], 10) || 0;
-    let profit = parseInt(fresh[O.PROFIT_PER_HOUR], 10) || 0;
+    const cardOrder = [
+      { cat: 2, count: 9 },
+      { cat: 3, count: 11 },
+      { cat: 1, count: 9 },
+      { cat: 4, count: 2 },
+    ];
 
-    this.logger.info("Upgrading cards...");
+    for (const { cat, count } of cardOrder) {
+      if (signal.aborted) return;
 
-    if (profit >= 35000) {
-      this.logger.info(`Maximum profit per hour reached: ${profit}`);
-      return;
-    }
+      this.logger.newline();
+      this.logger.info(`=== Fresh cycle before cat ${cat} ===`);
 
-    for (let cat = 1; cat <= 5 && !signal.aborted; cat++) {
-      const elements = [2, 0, 1];
-      for (const el of elements) {
-        if (coins <= 0) {
-          this.logger.info("Not enough money to upgrade");
-          break;
-        }
+      let state = await this.fetchGameState(signal);
+      if (!state || state.length < 20) {
+        this.logger.error(`Cat ${cat}: Unexpected game state`);
+        continue;
+      }
+
+      this._logInfo(state, O);
+
+      await this._claimMined(state, O, signal);
+      await this._claimDailyBonus(state, O, signal);
+      await this._completeTasks(signal);
+
+      state = await this.fetchGameState(signal);
+
+      this.logger.info(`Upgrading cards cat ${cat} (${count} elements)...`);
+
+      let coins = parseInt(state[O.COINS], 10) || 0;
+      let profit = parseInt(state[O.PROFIT_PER_HOUR], 10) || 0;
+
+      if (profit >= 100000) {
+        this.logger.info(`Maximum profit per hour reached: ${profit}`);
+        return;
+      }
+
+      try {
+        await this.refreshWebAppData();
+      } catch (e) {
+        this.logger.warn(`Cat ${cat}: refreshWebAppData failed: ${e?.message || e}`);
+      }
+
+      let upgraded = 0;
+
+      for (let el = 0; el < count; el++) {
+        if (signal.aborted) return;
+        if (coins <= 0) break;
 
         const result = await this.executeTask(
-          `Upgrade cat ${cat} elem ${el}`,
+          `Upgrade cat ${cat} el ${el}`,
           () => this.upgradeElement(cat, el, signal),
         );
 
         const trimmed = String(result ?? "").trim();
 
-        if (trimmed === "0" || trimmed === "") {
-          this.logger.success(`Cat ${cat}/${el} upgraded`);
+        if (trimmed === "1") {
+          upgraded++;
+          const prevCoins = coins;
+          const prevProfit = profit;
           const postState = await this.fetchGameState(signal);
           coins = parseInt(postState[O.COINS], 10) || 0;
           profit = parseInt(postState[O.PROFIT_PER_HOUR], 10) || 0;
+          const cost = prevCoins - coins;
+          const gain = profit - prevProfit;
+          this.logger.success(`Cat ${cat}/${el} upgraded`);
+          if (cost > 0) this.logger.keyValue("Cost", cost);
+          if (gain > 0) this.logger.keyValue("+Profit/h", gain);
           this.logger.keyValue("Coins left", coins);
           this.logger.keyValue("Profit/h", profit);
 
-          if (profit >= 35000) {
+          if (profit >= 100000) {
             this.logger.info(`Maximum profit per hour reached: ${profit}`);
             return;
           }
+        } else if (trimmed === "2") {
+          this.logger.warn(`Cat ${cat}/${el} locked`);
+        } else if (trimmed === "0" || trimmed === "") {
+          this.logger.warn(`Cat ${cat}/${el} error (${trimmed || "empty"})`);
         } else {
-          this.logger.log(`Cat ${cat}/${el} already maxed`);
-          continue;
+          this.logger.warn(`Cat ${cat}/${el} unexpected: ${JSON.stringify(result)}`);
         }
       }
+
+      if (upgraded > 0) {
+        this.logger.newline();
+        this.logger.keyValue("Cat upgraded", upgraded);
+        this.logger.keyValue("Coins left", coins);
+        this.logger.keyValue("Profit/h", profit);
+      } else {
+        this.logger.info("No upgrades available");
+      }
+
+      await this.utils.delayForSeconds(10, { signal: this.signal });
     }
+
+    this.logger.info("All 4 categories upgraded — HeadCoin farming complete");
   }
 
   async _selectCEO(state, signal) {
