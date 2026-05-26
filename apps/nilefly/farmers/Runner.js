@@ -53,12 +53,22 @@ export default function createRunner(FarmerClass) {
   /** Primary account ID */
   const primaryAccountId = Number(farmerPrimaryAccountId) || 0;
 
+  /** Batch size (0 = all accounts) */
+  const batchSize = Number(env(envKey + "_BATCH_SIZE", 0));
+
+  /** Delay between accounts in seconds */
+  const accountDelaySeconds = Number(
+    env(envKey + "_ACCOUNT_DELAY_SECONDS", 5),
+  );
+
   /** Log */
   logger.success(`${FarmerClass.title} Farmer`);
   logger.keyValue("Enabled", enabled);
   logger.keyValue("Primary account ID", primaryAccountId, {
     format: false,
   });
+  logger.keyValue("Batch size", batchSize || "All");
+  logger.keyValue("Account delay", `${accountDelaySeconds}s`);
   logger.newline();
 
   return class Runner extends FarmerClass {
@@ -71,6 +81,8 @@ export default function createRunner(FarmerClass) {
     static runners = new Map();
     static referralLinks = new Map();
     static logger = new ConsoleLogger(process.env.NODE_ENV !== "production");
+    static batchSize = batchSize;
+    static accountDelaySeconds = accountDelaySeconds;
     static queue = [];
     static isProcessingQueue = false;
 
@@ -571,8 +583,8 @@ export default function createRunner(FarmerClass) {
             /** Delete instance */
             this.runners.delete(instance.account.id);
 
-            /** Delay based on farmer */
-            await this.utils.delayForMinutes(instance.account.farmer ? 1 : 3);
+            /** Delay between accounts */
+            await this.utils.delayForSeconds(this.accountDelaySeconds);
           }
         }
       } finally {
@@ -712,16 +724,18 @@ export default function createRunner(FarmerClass) {
           }
         });
 
+        /** Apply batch limit (0 = all accounts) */
+        const batchLimit = this.batchSize > 0 ? this.batchSize : executableList.length;
+        const batchList = this.utils.shuffle(executableList).slice(0, batchLimit);
+
         /** Prepare accounts to be executed */
-        this.utils
-          .shuffle(executableList)
-          .forEach((account) => this.prepare(account));
+        batchList.forEach((account) => this.prepare(account));
 
         /** Process queue */
         this.processQueue();
 
         /** Get results */
-        const results = executableList.map((account) => {
+        const results = batchList.map((account) => {
           return { account, result: this.getResult(account) };
         });
 
@@ -734,7 +748,7 @@ export default function createRunner(FarmerClass) {
             telegramLink: this.telegramLink,
             threadId: this.threadId,
             totalCount: accountsWithFarmer.length,
-            executedCount: executableList.length,
+            executedCount: batchList.length,
             results,
           });
         } catch (error) {
