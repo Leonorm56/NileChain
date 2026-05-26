@@ -1,12 +1,11 @@
-import useAppContext from "@/hooks/useAppContext";
 import storage from "@/lib/storage";
-import { postPortMessage } from "@/utils";
 import { useCallback } from "react";
 import { useMemo } from "react";
 
+import useAppContext from "@/hooks/useAppContext";
+
 export default function useBackupAndRestore(app) {
-  const { messaging, setActiveTab, closeTab, configureSettings } =
-    useAppContext() || app;
+  const { configureSettings } = useAppContext() || app;
 
   /** Skip Onboarding */
   const skipOnboarding = useCallback(
@@ -14,85 +13,36 @@ export default function useBackupAndRestore(app) {
     [configureSettings]
   );
 
-  const closeTelegramWeb = useCallback(() => {
-    closeTab("telegram-web-k");
-    closeTab("telegram-web-a");
-  }, [closeTab]);
-
-  /** Get Backup Data */
+  /** Get Backup Data (chrome storage only; Telegram Web localStorage handled by the host) */
   const getBackupData = useCallback(
     () =>
       new Promise(async (resolve, reject) => {
-        /** Skip Onboarding */
         await skipOnboarding();
 
-        /** Close Telegram Web */
-        await closeTelegramWeb();
+        const chromeLocalStorage = await storage.getAll();
+        const data = {
+          version: __APP_PACKAGE_VERSION__,
+          time: Date.now(),
+          data: {
+            chromeLocalStorage,
+          },
+        };
 
-        messaging.handler.once(
-          `port-connected:telegram-web-k`,
-          async (port) => {
-            /** Get Telegram Web Local Storage */
-            const telegramWebLocalStorage = await postPortMessage(port, {
-              action: "get-local-storage",
-            }).then((response) => response.data);
-
-            /** Close Telegram Web */
-            closeTelegramWeb();
-
-            const chromeLocalStorage = await storage.getAll();
-            const data = {
-              version: __APP_PACKAGE_VERSION__,
-              time: Date.now(),
-              data: {
-                telegramWebLocalStorage,
-                chromeLocalStorage,
-              },
-            };
-
-            resolve(data);
-          }
-        );
-
-        setActiveTab("telegram-web-k");
+        resolve(data);
       }),
-    [messaging.handler, setActiveTab, skipOnboarding, closeTelegramWeb]
+    [skipOnboarding]
   );
 
-  /** Restore Backup Data */
+  /** Restore Backup Data (chrome storage only; Telegram Web localStorage handled by the host) */
   const restoreBackupData = useCallback(
     (data) =>
       new Promise(async (resolve, reject) => {
-        /** Skip Onboarding */
         await skipOnboarding();
+        await storage.set(data.chromeLocalStorage);
 
-        /** Close Telegram Web */
-        await closeTelegramWeb();
-
-        /** Wait for Port */
-        messaging.handler.once(
-          `port-connected:telegram-web-k`,
-          async (port) => {
-            /** Set Telegram Web Local Storage */
-            await postPortMessage(port, {
-              action: "set-local-storage",
-              data: data.telegramWebLocalStorage,
-            });
-
-            /** Close Telegram Web */
-            closeTelegramWeb();
-
-            /** Restore Chrome Local Storage */
-            await storage.set(data.chromeLocalStorage);
-
-            /** Resolve */
-            resolve(true);
-          }
-        );
-
-        setActiveTab("telegram-web-k");
+        resolve(true);
       }),
-    [messaging.handler, setActiveTab, skipOnboarding, closeTelegramWeb]
+    [skipOnboarding]
   );
 
   return useMemo(
