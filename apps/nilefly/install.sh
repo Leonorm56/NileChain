@@ -25,20 +25,22 @@ nginx \
 
 print_heading "Installing Node Version Manager (NVM) and Node.js LTS..."
 
-if [ -d "$HOME/.nvm" ]; then
-    print_subheading "NVM is already installed."
-else
+if [ ! -d "$HOME/.nvm" ]; then
     print_subheading "NVM is not installed. Proceeding with installation..."
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-
-    \. "$HOME/.nvm/nvm.sh"
-
-    nvm install --lts
-
-    npm i -g npm
-    npm i -g pnpm
-    npm i -g pm2
 fi
+
+# Load NVM (needed for non-interactive shells)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Ensure Node.js LTS is installed and active
+nvm install --lts
+nvm alias default lts/*
+
+# Ensure global tools are installed
+npm i -g npm pnpm pm2
 
 
 print_heading "Setting up PM2 to run on startup..."
