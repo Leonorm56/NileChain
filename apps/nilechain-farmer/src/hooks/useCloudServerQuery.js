@@ -6,7 +6,7 @@ export default function useCloudServerQuery() {
   const { settings, cloudBackend } = useAppContext();
 
   return useQuery({
-    enabled: false,
+    enabled: settings.enableCloud && !!settings.cloudServer,
     retry: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
