@@ -15,7 +15,7 @@ export default function useWhiskerData(app) {
 
   /** Whisker Message */
   useEffect(() => {
-    if (import.meta.env.VITE_WHISKER) {
+    if (window.electron?.ipcRenderer) {
       /** Message Listener */
       const listener = (_event, { action, data }) => {
         console.log("Received message from Whisker...", { action, data });
