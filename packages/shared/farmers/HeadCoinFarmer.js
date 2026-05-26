@@ -13,7 +13,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
   static path = "/headcoinweb166/index.html";
   static singleton = true;
   static cacheAuth = false;
-  static interval = "*/10 * * * * *";
+  static interval = "*/10 * * * *";
   static rating = 3;
   static startupDelay = 30;
   static published = true;

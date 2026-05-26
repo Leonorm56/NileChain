@@ -1,0 +1,192 @@
+import { HttpProxyAgent, HttpsProxyAgent } from "hpagent";
+
+import FloxyClient from "./FloxyClient.js";
+import app from "../config/app.js";
+import axios from "axios";
+import cache from "./cache.js";
+import db from "../db/models/index.js";
+import utils from "./utils.js";
+
+class ProxyProvider {
+  /**
+   * Get List
+   */
+  async list() {
+    const cached = await cache.get("proxies");
+    if (cached) return cached;
+
+    const proxies = await this.fetchList();
+    await cache.set("proxies", proxies);
+    return proxies;
+  }
+
+  /**
+   * Get Random Unused Proxy
+   */
+  async getRandomUnused() {
+    const proxies = await db.Account.findAllWithActiveSubscription();
+    const available = await this.getAvailable(proxies);
+    return available.length > 0 ? utils.randomItem(available) : null;
+  }
+
+  /**
+   * Get Available Proxies
+   */
+  async getAvailable(usedProxies) {
+    const list = await this.list();
+    return list.filter((proxy) => !usedProxies.includes(proxy));
+  }
+
+  /**
+   * Fetch Proxy List from Webshare API
+   */
+  async fetchList() {
+    try {
+      if (app.proxy.provider === "webshare") {
+        const response = await axios.get(
+          "https://proxy.webshare.io/api/v2/proxy/list",
+          {
+            headers: {
+              Authorization: `Token ${app.proxy.apiKey}`,
+            },
+            params: {
+              ["mode"]: "direct",
+              ["valid"]: true,
+              ["page"]: app.proxy.page,
+              ["page_size"]: app.proxy.pageSize,
+            },
+          },
+        );
+
+        return response.data.results.map(
+          (item) =>
+            `${item.username}:${item.password}@${item.proxy_address}:${item.port}`,
+        );
+      } else if (app.proxy.provider === "floxy") {
+        /** Instantiate Floxy Client */
+        const client = new FloxyClient(app.proxy.apiKey);
+
+        /** Plan ID */
+        let planId = app.proxy.planId;
+
+        if (!planId) {
+          const list = await client.getAllPlans();
+          const plan = list.find(
+            (item) => item.type === "DEDICATED_DATACENTER",
+          );
+
+          if (plan) {
+            planId = plan.id;
+          }
+        }
+
+        /** Return an empty list if not plan ID is configured */
+        if (!planId) {
+          return [];
+        }
+
+        const details = await client.getPlan(planId);
+        const { authorization } = details;
+        const { username, password } = authorization;
+
+        /** Flat map the IPs */
+        const ips = details["ip_list"].flatMap((item) =>
+          item.cities.flatMap((city) => city.ips),
+        );
+
+        return ips.map((ip) => `${username}:${password}@${ip}:1338`);
+      } else if (app.proxy.provider === "iplocate") {
+        const txt = await axios
+          .get(
+            "https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt",
+          )
+          .then((res) => res.data.trim());
+        const list = txt
+          .split("\n")
+          .filter((item) => item.startsWith("http://"))
+          .map((item) => item.replace("http://", ""));
+
+        return list;
+      } else {
+        return [];
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error fetching proxies:", error);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Force Update Proxy List
+   */
+  async updateList() {
+    const proxies = await this.fetchList();
+    await cache.set("proxies", proxies);
+
+    return proxies;
+  }
+
+  /**
+   * Test Proxies
+   */
+  async testProxies() {
+    const proxies = await this.list();
+    const results = await Promise.all(
+      proxies.map(async (proxy) => {
+        const start = Date.now();
+        const agentTimeout = 5000;
+        const proxyUrl = `http://${proxy}`;
+
+        const httpAgent = new HttpProxyAgent({
+          proxy: proxyUrl,
+          timeout: agentTimeout,
+        });
+
+        const httpsAgent = new HttpsProxyAgent({
+          proxy: proxyUrl,
+          timeout: agentTimeout,
+        });
+
+        let status = true;
+        let ip;
+
+        try {
+          const data = await axios
+            .get("https://api.ipify.org?format=json", {
+              httpAgent,
+              httpsAgent,
+              timeout: 7000,
+              validateStatus: () => true,
+            })
+            .then((res) => res.data);
+
+          ip = data.ip;
+        } catch (error) {
+          if (process.env.NODE_ENV === "development") {
+            console.error("Error testing proxy:", error);
+          }
+          status = false;
+        }
+
+        const duration = (Date.now() - start) / 1000;
+        return { status, proxy, ip, duration };
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * Get Only Working Proxies
+   */
+  async getWorkingProxies() {
+    const results = await this.testProxies();
+    return results.filter((p) => p.status);
+  }
+}
+
+const proxy = new ProxyProvider();
+
+export default proxy;

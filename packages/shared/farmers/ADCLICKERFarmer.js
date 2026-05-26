@@ -21,6 +21,7 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
   static host = "";
   static domains = [];
   static singleton = true;
+  static published = true;
   static rating = 3;
 
   async sendStart() {

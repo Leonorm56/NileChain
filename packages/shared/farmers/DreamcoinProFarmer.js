@@ -11,6 +11,7 @@ export default class DreamcoinProFarmer extends BaseFarmer {
   static path = "/";
   static singleton = true;
   static cacheAuth = false;
+  static published = true;
   static interval = "*/5 * * * *";
   static rating = 3;
   static startupDelay = 60;
