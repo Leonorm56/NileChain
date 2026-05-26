@@ -140,6 +140,8 @@ export default class HeadCoinFarmer extends BaseFarmer {
 
     this._logInfo(state, O);
 
+    await this._preUpgradeTasks(state, O, signal);
+
     await this._upgradeCards(O, signal);
     return true;
   }
@@ -159,14 +161,16 @@ export default class HeadCoinFarmer extends BaseFarmer {
     this.logger.newline();
   }
 
-  async _claimMined(state, O, signal) {
-    const mined = parseInt(state[O.MINED], 10) || 0;
-    if (mined <= 0) return;
-    this.logger.info(`Claiming ${mined} mined coins...`);
-    const refreshed = await this.fetchGameState(signal);
-    if (refreshed.length >= 20) {
-      this.logger.success(`Mined claimed – Coins: ${refreshed[O.COINS] || 0}`);
-    }
+  async _preUpgradeTasks(state, O, signal) {
+    await this._claimDailyBonus(state, O, signal).catch((e) =>
+      this.logger.warn(`Daily bonus failed: ${e?.message || e}`),
+    );
+    await this._completeTasks(signal).catch((e) =>
+      this.logger.warn(`Tasks failed: ${e?.message || e}`),
+    );
+    await this.refreshWebAppData().catch((e) =>
+      this.logger.warn(`Refresh webapp failed: ${e?.message || e}`),
+    );
   }
 
   async _claimDailyBonus(state, O, signal) {
@@ -175,13 +179,20 @@ export default class HeadCoinFarmer extends BaseFarmer {
       this.logger.info("Daily bonus already claimed");
       return;
     }
-    await this.executeTask("Claim daily bonus", () => this.claimDailyBonus(signal));
-    this.logger.success("Daily bonus claimed");
+    const result = await this.executeTask("Claim daily bonus", () => this.claimDailyBonus(signal));
+    if (String(result ?? "").trim() === "1") {
+      this.logger.success("Daily bonus claimed");
+    } else {
+      this.logger.warn(`Daily bonus claim returned: ${JSON.stringify(result)}`);
+    }
   }
 
   async _completeTasks(signal) {
     const tasks = await this.executeTask("Fetch tasks", () => this.fetchTasks(signal));
-    if (!tasks?.length) return;
+    if (!tasks?.length) {
+      this.logger.info("No tasks available");
+      return;
+    }
 
     this.logger.info(`${tasks.length} tasks available`);
     for (const task of tasks) {
@@ -274,12 +285,6 @@ export default class HeadCoinFarmer extends BaseFarmer {
 
       this._logInfo(state, O);
 
-      await this._claimMined(state, O, signal);
-      await this._claimDailyBonus(state, O, signal);
-      await this._completeTasks(signal);
-
-      state = await this.fetchGameState(signal);
-
       this.logger.info(`Upgrading cards cat ${cat} (${count} elements)...`);
 
       let coins = parseInt(state[O.COINS], 10) || 0;
@@ -288,12 +293,6 @@ export default class HeadCoinFarmer extends BaseFarmer {
       if (profit >= 100000) {
         this.logger.info(`Maximum profit per hour reached: ${profit}`);
         return;
-      }
-
-      try {
-        await this.refreshWebAppData();
-      } catch (e) {
-        this.logger.warn(`Cat ${cat}: refreshWebAppData failed: ${e?.message || e}`);
       }
 
       let upgraded = 0;
