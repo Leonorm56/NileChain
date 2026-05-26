@@ -1,0 +1,5 @@
+node_modules/
+whiskers/*.exe
+whiskers/*.zip
+whiskers/the-nile
+dist.pem

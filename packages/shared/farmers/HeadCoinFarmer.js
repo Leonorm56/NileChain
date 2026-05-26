@@ -17,6 +17,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
   static rating = 3;
   static startupDelay = 30;
   static published = true;
+  static maxCardCost = 150000;
 
   getReferralLink() {
     return `https://t.me/head_coin_bot/start?startapp=bonusId${this.getUserId()}`;
@@ -213,6 +214,44 @@ export default class HeadCoinFarmer extends BaseFarmer {
     }
   }
 
+  _getCardUpgradeCount(state, cat, el) {
+    const cardOrder = [2, 3, 1, 4];
+    const catCounts = { 2: 9, 3: 11, 1: 9, 4: 2 };
+    let pos = 0;
+    for (const c of cardOrder) {
+      if (c === cat) break;
+      pos += catCounts[c];
+    }
+    pos += el;
+
+    let maxLevel = 0;
+    for (let i = 15; i < Math.min(state.length, 120); i++) {
+      const raw = state[i];
+      if (!raw || !/^\d+(_\d+)+$/.test(raw)) continue;
+      const parts = raw.split("_").map(Number);
+      if (pos < parts.length && parts[pos] > maxLevel) {
+        maxLevel = parts[pos];
+      }
+    }
+    return maxLevel;
+  }
+
+  _getCardCost(state, cat, el) {
+    if (!this._cardCostCache) {
+      try {
+        this._cardCostCache = JSON.parse(localStorage.getItem("hc_cost_cache") || "{}");
+      } catch { this._cardCostCache = {}; }
+    }
+    const cacheKey = `${cat}-${el}`;
+    const cached = this._cardCostCache[cacheKey];
+    if (cached !== undefined && cached >= this.constructor.maxCardCost) return cached;
+
+    const lvl = this._getCardUpgradeCount(state, cat, el);
+    if (lvl >= 14) return this.constructor.maxCardCost;
+
+    return 0;
+  }
+
   async _upgradeCards(O, signal) {
     const cardOrder = [
       { cat: 2, count: 9 },
@@ -263,6 +302,12 @@ export default class HeadCoinFarmer extends BaseFarmer {
         if (signal.aborted) return;
         if (coins <= 0) break;
 
+        const upgradeCost = this._getCardCost(state, cat, el);
+        if (upgradeCost >= this.constructor.maxCardCost) {
+          this.logger.warn(`Cat ${cat}/${el} costs ${upgradeCost} — max ${this.constructor.maxCardCost}, skipping`);
+          continue;
+        }
+
         const result = await this.executeTask(
           `Upgrade cat ${cat} el ${el}`,
           () => this.upgradeElement(cat, el, signal),
@@ -278,6 +323,9 @@ export default class HeadCoinFarmer extends BaseFarmer {
           coins = parseInt(postState[O.COINS], 10) || 0;
           profit = parseInt(postState[O.PROFIT_PER_HOUR], 10) || 0;
           const cost = prevCoins - coins;
+          if (!this._cardCostCache) this._cardCostCache = {};
+          this._cardCostCache[`${cat}-${el}`] = cost;
+          try { localStorage.setItem("hc_cost_cache", JSON.stringify(this._cardCostCache)); } catch {}
           const gain = profit - prevProfit;
           this.logger.success(`Cat ${cat}/${el} upgraded`);
           if (cost > 0) this.logger.keyValue("Cost", cost);

@@ -6,7 +6,6 @@ import copy from "copy-to-clipboard";
 import { Collapsible } from "radix-ui";
 import { useCallback } from "react";
 import toast from "react-hot-toast";
-import { CgSpinner } from "react-icons/cg";
 import {
   HiCheckCircle,
   HiMinusCircle,
@@ -27,13 +26,11 @@ const ProxyDetailsItem = ({ label, value }) => {
         "border bg-white/80 dark:bg-white/[0.10] backdrop-blur-md"
       )}
     >
-      {/* Details */}
       <div className="flex flex-col grow min-w-0">
         <span className="text-neutral-500 dark:text-neutral-400">{label}</span>
         <span className="font-bold">{value}</span>
       </div>
 
-      {/* Copy button */}
       <button title={`Copy ${label}`} onClick={copyValue}>
         <HiOutlineClipboard className="size-4" />
       </button>
@@ -44,18 +41,22 @@ const ProxyDetailsItem = ({ label, value }) => {
 const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
   const parsed = useParsedProxy(proxy);
   const query = useQuery({
-    retry: true,
+    retry: 2,
     queryKey: ["proxy-details", proxy],
     enabled: Boolean(proxy),
     queryFn: ({ signal }) =>
       axios
         .get("https://ipwho.is/" + parsed.proxyHost, {
           signal,
+          timeout: 5000,
         })
         .then((res) => res.data),
   });
 
-  const ipInfo = query.data;
+  const ipInfo = query.data?.success ? query.data : null;
+  const headingLabel = ipInfo
+    ? `${ipInfo.city} - ${ipInfo.country}`
+    : parsed?.proxyHost || "IP";
 
   return (
     <Collapsible.Root
@@ -74,27 +75,21 @@ const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
           "border border-transparent hover:border-nile-gold-500"
         )}
       >
-        {/* Proxy Icon */}
         <HiOutlineMapPin className="size-5 shrink-0" />
 
-        {/* Heading */}
         <h1
-          title={ipInfo ? `${ipInfo.city} - ${ipInfo.country}` : "Proxy"}
+          title={headingLabel}
           className={cn(
-            "font-bold grow min-w-0",
+            "font-bold grow min-w-0 truncate",
             "text-center flex items-center justify-center gap-2"
           )}
         >
-          {/* Flag */}
           {ipInfo?.flag?.img ? (
-            <img className="w-5 h-4 rounded-xl" src={ipInfo?.flag?.img} />
-          ) : parsed ? (
-            <CgSpinner className="size-5 animate-spin" />
+            <img className="w-5 h-4 rounded-xl shrink-0" src={ipInfo?.flag?.img} />
           ) : null}{" "}
-          Proxy
+          {headingLabel}
         </h1>
 
-        {/* Status */}
         {proxy ? (
           <HiCheckCircle className="size-5 text-green-500 shrink-0" />
         ) : (
