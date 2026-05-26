@@ -28,6 +28,30 @@
 
 ---
 
+## Quick Installation
+
+### One-Line Install (Recommended)
+
+**Using curl:**
+```bash
+curl -o- https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilefly/install.sh | bash
+```
+
+**Using wget:**
+```bash
+wget -qO- https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilefly/install.sh | bash
+```
+
+The installation script will:
+- Install system dependencies (Nginx, text editors)
+- Setup Node.js via NVM
+- Install pnpm and PM2
+- Clone the repository
+- Install project dependencies
+- Guide you through configuration
+
+---
+
 ## Requirements
 
 ### System Requirements

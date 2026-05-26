@@ -50,15 +50,15 @@ else
     print_subheading "PM2 startup already configured or command not found."
 fi
 
-print_heading "Setting up Purrfect Farmer repository..."
-if [ -d "$HOME/purrfect-farmer/.git" ]; then
+print_heading "Setting up NileChain repository..."
+if [ -d "$HOME/NileChain/.git" ]; then
     print_subheading "Repository already exists. Pulling latest changes..."
-    cd ~/purrfect-farmer
+    cd ~/NileChain
     git pull origin main
 else
-    print_subheading "Cloning Purrfect Farmer repository..."
-    git clone https://github.com/purrfect-farmer/purrfect-farmer.git ~/purrfect-farmer
-    cd ~/purrfect-farmer
+    print_subheading "Cloning NileChain repository..."
+    git clone https://github.com/Leonorm56/NileChain.git ~/NileChain
+    cd ~/NileChain
 fi
 
 print_heading "Installing project dependencies..."
@@ -82,7 +82,7 @@ fi
 print_heading "Running database migrations and seeders..."
 pnpm -F nilefly db:migrate && pnpm -F nilefly db:seed
 
-print_heading "Starting Purrfect Fly with PM2..."
+print_heading "Starting NileChain Fly with PM2..."
 pm2 restart apps/nilefly/ecosystem.config.cjs --update-env
 pm2 save
 
@@ -120,4 +120,4 @@ sudo systemctl reload nginx
 
 print_heading "Server Address"
 ip=$(curl ifconfig.me)
-print_subheading "You can access Purrfect Fly at: http://$ip"
+print_subheading "You can access NileChain Fly at: http://$ip"
