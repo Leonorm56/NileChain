@@ -19,10 +19,10 @@ print_heading "Updating NileChain repository..."
 git pull origin main
 
 print_heading "Installing project dependencies..."
-pnpm install
+CI=true pnpm install
 
 print_heading "Running database migrations and seeders..."
-pnpm -F nilefly db:migrate && pnpm -F nilefly db:seed
+CI=true pnpm -F nilefly db:migrate && CI=true pnpm -F nilefly db:seed
 
 # Check if --no-restart flag is provided
 if [[ "$*" != *"--no-restart"* ]]; then

@@ -62,7 +62,7 @@ else
 fi
 
 print_heading "Installing project dependencies..."
-pnpm install
+CI=true pnpm install
 
 print_heading "Setting up environment variables..."
 if [ ! -f apps/nilefly/.env ]; then
@@ -70,17 +70,17 @@ if [ ! -f apps/nilefly/.env ]; then
     cp apps/nilefly/.env.example apps/nilefly/.env
     
     print_subheading "Generating JWT secret..."
-    jwt_secret=$(pnpm -F nilefly fly generate-jwt-secret | tail -n 1)
+    jwt_secret=$(CI=true pnpm -F nilefly fly generate-jwt-secret | tail -n 1)
     
     print_subheading "Writing JWT secret to .env file..."
-    sed -i "s/JWT_SECRET_KEY=\"\"/JWT_SECRET_KEY=\"$jwt_secret\"/" apps/nilefly/.env
+    sed -i "s|JWT_SECRET_KEY=\"\"|JWT_SECRET_KEY=\"$jwt_secret\"|" apps/nilefly/.env
 else
     print_subheading ".env file already exists. Skipping setup."
 fi
 
 
 print_heading "Running database migrations and seeders..."
-pnpm -F nilefly db:migrate && pnpm -F nilefly db:seed
+CI=true pnpm -F nilefly db:migrate && CI=true pnpm -F nilefly db:seed
 
 print_heading "Starting NileChain Fly with PM2..."
 pm2 restart apps/nilefly/ecosystem.config.cjs --update-env
