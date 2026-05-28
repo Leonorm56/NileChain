@@ -77,7 +77,7 @@ export default function createRunner(FarmerClass) {
     static primaryFarmerLink = null;
     static runners = new Map();
     static referralLinks = new Map();
-    static logger = new ConsoleLogger(process.env.NODE_ENV !== "production");
+    static logger = new ConsoleLogger(true);
     static batchSize = batchSize;
     static accountDelaySeconds = accountDelaySeconds;
     static queue = [];
