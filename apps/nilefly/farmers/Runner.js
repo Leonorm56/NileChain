@@ -558,6 +558,8 @@ export default function createRunner(FarmerClass) {
             instance = this.queue.shift();
           }
 
+          this.logger.info(`-> Entering execute for [${instance.account.id}]`);
+
           try {
             await this.execute(instance, skipExecution);
           } catch (err) {
