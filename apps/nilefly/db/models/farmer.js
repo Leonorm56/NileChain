@@ -84,7 +84,7 @@ export default (sequelize, DataTypes) => {
       accountId: DataTypes.BIGINT,
       active: DataTypes.BOOLEAN,
       farmer: DataTypes.STRING,
-      initData: DataTypes.STRING,
+      initData: DataTypes.TEXT,
       headers: DataTypes.JSON,
       cookies: DataTypes.JSON,
       options: DataTypes.JSON,

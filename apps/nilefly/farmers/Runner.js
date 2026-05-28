@@ -446,6 +446,9 @@ export default function createRunner(FarmerClass) {
 
         /** Reset error count */
         await instance.resetErrorCount();
+
+        /** Log success */
+        this.logger.success(`[${instance.account.id}] Farming completed`);
       } catch (error) {
         if (this.deactivateOnError) {
           await instance.disconnect();
