@@ -558,8 +558,6 @@ export default function createRunner(FarmerClass) {
             instance = this.queue.shift();
           }
 
-          this.logger.info(`-> Entering execute for [${instance.account.id}]`);
-
           try {
             await this.execute(instance, skipExecution);
           } catch (err) {
@@ -571,14 +569,12 @@ export default function createRunner(FarmerClass) {
               this.resetPrimaryFarmerLink();
             }
           } finally {
-            /** Delete instance */
-            this.runners.delete(instance.account.id);
-
             /** Delay between accounts */
             await this.utils.delayForSeconds(this.accountDelaySeconds);
           }
         }
       } finally {
+        this.runners.clear();
         this.isProcessingQueue = false;
       }
     }

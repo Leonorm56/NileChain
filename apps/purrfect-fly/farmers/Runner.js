@@ -558,14 +558,12 @@ export default function createRunner(FarmerClass) {
               this.resetPrimaryFarmerLink();
             }
           } finally {
-            /** Delete instance */
-            this.runners.delete(instance.account.id);
-
             /** Delay based on farmer */
             await this.utils.delayForMinutes(instance.account.farmer ? 1 : 3);
           }
         }
       } finally {
+        this.runners.clear();
         this.isProcessingQueue = false;
       }
     }
