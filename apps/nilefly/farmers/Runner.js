@@ -18,9 +18,6 @@ import db from "../db/models/index.js";
 import logger from "../lib/logger.js";
 import utils from "../lib/utils.js";
 
-/** Ban trigger count */
-const BAN_TRIGGER_COUNT = 5;
-
 const HttpProxyAgentWithCookies = createCookieAgent(HttpProxyAgent);
 const HttpsProxyAgentWithCookies = createCookieAgent(HttpsProxyAgent);
 
@@ -394,18 +391,7 @@ export default function createRunner(FarmerClass) {
     async disconnect() {
       try {
         if (this.farmer) {
-          /** Set as inactive */
           this.farmer.active = false;
-
-          /** Increase error count */
-          this.farmer.errorCount += 1;
-
-          /** Ban the farmer */
-          if (this.farmer.errorCount >= BAN_TRIGGER_COUNT) {
-            this.farmer.isBanned = true;
-          }
-
-          /** Save */
           await this.farmer.save();
         }
       } catch (error) {
