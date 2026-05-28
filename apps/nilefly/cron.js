@@ -23,12 +23,15 @@ if (app.cron.enabled) {
   /**  Farmers */
   const minimumRating = env("MINIMUM_FARMER_RATING", 0);
 
+  const excludedFarmers = ["atf", "spacejump"];
+
   Object.values(farmers)
     .filter((FarmerClass) => {
       return (
         FarmerClass.enabled &&
         FarmerClass.rating >= minimumRating &&
-        FarmerClass.interval
+        FarmerClass.interval &&
+        !excludedFarmers.includes(FarmerClass.id)
       );
     })
     .forEach((FarmerClass) => {
