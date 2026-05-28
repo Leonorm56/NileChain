@@ -24,6 +24,10 @@ export default class ADCLICKERFarmer extends BaseDirectFarmer {
   static published = true;
   static rating = 3;
 
+  getReferralLink() {
+    return `https://t.me/adclickersbot?start=${this.getUserId()}`;
+  }
+
   async sendStart() {
     // Sync the message ID counter by fetching recent messages before sending
     // (avoids MSGID_DECREASE_RETRY after subscribing to channels)

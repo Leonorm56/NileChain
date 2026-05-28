@@ -54,7 +54,7 @@ export default function createRunner(FarmerClass) {
   const primaryAccountId = Number(farmerPrimaryAccountId) || 0;
 
   /** Batch size (0 = all accounts) */
-  const batchSize = Number(env(envKey + "_BATCH_SIZE", 50));
+  const batchSize = Number(env(envKey + "_BATCH_SIZE", 0));
 
   /** Delay between accounts in seconds */
   const accountDelaySeconds = Number(
