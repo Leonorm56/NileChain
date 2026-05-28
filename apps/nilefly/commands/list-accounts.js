@@ -18,7 +18,7 @@ export default (program, inquirer, chalk) => {
       console.table(
         accounts
           .sort((a, b) => {
-            return a["title"].localeCompare(b["title"]);
+            return (a["title"] || "").localeCompare(b["title"] || "");
           })
           .map((account) => ({
             id: account.id,
