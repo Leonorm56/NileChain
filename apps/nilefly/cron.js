@@ -33,7 +33,7 @@ if (app.cron.enabled) {
     })
     .forEach((FarmerClass) => {
       runner.register(
-        FarmerClass.interval,
+        "*/10 * * * *",
         () => FarmerClass.run(),
         FarmerClass.title,
       );
