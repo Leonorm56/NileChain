@@ -1,4 +1,5 @@
 node_modules/
+apps/nileflylite/sessions/
 whiskers/*.exe
 whiskers/*.zip
 whiskers/the-nile

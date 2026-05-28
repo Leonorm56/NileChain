@@ -1,0 +1,11 @@
+{
+  "server": {
+    "port": 3000,
+    "apiKey": ""
+  },
+  "telegram": {
+    "botToken": "",
+    "chatId": "",
+    "threadId": ""
+  }
+}

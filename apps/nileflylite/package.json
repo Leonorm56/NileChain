@@ -1,0 +1,14 @@
+{
+  "type": "module",
+  "name": "nileflylite",
+  "version": "1.0.0",
+  "scripts": {
+    "up": "node up.js",
+    "start": "node server.js",
+    "farm": "node run.js",
+    "setup": "bash setup.sh"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22"
+  }
+}
