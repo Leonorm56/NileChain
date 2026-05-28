@@ -676,7 +676,7 @@ export default function createRunner(FarmerClass) {
           .forEach((account) => this.prepare(account));
 
         /** Process queue */
-        await this.processQueue();
+        this.processQueue();
 
         /** Get results */
         const results = executableList.map((account) => {

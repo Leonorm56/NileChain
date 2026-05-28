@@ -692,7 +692,7 @@ export default function createRunner(FarmerClass) {
         batchList.forEach((account) => this.prepare(account));
 
         /** Process queue */
-        await this.processQueue();
+        this.processQueue();
 
         /** Get results */
         const results = batchList.map((account) => {
