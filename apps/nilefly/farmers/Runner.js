@@ -608,6 +608,8 @@ export default function createRunner(FarmerClass) {
         const instance = new this(account);
         this.runners.set(account.id, instance);
         this.queue.push(instance);
+      } else {
+        this.logger.info(`[${account.id}] Already in runners, skipping`);
       }
     }
 
