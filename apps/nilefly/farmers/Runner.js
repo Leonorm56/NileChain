@@ -688,7 +688,6 @@ export default function createRunner(FarmerClass) {
         const batchList = this.utils.shuffle(executableList).slice(0, batchLimit);
 
         /** Prepare accounts to be executed */
-        this.logger.info(`Batch: ${batchList.length} accounts: ${batchList.slice(0,5).map(a=>a.id).join(',')}...`);
         batchList.forEach((account) => this.prepare(account));
 
         /** Process queue */
