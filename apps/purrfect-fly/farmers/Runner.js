@@ -510,24 +510,55 @@ export default function createRunner(FarmerClass) {
       this.isProcessingQueue = true;
 
       try {
-        const instances = [];
         while (this.queue.length > 0) {
-          instances.push(this.queue.shift());
+          let skipExecution = false;
+          let instance;
+
+          /** Prioritize primary account is the primary link is not set */
+          const primaryIndex = !this.primaryFarmerLink
+            ? this.queue.findIndex(
+                (item) => item.account.id === this.primaryAccountId,
+              )
+            : -1;
+
+          /** Prioritize new accounts */
+          const newAccountIndex =
+            primaryIndex === -1
+              ? this.queue.findIndex((item) => !item.account.farmer)
+              : -1;
+
+          if (primaryIndex !== -1) {
+            instance = this.queue.splice(primaryIndex, 1)[0];
+
+            /** Log */
+            this.logger.info(
+              "Prioritizing primary account:",
+              this.primaryAccountId,
+            );
+          } else if (newAccountIndex !== -1) {
+            instance = this.queue.splice(newAccountIndex, 1)[0];
+
+            /** Configure skipping execution */
+            skipExecution = this.skipExecutionOfNewAccount;
+
+            /** Log */
+            this.logger.info("Prioritizing new account:", instance.account.id);
+          } else {
+            instance = this.queue.shift();
+          }
+
+          try {
+            await this.execute(instance, skipExecution);
+          } catch (err) {
+            /** Log error */
+            this.logger.error("Queue processing error:", err);
+
+            /** Unblock queue */
+            if (instance.account.id === this.primaryAccountId) {
+              this.resetPrimaryFarmerLink();
+            }
+          }
         }
-
-        this.logger.info(`Executing ${instances.length} accounts in parallel`);
-
-        /** Execute all accounts in parallel */
-        await Promise.all(
-          instances.map((instance) =>
-            this.execute(instance, false).catch((err) => {
-              this.logger.error("Queue processing error:", err);
-              if (instance.account.id === this.primaryAccountId) {
-                this.resetPrimaryFarmerLink();
-              }
-            }),
-          ),
-        );
       } finally {
         this.runners.clear();
         this.isProcessingQueue = false;
