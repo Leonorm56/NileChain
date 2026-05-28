@@ -290,7 +290,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
       let coins = parseInt(state[O.COINS], 10) || 0;
       let profit = parseInt(state[O.PROFIT_PER_HOUR], 10) || 0;
 
-      if (profit >= 100000) {
+      if (profit >= 55000) {
         this.logger.info(`Maximum profit per hour reached: ${profit}`);
         return;
       }
@@ -332,7 +332,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
           this.logger.keyValue("Coins left", coins);
           this.logger.keyValue("Profit/h", profit);
 
-          if (profit >= 100000) {
+          if (profit >= 55000) {
             this.logger.info(`Maximum profit per hour reached: ${profit}`);
             return;
           }
