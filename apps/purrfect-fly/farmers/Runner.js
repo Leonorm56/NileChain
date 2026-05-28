@@ -19,8 +19,6 @@ import logger from "../lib/logger.js";
 import utils from "../lib/utils.js";
 
 /** Ban trigger count */
-const BAN_TRIGGER_COUNT = 5;
-
 const HttpProxyAgentWithCookies = createCookieAgent(HttpProxyAgent);
 const HttpsProxyAgentWithCookies = createCookieAgent(HttpsProxyAgent);
 
@@ -382,18 +380,7 @@ export default function createRunner(FarmerClass) {
     async disconnect() {
       try {
         if (this.farmer) {
-          /** Set as inactive */
           this.farmer.active = false;
-
-          /** Increase error count */
-          this.farmer.errorCount += 1;
-
-          /** Ban the farmer */
-          if (this.farmer.errorCount >= BAN_TRIGGER_COUNT) {
-            this.farmer.isBanned = true;
-          }
-
-          /** Save */
           await this.farmer.save();
         }
       } catch (error) {
@@ -657,38 +644,8 @@ export default function createRunner(FarmerClass) {
           return !item.farmer?.isBanned;
         });
 
-        /** Needs Primary Account */
-        const needsPrimaryAccount = Boolean(this.primaryAccountId);
-
-        /** Primary account */
-        const primaryAccount = needsPrimaryAccount
-          ? accounts.find((acc) => acc.id === this.primaryAccountId)
-          : null;
-
-        /** Can launch primary account */
-        const canLaunchPrimaryAccount =
-          !needsPrimaryAccount ||
-          primaryAccount?.farmer?.active ||
-          primaryAccount?.session;
-
-        /** Can auto-start accounts without farmer */
-        const canAutoStart =
-          this.autoStart &&
-          this.platform === "telegram" &&
-          canLaunchPrimaryAccount;
-
         /** Get accounts to be executed  */
-        const executableList = accounts.filter((account) => {
-          /**
-           * A farmer can be automatically created for an
-           * account with an active telegram session
-           */
-          const execute = canAutoStart
-            ? account.farmer?.active || account.session
-            : account.farmer?.active;
-
-          return execute;
-        });
+        const executableList = accounts;
 
         /* Skipped accounts */
         const skippedAccounts = accountsWithFarmer.filter(
