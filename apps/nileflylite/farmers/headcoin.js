@@ -100,7 +100,7 @@ export async function farmHeadCoin(account) {
 
   let initData = account.initData;
 
-  // If session exists but no cached initData, refresh first
+  // If no cached initData but has session, try refresh
   if (!initData && account.session) {
     logger.log("No cached initData, refreshing via MTProto...");
     try {
@@ -113,39 +113,36 @@ export async function farmHeadCoin(account) {
   logger.info(`Farming HeadCoin for ${account.id}...`);
 
   let state;
-  try {
-    state = await fetchGameState(initData);
-  } catch (err) {
-    // Network error — if we have session, try refresh once
-    if (account.session) {
-      logger.log("Farming failed, refreshing initData via MTProto...");
-      try {
-        initData = await refreshAuth(account);
-        state = await fetchGameState(initData);
-      } catch (err2) {
-        return { ok: false, error: `Farming failed after refresh: ${err2.message}`, coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
-      }
-    } else {
-      return { ok: false, error: err.message, coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
+
+  // Helper: try fetching game state with given auth, returns state or null
+  const tryFetch = async (auth) => {
+    if (!auth) return null;
+    try {
+      const s = await fetchGameState(auth);
+      return s && s.length >= 20 ? s : null;
+    } catch { return null; }
+  };
+
+  // First attempt with current initData
+  state = await tryFetch(initData);
+
+  // If failed and has session, try refresh + retry
+  if (!state && account.session) {
+    logger.log("Farming failed, refreshing initData via MTProto...");
+    try {
+      const fresh = await refreshAuth(account);
+      state = await tryFetch(fresh);
+      if (state) initData = fresh;
+    } catch (err) {
+      logger.warn(`Refresh failed (${err.message}), trying original initData`);
     }
+    // If refresh didn't work, try original initData (might still be valid)
+    if (!state) state = await tryFetch(account.initData);
   }
 
-  if (!state || state.length < 20) {
-    // Bad state — could be expired initData. Try refresh if we have session.
-    if (account.session) {
-      logger.log("Unexpected state, refreshing initData via MTProto...");
-      try {
-        initData = await refreshAuth(account);
-        state = await fetchGameState(initData);
-      } catch (err) {
-        return { ok: false, error: `Farming failed after refresh: ${err.message}`, coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
-      }
-      if (!state || state.length < 20) {
-        return { ok: false, error: "Unexpected game state after refresh", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
-      }
-    } else {
-      return { ok: false, error: "Unexpected game state", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
-    }
+  // No valid state after all retries
+  if (!state) {
+    return { ok: false, error: "Unexpected game state", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
   }
 
   const coins = parseInt(state[3], 10) || 0;
