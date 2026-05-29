@@ -53,6 +53,13 @@ async function fetchGameState(initData) {
   return parseState(res.data);
 }
 
+async function fetchTasks(initData) {
+  const payload = buildPayload(initData);
+  const res = await post(`${API_BASE}/gettasks.php`, payload);
+  if (!res.ok) return [];
+  return parseTasks(res.data);
+}
+
 async function claimDailyBonus(initData) {
   const payload = buildPayload(initData);
   const res = await post(`${API_BASE}/claimdailybonus.php`, payload);
@@ -101,18 +108,13 @@ function getCardUpgradeCount(state, cat, el) {
 
 async function upgradeElement(initData, categIndex, elementIndex) {
   const now = Date.now();
-  const d = new Date(now);
   const payload = {
     textqueryid: initData || "",
     numbcateg: String(categIndex),
     numbelement: String(elementIndex),
     timestamp: String(now),
   };
-  const headers = {
-    Origin: "https://headgun.org",
-    Referer: "https://headgun.org/",
-  };
-  const res = await post(`${API_BASE}/levelupelement.php`, payload, headers);
+  const res = await post(`${API_BASE}/levelupelement.php`, payload);
   return res.ok ? String(res.data ?? "").trim() : "";
 }
 
@@ -152,6 +154,38 @@ export async function farmHeadCoin(account) {
     }
   }
 
+  // --- Tasks ---
+  try {
+    const tasks = await fetchTasks(initData);
+    if (tasks.length > 0) {
+      logger.info(`${tasks.length} tasks available`);
+      for (const task of tasks) {
+        const status = await completeTask(initData, task.id);
+        if (status === "1") {
+          logger.log(`Task done: ${task.title}`);
+          continue;
+        }
+        logger.log(`Playing task: ${task.title}`);
+        await clickSponsorTask(initData, task.id);
+        const check = await checkSponsorTask(initData, task.id);
+        if (check === "1") logger.success(`Task done: ${task.title}`);
+        else logger.warn(`Task pending: ${task.title}`);
+      }
+    } else {
+      logger.info("No tasks available");
+    }
+  } catch (err) {
+    logger.warn(`Tasks failed: ${err.message}`);
+  }
+
+  // --- Debug: peek at card state ---
+  if (profit < 55000) {
+    logger.log("Card state indices 15-25:");
+    for (let i = 15; i < Math.min(state.length, 25); i++) {
+      logger.log(`  [${i}]: ${String(state[i]).slice(0, 80)}`);
+    }
+  }
+
   const cardOrder = [
     { cat: 2, count: 9 },
     { cat: 3, count: 11 },
@@ -181,9 +215,11 @@ export async function farmHeadCoin(account) {
       if (currentCoins <= 0) break;
 
       const lvl = getCardUpgradeCount(state, cat, el);
+      logger.log(`Cat ${cat}/${el}: lvl=${lvl}`);
       if (lvl >= 14) continue;
 
       const result = await upgradeElement(initData, cat, el);
+      logger.log(`Cat ${cat}/${el}: upgrade returned "${result}"`);
       if (result === "1") {
         upgrades++;
         const postState = await fetchGameState(initData);
@@ -196,6 +232,7 @@ export async function farmHeadCoin(account) {
           return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
         }
       } else if (result !== "2") {
+        logger.warn(`Cat ${cat}/${el}: unexpected response "${result}", breaking`);
         break;
       }
     }
