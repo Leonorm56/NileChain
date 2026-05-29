@@ -3,6 +3,10 @@ import { logger } from "./lib/logger.js";
 import { createBot } from "./lib/telegram-bot.js";
 import { farmHeadCoin } from "./farmers/headcoin.js";
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 const config = getConfig();
 const bot = createBot(config.telegram.botToken, config.telegram.chatId, config.telegram.threadId);
 
@@ -60,6 +64,8 @@ async function run() {
         bot.sendError(account.id, farmer.title, err.message);
       }
     }
+
+    await sleep(5000);
   }
 
   await writeAccounts(readAccounts());
