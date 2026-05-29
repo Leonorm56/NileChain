@@ -57,6 +57,9 @@ export async function postJson(url, jsonBody, extraHeaders = {}) {
       });
       const text = await res.text();
       if (!res.ok) {
+        if (res.status >= 400 && res.status < 500) {
+          return { ok: false, data: text, error: `HTTP ${res.status}: ${text.slice(0, 100)}` };
+        }
         throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
       }
       return { ok: true, data: text, status: res.status };

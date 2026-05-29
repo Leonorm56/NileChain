@@ -49,9 +49,9 @@ export function createBot(token, chatId, threadId) {
             chat_id: chatId,
             message_id: prevId,
           });
-          if (delRes.ok && delRes.data) {
+          if (!delRes.ok && delRes.data) {
             try {
-              const parsed = JSON.parse(delRes.data);
+              const parsed = JSON.parse(typeof delRes.data === "string" ? delRes.data : "{}");
               if (!parsed.ok) logger.warn(`Delete old message: ${parsed.description}`);
             } catch {}
           }
