@@ -27,13 +27,17 @@ export function createBot(token, chatId, threadId) {
 
   async function sendMessage(text) {
     const url = `${BASE}${token}/sendMessage`;
-    return postJson(url, {
+    const res = await postJson(url, {
       chat_id: chatId,
       text,
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
       ...(threadId ? { message_thread_id: threadId } : {}),
     });
+    if (res.ok && res.data) {
+      try { return JSON.parse(res.data); } catch {}
+    }
+    return null;
   }
 
   return {
@@ -41,12 +45,16 @@ export function createBot(token, chatId, threadId) {
       try {
         const prevId = readLastMessageId();
         if (prevId) {
-          try {
-            await postJson(`${BASE}${token}/deleteMessage`, {
-              chat_id: chatId,
-              message_id: prevId,
-            });
-          } catch {}
+          const delRes = await postJson(`${BASE}${token}/deleteMessage`, {
+            chat_id: chatId,
+            message_id: prevId,
+          });
+          if (delRes.ok && delRes.data) {
+            try {
+              const parsed = JSON.parse(delRes.data);
+              if (!parsed.ok) logger.warn(`Delete old message: ${parsed.description}`);
+            } catch {}
+          }
         }
 
         const okResults = [];
