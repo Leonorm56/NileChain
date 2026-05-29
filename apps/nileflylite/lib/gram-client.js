@@ -148,3 +148,32 @@ export async function deleteSessionFile(sessionId) {
     await fs.unlink(sessionPath(sessionId));
   } catch {}
 }
+
+export async function refreshInitData(sessionString, botUsername, startParam) {
+  const client = await createClientFromSession(sessionString);
+
+  let url;
+  try {
+    const entity = await client.getInputEntity(botUsername);
+    const result = await client.invoke(
+      new (await import("telegram")).Api.messages.RequestWebView({
+        peer: entity,
+        bot: entity,
+        platform: "android",
+        startParam,
+      })
+    );
+    url = result.url;
+  } finally {
+    try { await client.disconnect(); } catch {}
+  }
+
+  if (!url) throw new Error("No URL returned from RequestWebView");
+
+  const parsedUrl = new URL(url);
+  const params = new URLSearchParams(parsedUrl.hash.replace(/^#/, ""));
+  const initData = params.get("tgWebAppData");
+  if (!initData) throw new Error("No tgWebAppData in URL");
+
+  return decodeURIComponent(initData);
+}
