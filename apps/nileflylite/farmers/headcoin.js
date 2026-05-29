@@ -33,22 +33,6 @@ function parseState(raw) {
   }
 }
 
-function parseTasks(raw) {
-  if (!raw) return [];
-  const decoded = decodeURIComponent(raw);
-  if (!decoded || decoded === "0") return [];
-  return decoded.split("||").map((block) => {
-    const parts = block.split("~_-");
-    return {
-      id: parts[0],
-      title: (parts[1] || "").replace(/\+/g, " "),
-      link: (parts[2] || "").replace(/\+/g, " "),
-      type: parts[3] || "0",
-      sponsor: parts[5] || "",
-    };
-  });
-}
-
 async function fetchGameState(initData) {
   const payload = buildPayload(initData);
   const res = await post(`${API_BASE}/headcoin.php`, payload);
@@ -56,35 +40,10 @@ async function fetchGameState(initData) {
   return parseState(res.data);
 }
 
-async function fetchTasks(initData) {
-  const payload = buildPayload(initData);
-  const res = await post(`${API_BASE}/gettasks.php`, payload);
-  if (!res.ok) return [];
-  return parseTasks(res.data);
-}
-
 async function claimDailyBonus(initData) {
   const payload = buildPayload(initData);
   const res = await post(`${API_BASE}/claimdailybonus.php`, payload);
   return res.ok && String(res.data ?? "").trim() === "1";
-}
-
-async function completeTask(initData, taskId) {
-  const payload = { ...buildPayload(initData), numbtask: taskId };
-  const res = await post(`${API_BASE}/checktask.php`, payload);
-  return res.ok ? String(res.data ?? "").trim() : "";
-}
-
-async function clickSponsorTask(initData, taskId) {
-  const payload = { ...buildPayload(initData), numbtask: taskId };
-  const res = await post(`${API_BASE}/clicktasksponsor.php`, payload);
-  return res.ok ? String(res.data ?? "").trim() : "";
-}
-
-async function checkSponsorTask(initData, taskId) {
-  const payload = { ...buildPayload(initData), numbtask: taskId };
-  const res = await post(`${API_BASE}/checktasksponsor.php`, payload);
-  return res.ok ? String(res.data ?? "").trim() : "";
 }
 
 function getCardUpgradeCount(state, cat, el) {
@@ -155,30 +114,6 @@ export async function farmHeadCoin(account) {
     } else {
       logger.warn("Daily bonus claim returned unexpected result");
     }
-  }
-
-  // --- Tasks ---
-  try {
-    const tasks = await fetchTasks(initData);
-    if (tasks.length > 0) {
-      logger.info(`${tasks.length} tasks available`);
-      for (const task of tasks) {
-        const status = await completeTask(initData, task.id);
-        if (status === "1") {
-          logger.log(`Task done: ${task.title}`);
-          continue;
-        }
-        logger.log(`Playing task: ${task.title}`);
-        await clickSponsorTask(initData, task.id);
-        const check = await checkSponsorTask(initData, task.id);
-        if (check === "1") logger.success(`Task done: ${task.title}`);
-        else logger.warn(`Task pending: ${task.title}`);
-      }
-    } else {
-      logger.info("No tasks available");
-    }
-  } catch (err) {
-    logger.warn(`Tasks failed: ${err.message}`);
   }
 
   const cardOrder = [

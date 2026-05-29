@@ -74,7 +74,7 @@ async function run() {
       }
     }
 
-    await sleep(5000);
+    await sleep(2000);
   }
 
   const cycleElapsed = Math.round((Date.now() - cycleStart) / 1000);
