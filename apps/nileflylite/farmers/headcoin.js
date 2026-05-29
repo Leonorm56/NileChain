@@ -186,6 +186,7 @@ export async function farmHeadCoin(account) {
   ];
 
   if (profit < 55000) {
+    let upgrades = 0;
     let upgradeCoins = coins;
     let upgradeProfit = profit;
 
