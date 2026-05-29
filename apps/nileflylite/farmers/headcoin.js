@@ -232,8 +232,6 @@ export async function farmHeadCoin(account) {
         }
       }
 
-      // 10s delay between categories (matches extension behavior)
-      if (upgraded) await sleep(10000);
     }
   }
 
