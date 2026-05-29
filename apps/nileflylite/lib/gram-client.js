@@ -57,7 +57,7 @@ export async function startPhoneAuth(phone) {
     authData.userId = user.id?.toString();
     authData.sessionString = client.session.save();
     authData.stage = "complete";
-    await client.disconnect();
+    await client.destroy();
     await fs.writeFile(sessionPath(sessionId), JSON.stringify(authData.sessionString));
   }).catch((err) => {
     authData.error = err.message;
@@ -137,10 +137,10 @@ export async function logoutSession(sessionString) {
   try {
     const client = await createClientFromSession(sessionString);
     await client.invoke(new (await import("telegram")).Api.auth.LogOut({}));
-    await client.disconnect();
-  } catch (err) {
-    logger.warn("Logout error:", err.message);
-  }
+      await client.destroy();
+    } catch (err) {
+      logger.warn("Logout error:", err.message);
+    }
 }
 
 export async function deleteSessionFile(sessionId) {
@@ -165,7 +165,7 @@ export async function refreshInitData(sessionString, botUsername, startParam) {
     );
     url = result.url;
   } finally {
-    try { await client.disconnect(); } catch {}
+    try { await client.destroy(); } catch {}
   }
 
   if (!url) throw new Error("No URL returned from RequestWebView");
