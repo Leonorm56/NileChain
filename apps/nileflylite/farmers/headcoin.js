@@ -197,6 +197,7 @@ export async function farmHeadCoin(account) {
     for (const { cat, count } of cardOrder) {
       if (currentCoins <= 0) break;
 
+      let upgraded = false;
       for (let el = 0; el < count; el++) {
         if (currentCoins <= 0) break;
 
@@ -205,6 +206,7 @@ export async function farmHeadCoin(account) {
 
         const result = await upgradeElement(initData, cat, el);
         if (result === "1") {
+          upgraded = true;
           upgrades++;
           await sleep(2000);
           const postState = await fetchGameState(initData);
@@ -219,10 +221,12 @@ export async function farmHeadCoin(account) {
             return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
           }
           logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
-        } else if (result !== "2") {
-          break;
+        } else if (result === "2") {
+          logger.log(`Cat ${cat}/${el}: locked`);
         }
       }
+
+      if (upgraded) await sleep(2000);
     }
   }
 
