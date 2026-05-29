@@ -14,18 +14,14 @@ const FARMERS = [
   { id: "head-coin", title: "HeadCoin", farm: farmHeadCoin },
 ];
 
-async function run() {
-  logger.newline();
-  logger.info("=== Starting farming cycle ===");
-
+async function runCycle() {
   const accounts = readAccounts();
   if (accounts.length === 0) {
-    logger.warn("No accounts found. Add accounts via server.js or edit accounts.json");
+    logger.warn("No accounts found");
     return;
   }
 
   logger.info(`Farming ${accounts.length} accounts...`);
-  logger.newline();
 
   const allResults = [];
   const cycleStart = Date.now();
@@ -83,6 +79,18 @@ async function run() {
   await writeAccounts(readAccounts());
   logger.newline();
   logger.success("=== Farming cycle complete ===");
+}
+
+async function run() {
+  logger.info("=== Run loop started ===");
+
+  while (true) {
+    try {
+      await runCycle();
+    } catch (err) {
+      logger.error("Cycle error:", err.message);
+    }
+  }
 }
 
 run().catch((err) => {
