@@ -5,6 +5,10 @@ const API_BASE = "https://headgun.org/headcoin";
 const SPLIT = "|;1f~";
 const MAX_CARD_COST = 150000;
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
@@ -185,16 +189,16 @@ export async function farmHeadCoin(account) {
     { cat: 4, count: 2 },
   ];
 
-  if (profit < 55000) {
-    let upgrades = 0;
-    let upgradeCoins = coins;
-    let upgradeProfit = profit;
+  let upgrades = 0;
+  let currentCoins = coins;
+  let currentProfit = profit;
 
+  if (profit < 55000) {
     for (const { cat, count } of cardOrder) {
-      if (upgradeCoins <= 0) break;
+      if (currentCoins <= 0) break;
 
       for (let el = 0; el < count; el++) {
-        if (upgradeCoins <= 0) break;
+        if (currentCoins <= 0) break;
 
         const lvl = getCardUpgradeCount(state, cat, el);
         if (lvl >= 14) continue;
@@ -202,26 +206,24 @@ export async function farmHeadCoin(account) {
         const result = await upgradeElement(initData, cat, el);
         if (result === "1") {
           upgrades++;
+          await sleep(2000);
           const postState = await fetchGameState(initData);
-          upgradeCoins = parseInt(postState[3], 10) || 0;
-          upgradeProfit = parseInt(postState[15], 10) || 0;
+          if (postState && postState.length >= 20) {
+            currentCoins = parseInt(postState[3], 10) || 0;
+            currentProfit = parseInt(postState[15], 10) || 0;
+          }
 
-          if (upgradeProfit >= 55000) {
-            currentCoins = upgradeCoins;
-            currentProfit = upgradeProfit;
+          if (currentProfit >= 55000) {
             logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
             logger.info("Max profit reached");
             return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
           }
-          logger.success(`Cat ${cat}/${el} upgraded — coins: ${upgradeCoins}, profit: ${upgradeProfit}`);
+          logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
         } else if (result !== "2") {
           break;
         }
       }
     }
-
-    currentCoins = upgradeCoins;
-    currentProfit = upgradeProfit;
   }
 
   logger.success(`Farming complete — coins: ${currentCoins}, profit: ${currentProfit}, upgrades: ${upgrades}`);
