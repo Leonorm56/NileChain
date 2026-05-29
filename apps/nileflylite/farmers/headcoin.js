@@ -127,33 +127,41 @@ export async function farmHeadCoin(account) {
   let currentCoins = coins;
   let currentProfit = profit;
 
-  for (const { cat, count } of cardOrder) {
-    if (currentCoins <= 0) break;
-
-    let upgraded = false;
-    for (let el = 0; el < count; el++) {
+  if (profit < 55000) {
+    for (const { cat, count } of cardOrder) {
       if (currentCoins <= 0) break;
 
-      const lvl = getCardUpgradeCount(state, cat, el);
-      if (lvl >= 14) continue;
+      let upgraded = false;
+      for (let el = 0; el < count; el++) {
+        if (currentCoins <= 0) break;
 
-      const result = await upgradeElement(initData, cat, el);
-      if (result === "1") {
-        upgraded = true;
-        upgrades++;
-        await sleep(2000);
-        const postState = await fetchGameState(initData);
-        if (postState && postState.length >= 20) {
-          currentCoins = parseInt(postState[3], 10) || 0;
-          currentProfit = parseInt(postState[15], 10) || 0;
+        const lvl = getCardUpgradeCount(state, cat, el);
+        if (lvl >= 14) continue;
+
+        const result = await upgradeElement(initData, cat, el);
+        if (result === "1") {
+          upgraded = true;
+          upgrades++;
+          await sleep(2000);
+          const postState = await fetchGameState(initData);
+          if (postState && postState.length >= 20) {
+            currentCoins = parseInt(postState[3], 10) || 0;
+            currentProfit = parseInt(postState[15], 10) || 0;
+          }
+
+          if (currentProfit >= 55000) {
+            logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
+            logger.info("Max profit reached");
+            return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
+          }
+          logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
+        } else if (result === "2") {
+          logger.log(`Cat ${cat}/${el}: locked`);
         }
-        logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
-      } else if (result === "2") {
-        logger.log(`Cat ${cat}/${el}: locked`);
       }
-    }
 
-    if (upgraded) await sleep(2000);
+      if (upgraded) await sleep(2000);
+    }
   }
 
   logger.success(`Farming complete — coins: ${currentCoins}, profit: ${currentProfit}, upgrades: ${upgrades}`);
