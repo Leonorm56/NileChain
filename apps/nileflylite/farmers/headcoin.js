@@ -3,7 +3,6 @@ import { logger } from "../lib/logger.js";
 
 const API_BASE = "https://headgun.org/headcoin";
 const SPLIT = "|;1f~";
-const MAX_CARD_COST = 150000;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
