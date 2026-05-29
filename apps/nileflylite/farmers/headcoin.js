@@ -183,11 +183,31 @@ export async function farmHeadCoin(account) {
     for (const { cat, count } of cardOrder) {
       if (currentCoins <= 0) break;
 
+      // Fresh game state before each category (extension behavior)
+      const freshState = await fetchGameState(initData);
+      if (!freshState || freshState.length < 20) {
+        logger.warn(`Cat ${cat}: Unexpected game state, skipping`);
+        continue;
+      }
+      currentCoins = parseInt(freshState[3], 10) || 0;
+      currentProfit = parseInt(freshState[15], 10) || 0;
+      const dailyStreak = parseInt(freshState[8], 10) || 0;
+      if (dailyStreak > 0 && !dailyBonusClaimed) dailyBonusClaimed = true;
+
+      if (currentProfit >= 55000) {
+        logger.info("Max profit reached");
+        return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
+      }
+
+      logger.keyValue("Coins", currentCoins);
+      logger.keyValue("Profit/h", currentProfit);
+      logger.log(`Upgrading cards cat ${cat} (${count} elements)...`);
+
       let upgraded = false;
       for (let el = 0; el < count; el++) {
         if (currentCoins <= 0) break;
 
-        const lvl = getCardUpgradeCount(state, cat, el);
+        const lvl = getCardUpgradeCount(freshState, cat, el);
         if (lvl >= 14) continue;
 
         const result = await upgradeElement(initData, cat, el);
@@ -212,7 +232,8 @@ export async function farmHeadCoin(account) {
         }
       }
 
-      if (upgraded) await sleep(2000);
+      // 10s delay between categories (matches extension behavior)
+      if (upgraded) await sleep(10000);
     }
   }
 
