@@ -178,14 +178,6 @@ export async function farmHeadCoin(account) {
     logger.warn(`Tasks failed: ${err.message}`);
   }
 
-  // --- Debug: peek at card state ---
-  if (profit < 55000) {
-    logger.log("Card state indices 15-25:");
-    for (let i = 15; i < Math.min(state.length, 25); i++) {
-      logger.log(`  [${i}]: ${String(state[i]).slice(0, 80)}`);
-    }
-  }
-
   const cardOrder = [
     { cat: 2, count: 9 },
     { cat: 3, count: 11 },
@@ -193,57 +185,42 @@ export async function farmHeadCoin(account) {
     { cat: 4, count: 2 },
   ];
 
-  let upgrades = 0;
-  let currentCoins = coins;
-  let currentProfit = profit;
+  if (profit < 55000) {
+    let upgradeCoins = coins;
+    let upgradeProfit = profit;
 
-  for (const { cat, count } of cardOrder) {
-    if (currentCoins <= 0) { console.log(`[DBG] cat ${cat}: no coins`); break; }
+    for (const { cat, count } of cardOrder) {
+      if (upgradeCoins <= 0) break;
 
-    console.log(`[DBG] Fetching state for cat ${cat}...`);
-    state = await fetchGameState(initData);
-    if (!state || state.length < 20) {
-      console.log(`[DBG] cat ${cat}: invalid state, continuing`);
-      continue;
-    }
+      for (let el = 0; el < count; el++) {
+        if (upgradeCoins <= 0) break;
 
-    currentCoins = parseInt(state[3], 10) || 0;
-    currentProfit = parseInt(state[15], 10) || 0;
-    console.log(`[DBG] cat ${cat}: coins=${currentCoins} profit=${currentProfit}`);
+        const lvl = getCardUpgradeCount(state, cat, el);
+        if (lvl >= 14) continue;
 
-    if (currentProfit >= 55000) {
-      console.log(`[DBG] cat ${cat}: profit cap reached`);
-      break;
-    }
+        const result = await upgradeElement(initData, cat, el);
+        if (result === "1") {
+          upgrades++;
+          const postState = await fetchGameState(initData);
+          upgradeCoins = parseInt(postState[3], 10) || 0;
+          upgradeProfit = parseInt(postState[15], 10) || 0;
 
-    console.log(`[DBG] Entering element loop for cat ${cat}, count=${count}`);
-    for (let el = 0; el < count; el++) {
-      if (currentCoins <= 0) { console.log(`[DBG] cat ${cat}/${el}: no coins, break`); break; }
-
-      const lvl = getCardUpgradeCount(state, cat, el);
-      console.log(`[DBG] cat ${cat}/${el}: lvl=${lvl}`);
-      if (lvl >= 14) { console.log(`[DBG] cat ${cat}/${el}: max level`); continue; }
-
-      console.log(`[DBG] Upgrading cat ${cat}/${el}...`);
-      const result = await upgradeElement(initData, cat, el);
-      console.log(`[DBG] cat ${cat}/${el}: returned "${result}"`);
-      if (result === "1") {
-        upgrades++;
-        const postState = await fetchGameState(initData);
-        currentCoins = parseInt(postState[3], 10) || 0;
-        currentProfit = parseInt(postState[15], 10) || 0;
-
-        if (currentProfit >= 55000) {
-          logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
-          logger.info("Max profit reached");
-          return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
+          if (upgradeProfit >= 55000) {
+            currentCoins = upgradeCoins;
+            currentProfit = upgradeProfit;
+            logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
+            logger.info("Max profit reached");
+            return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
+          }
+          logger.success(`Cat ${cat}/${el} upgraded — coins: ${upgradeCoins}, profit: ${upgradeProfit}`);
+        } else if (result !== "2") {
+          break;
         }
-        logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
-      } else if (result !== "2") {
-        console.log(`[DBG] cat ${cat}/${el}: unexpected "${result}", breaking`);
-        break;
       }
     }
+
+    currentCoins = upgradeCoins;
+    currentProfit = upgradeProfit;
   }
 
   logger.success(`Farming complete — coins: ${currentCoins}, profit: ${currentProfit}, upgrades: ${upgrades}`);
