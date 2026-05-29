@@ -241,6 +241,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   logger.success(`NileFlyLite server running on port ${PORT}`);
 });
