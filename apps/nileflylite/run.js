@@ -27,6 +27,9 @@ async function run() {
   logger.info(`Farming ${accounts.length} accounts...`);
   logger.newline();
 
+  const allResults = [];
+  const cycleStart = Date.now();
+
   for (const account of accounts) {
     if (account.headcoin?.enabled === false) {
       logger.info(`Skipping ${account.id} (disabled)`);
@@ -54,19 +57,28 @@ async function run() {
           ok: result.ok,
         };
 
-        if (result.ok) {
-          bot.sendStatus(account.id, farmer.title, result);
-        } else {
-          bot.sendError(account.id, farmer.title, result.error || "Unknown error");
-        }
+        allResults.push({
+          accountId: account.id,
+          profit: result.profit,
+          ok: result.ok,
+          error: result.error,
+        });
       } catch (err) {
         logger.error(`Error farming ${farmer.title} for ${account.id}:`, err.message);
-        bot.sendError(account.id, farmer.title, err.message);
+        allResults.push({
+          accountId: account.id,
+          profit: 0,
+          ok: false,
+          error: err.message,
+        });
       }
     }
 
     await sleep(5000);
   }
+
+  const cycleElapsed = Math.round((Date.now() - cycleStart) / 1000);
+  await bot.sendCycleSummary(allResults, { elapsed: cycleElapsed });
 
   await writeAccounts(readAccounts());
   logger.newline();
