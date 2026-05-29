@@ -6,7 +6,6 @@ import { getInitDataUnsafe } from "./lib/telegram-utils.js";
 
 const config = getConfig();
 const PORT = config.server.port || 3000;
-const API_KEY = config.server.apiKey || "";
 
 function sendJson(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -28,12 +27,6 @@ function parseBody(req) {
   });
 }
 
-function checkAuth(req) {
-  if (!API_KEY) return true;
-  const auth = req.headers["authorization"];
-  return auth === `Bearer ${API_KEY}`;
-}
-
 const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -43,10 +36,6 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204);
     res.end();
     return;
-  }
-
-  if (!checkAuth(req)) {
-    return sendJson(res, 401, { error: "Unauthorized" });
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
