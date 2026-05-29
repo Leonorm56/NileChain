@@ -198,41 +198,49 @@ export async function farmHeadCoin(account) {
   let currentProfit = profit;
 
   for (const { cat, count } of cardOrder) {
-    if (currentCoins <= 0) break;
+    if (currentCoins <= 0) { console.log(`[DBG] cat ${cat}: no coins`); break; }
 
+    console.log(`[DBG] Fetching state for cat ${cat}...`);
     state = await fetchGameState(initData);
-    if (!state || state.length < 20) continue;
+    if (!state || state.length < 20) {
+      console.log(`[DBG] cat ${cat}: invalid state, continuing`);
+      continue;
+    }
 
     currentCoins = parseInt(state[3], 10) || 0;
     currentProfit = parseInt(state[15], 10) || 0;
+    console.log(`[DBG] cat ${cat}: coins=${currentCoins} profit=${currentProfit}`);
 
     if (currentProfit >= 55000) {
-      logger.info("Max profit reached (55000)");
+      console.log(`[DBG] cat ${cat}: profit cap reached`);
       break;
     }
 
+    console.log(`[DBG] Entering element loop for cat ${cat}, count=${count}`);
     for (let el = 0; el < count; el++) {
-      if (currentCoins <= 0) break;
+      if (currentCoins <= 0) { console.log(`[DBG] cat ${cat}/${el}: no coins, break`); break; }
 
       const lvl = getCardUpgradeCount(state, cat, el);
-      logger.log(`Cat ${cat}/${el}: lvl=${lvl}`);
-      if (lvl >= 14) continue;
+      console.log(`[DBG] cat ${cat}/${el}: lvl=${lvl}`);
+      if (lvl >= 14) { console.log(`[DBG] cat ${cat}/${el}: max level`); continue; }
 
+      console.log(`[DBG] Upgrading cat ${cat}/${el}...`);
       const result = await upgradeElement(initData, cat, el);
-      logger.log(`Cat ${cat}/${el}: upgrade returned "${result}"`);
+      console.log(`[DBG] cat ${cat}/${el}: returned "${result}"`);
       if (result === "1") {
         upgrades++;
         const postState = await fetchGameState(initData);
         currentCoins = parseInt(postState[3], 10) || 0;
         currentProfit = parseInt(postState[15], 10) || 0;
-        logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
 
         if (currentProfit >= 55000) {
+          logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
           logger.info("Max profit reached");
           return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
         }
+        logger.success(`Cat ${cat}/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
       } else if (result !== "2") {
-        logger.warn(`Cat ${cat}/${el}: unexpected response "${result}", breaking`);
+        console.log(`[DBG] cat ${cat}/${el}: unexpected "${result}", breaking`);
         break;
       }
     }
