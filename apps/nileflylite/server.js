@@ -4,6 +4,13 @@ import { logger } from "./lib/logger.js";
 import { startPhoneAuth, submitCode, submitPassword, waitForAuth, loadSession, logoutSession, deleteSessionFile } from "./lib/gram-client.js";
 import { getInitDataUnsafe } from "./lib/telegram-utils.js";
 
+process.on("unhandledRejection", (err) => {
+  logger.error("Unhandled rejection:", err?.message || err);
+});
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught exception:", err?.message || err);
+});
+
 const config = getConfig();
 const PORT = config.server.port || 3000;
 
