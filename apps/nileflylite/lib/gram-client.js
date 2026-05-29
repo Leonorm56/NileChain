@@ -129,6 +129,7 @@ export async function createClientFromSession(sessionString) {
     systemLangCode: "en-US",
     langCode: "en",
   });
+  client._loopStarted = true; // prevent update loop from starting — we only need one-off RPC calls
   await client.connect();
   return client;
 }
