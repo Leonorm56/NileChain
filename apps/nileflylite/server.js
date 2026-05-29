@@ -43,6 +43,11 @@ const server = http.createServer(async (req, res) => {
   const method = req.method;
 
   try {
+    // GET /api/server — extension checks this first
+    if (path === "/api/server" && method === "GET") {
+      return sendJson(res, 200, { name: "NileFlyLite" });
+    }
+
     // GET /api/status
     if (path === "/api/status" && method === "GET") {
       const accounts = readAccounts();
@@ -57,12 +62,61 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    // GET /api/subscription — stub: always active
+    // POST /api/subscription — always active
     if (path === "/api/subscription" && method === "POST") {
+      const body = await parseBody(req);
+      const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
+      const userId = unsafe?.user?.id?.toString();
+      const account = userId ? findAccount(userId) : null;
+
       return sendJson(res, 200, {
-        subscription: { active: true, expiresAt: null },
-        account: { session: null },
+        subscription: { endsAt: null },
+        account: {
+          session: account?.session || null,
+          proxy: null,
+        },
       });
+    }
+
+    // POST /api/farmers — list farmers for account (extension polls every 10s)
+    if (path === "/api/farmers" && method === "POST") {
+      const body = await parseBody(req);
+      const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
+      const userId = unsafe?.user?.id?.toString();
+      const account = userId ? findAccount(userId) : null;
+
+      const farmer = account?.headcoin
+        ? { id: account.id, farmer: "head-coin", initData: account.initData || "", active: true }
+        : null;
+
+      return sendJson(res, 200, farmer ? [farmer] : []);
+    }
+
+    // POST /api/farmers/activate — activate a farmer for this account
+    if (path === "/api/farmers/activate" && method === "POST") {
+      const body = await parseBody(req);
+      const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
+      const userId = unsafe?.user?.id?.toString();
+      if (userId) {
+        upsertAccount({ id: userId, headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false } });
+        await writeAccounts(readAccounts());
+      }
+      return sendJson(res, 200, { ok: true });
+    }
+
+    // POST /api/farmers/deactivate — deactivate a farmer
+    if (path === "/api/farmers/deactivate" && method === "POST") {
+      const body = await parseBody(req);
+      const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
+      const userId = unsafe?.user?.id?.toString();
+      if (userId) {
+        const account = findAccount(userId);
+        if (account) {
+          account.headcoin = { enabled: false, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false };
+          await writeAccounts(readAccounts());
+        }
+      }
+      return sendJson(res, 200, { ok: true });
     }
 
     // GET /api/manager/user — stub
