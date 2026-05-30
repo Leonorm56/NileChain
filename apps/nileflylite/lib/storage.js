@@ -9,7 +9,6 @@ let _accounts = [];
 let _config = null;
 
 export function readAccounts() {
-  if (_accounts.length > 0) return _accounts;
   try {
     const raw = fs.readFileSync(ACCOUNTS_PATH, "utf-8");
     const data = JSON.parse(raw);
