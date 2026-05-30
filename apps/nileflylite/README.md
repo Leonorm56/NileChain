@@ -131,7 +131,31 @@ nano config.json
 | `telegram.chatId` | Your group's chat ID (negative for supergroups) |
 | `telegram.threadId` | Topic thread ID (omit for main group) |
 
-### Step 4: Start Server
+### Step 4: Nginx Reverse Proxy (Required)
+
+The server listens on port 3000 internally. Nginx exposes it on port 80 so the extension can connect without a port number:
+
+```bash
+sudo apt install -y nginx
+sudo tee /etc/nginx/sites-available/nilefly > /dev/null << 'EOF'
+server {
+    listen 80;
+    server_name _;
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+    }
+}
+EOF
+sudo ln -sf /etc/nginx/sites-available/nilefly /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl restart nginx
+```
+
+### Step 5: Start Server
 
 ```bash
 pm2 start ecosystem.config.cjs
@@ -139,7 +163,7 @@ pm2 save
 pm2 startup   # follow the generated command
 ```
 
-### Step 5: Schedule Farming
+### Step 6: Schedule Farming
 
 ```bash
 crontab -e
@@ -154,7 +178,7 @@ Add:
 > Replace `/home/ubuntu` with your actual home directory.
 > Find your node path: `which node`
 
-### Step 6: Add Accounts
+### Step 7: Add Accounts
 
 1. Open NileChain Farmer extension
 2. Go to **Cloud Manager**
@@ -217,7 +241,7 @@ node import-backup.js backup.json
 
 ### `config.json`
 
-See [Step 3](#step-3-configure) above.
+See [Step 3](#step-3-configure) above. Connect the extension to `http://your-server-ip` (port 80, no port number needed).
 
 ---
 
