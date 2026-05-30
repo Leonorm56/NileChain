@@ -105,8 +105,7 @@ const server = http.createServer(async (req, res) => {
       const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
       const userId = unsafe?.user?.id?.toString();
       if (userId) {
-        upsertAccount({ id: userId, headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false } });
-        await writeAccounts(readAccounts());
+        await writeAccounts(upsertAccount({ id: userId, headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false } }));
       }
       return sendJson(res, 200, { ok: true });
     }
@@ -117,10 +116,11 @@ const server = http.createServer(async (req, res) => {
       const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
       const userId = unsafe?.user?.id?.toString();
       if (userId) {
-        const account = findAccount(userId);
+        const accounts = readAccounts();
+        const account = accounts.find(a => a.id === userId);
         if (account) {
           account.headcoin = { enabled: false, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false };
-          await writeAccounts(readAccounts());
+          await writeAccounts(accounts);
         }
       }
       return sendJson(res, 200, { ok: true });
@@ -143,13 +143,12 @@ const server = http.createServer(async (req, res) => {
       const userId = unsafe?.user?.id?.toString();
       if (!userId) return sendJson(res, 400, { error: "Missing user ID in initData" });
 
-      upsertAccount({
+      await writeAccounts(upsertAccount({
         id: userId,
         title: unsafe.user?.username || unsafe.user?.first_name || userId,
         initData,
         headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false },
-      });
-      await writeAccounts(readAccounts());
+      }));
 
       return sendJson(res, 200, { ok: true, userId });
     }
@@ -174,12 +173,11 @@ const server = http.createServer(async (req, res) => {
 
         if (result.user) {
           const userId = result.user.id?.toString();
-          upsertAccount({
+          await writeAccounts(upsertAccount({
             id: userId,
             session: result.sessionString,
             headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false },
-          });
-          await writeAccounts(readAccounts());
+          }));
           return sendJson(res, 200, { user: { id: Number(userId) } });
         }
 
@@ -204,12 +202,11 @@ const server = http.createServer(async (req, res) => {
 
         if (result.user) {
           const userId = result.user.id?.toString();
-          upsertAccount({
+          await writeAccounts(upsertAccount({
             id: userId,
             session: result.sessionString,
             headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false },
-          });
-          await writeAccounts(readAccounts());
+          }));
           return sendJson(res, 200, { user: { id: Number(userId) } });
         }
 
@@ -228,12 +225,13 @@ const server = http.createServer(async (req, res) => {
       const userId = unsafe?.user?.id?.toString();
 
       if (userId) {
-        const account = findAccount(userId);
+        const accounts = readAccounts();
+        const account = accounts.find(a => a.id === userId);
         if (account?.session) {
           await logoutSession(account.session);
           account.session = null;
           account.initData = null;
-          await writeAccounts(readAccounts());
+          await writeAccounts(accounts);
         }
       }
 

@@ -5,23 +5,19 @@ import path from "node:path";
 const ACCOUNTS_PATH = path.resolve("accounts.json");
 const CONFIG_PATH = path.resolve("config.json");
 
-let _accounts = [];
 let _config = null;
 
 export function readAccounts() {
-  if (_accounts.length > 0) return _accounts;
   try {
     const raw = fs.readFileSync(ACCOUNTS_PATH, "utf-8");
     const data = JSON.parse(raw);
-    _accounts = data.accounts || [];
-    return _accounts;
+    return data.accounts || [];
   } catch {
     return [];
   }
 }
 
 export async function writeAccounts(accounts) {
-  _accounts = accounts;
   const tmp = ACCOUNTS_PATH + ".tmp";
   await fsp.writeFile(tmp, JSON.stringify({ accounts }, null, 2));
   await fsp.rename(tmp, ACCOUNTS_PATH);
@@ -40,7 +36,7 @@ export function upsertAccount(account) {
   } else {
     accounts.push(account);
   }
-  _accounts = accounts;
+  return accounts;
 }
 
 export function readConfig() {
