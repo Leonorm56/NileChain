@@ -76,7 +76,7 @@ async function runCycle() {
   const cycleElapsed = Math.round((Date.now() - cycleStart) / 1000);
   await bot.sendCycleSummary(allResults, { elapsed: cycleElapsed });
 
-  await writeAccounts(accounts);
+  await writeAccounts(readAccounts());
   logger.newline();
   logger.success("=== Farming cycle complete ===");
 }

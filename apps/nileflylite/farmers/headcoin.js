@@ -88,7 +88,8 @@ async function refreshAuth(account) {
   const startParam = `bonusId${account.id}`;
   const fresh = await refreshInitData(account.session, BOT, startParam);
   account.initData = fresh;
-  logger.success("initData refreshed");
+  await writeAccounts(readAccounts());
+  logger.success("initData refreshed and saved");
   return fresh;
 }
 
