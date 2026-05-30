@@ -72,11 +72,9 @@ const server = http.createServer(async (req, res) => {
     // POST /api/subscription — always active
     if (path === "/api/subscription" && method === "POST") {
       const body = await parseBody(req);
-      logger.info(`[subscription] body=${JSON.stringify(body)}`);
       const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
       const userId = unsafe?.user?.id?.toString();
       const account = userId ? findAccount(userId) : null;
-      logger.info(`[subscription] userId=${userId} account=${account?.id} session=${!!account?.session} initData=${!!account?.initData}`);
 
       return sendJson(res, 200, {
         subscription: { endsAt: null },
