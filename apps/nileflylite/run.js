@@ -76,7 +76,15 @@ async function runCycle() {
   const cycleElapsed = Math.round((Date.now() - cycleStart) / 1000);
   await bot.sendCycleSummary(allResults, { elapsed: cycleElapsed });
 
-  await writeAccounts(accounts);
+  // Re-read fresh state and merge farmer results (don't overwrite sync data)
+  const freshAccounts = readAccounts();
+  for (const farmed of accounts) {
+    const match = freshAccounts.find((a) => a.id === farmed.id);
+    if (match && farmed.farmers) {
+      match.farmers = farmed.farmers;
+    }
+  }
+  await writeAccounts(freshAccounts);
   logger.newline();
   logger.success("=== Farming cycle complete ===");
 }
