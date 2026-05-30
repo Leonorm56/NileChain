@@ -155,11 +155,13 @@ export async function refreshInitData(sessionString, botUsername, startParam) {
 
   let url;
   try {
-    const entity = await client.getInputEntity(botUsername);
+    const { Api } = await import("telegram");
+    const peer = await client.getInputEntity(botUsername);
+    const bot = new Api.InputUser({ userId: peer.userId, accessHash: peer.accessHash });
     const result = await client.invoke(
-      new (await import("telegram")).Api.messages.RequestWebView({
-        peer: entity,
-        bot: entity,
+      new Api.messages.RequestWebView({
+        peer,
+        bot,
         platform: "android",
         startParam,
       })
