@@ -3,6 +3,7 @@ import { StringSession } from "telegram/sessions/index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { logger } from "./logger.js";
 
 const API_ID = 2496;
 const API_HASH = "8da85b0d5bfe62527e5b244c209159c3";
@@ -166,8 +167,11 @@ export async function refreshInitData(sessionString, botUsername, startParam) {
       })
     );
     url = result.url;
+  } catch (err) {
+    logger.warn(`refreshInitData invoke error: ${err.message}`);
+    throw err;
   } finally {
-    try { await client.destroy(); } catch {}
+    try { await client.destroy(); } catch (e) { logger.warn(`client.destroy error: ${e.message}`); }
   }
 
   if (!url) throw new Error("No URL returned from RequestWebView");

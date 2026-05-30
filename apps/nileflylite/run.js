@@ -85,10 +85,16 @@ async function run() {
   logger.info("=== Run loop started ===");
 
   while (true) {
+    const start = Date.now();
     try {
       await runCycle();
     } catch (err) {
       logger.error("Cycle error:", err.message);
+    }
+    const elapsed = Date.now() - start;
+    const minDelay = 60000;
+    if (elapsed < minDelay) {
+      await sleep(minDelay - elapsed);
     }
   }
 }

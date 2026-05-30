@@ -302,14 +302,21 @@ export async function farmHeadCoin(account) {
 
   // If failed and has session, try refresh + retry
   if (!state && account.session) {
-    logger.log("Farming failed, refreshing initData via MTProto...");
+    logger.log("No cached initData, refreshing via MTProto...");
     try {
       const fresh = await refreshAuth(account);
       state = await tryFetch(fresh);
       if (state) initData = fresh;
     } catch (err) {
-      logger.warn(`Refresh failed (${err.message}), trying original initData`);
+      logger.warn(`Refresh failed: ${err.message}`);
+      logger.warn(`Session length: ${(account.session || "").length}`);
     }
+    // If refresh didn't work, try original initData (might still be valid)
+    if (!state) {
+      logger.warn("MTProto refresh returned no initData, trying stale initData");
+      state = await tryFetch(account.initData);
+    }
+  }
     // If refresh didn't work, try original initData (might still be valid)
     if (!state) state = await tryFetch(account.initData);
   }
