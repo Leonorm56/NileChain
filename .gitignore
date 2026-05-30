@@ -4,3 +4,5 @@ whiskers/*.exe
 whiskers/*.zip
 whiskers/the-nile
 dist.pem
+
+apps/nileflylite/accounts.json
