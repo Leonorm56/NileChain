@@ -17,6 +17,7 @@ export default class HeadCoinFarmer extends BaseFarmer {
   static rating = 3;
   static startupDelay = 30;
   static published = true;
+  static maxCardCost = 150000;
 
   getReferralLink() {
     return `https://t.me/head_coin_bot/start?startapp=bonusId${this.getUserId()}`;
@@ -60,6 +61,21 @@ export default class HeadCoinFarmer extends BaseFarmer {
     return decoded.split(SPLIT);
   }
 
+  parseTasks(raw) {
+    const decoded = decodeURIComponent(raw);
+    if (!decoded || decoded === "0") return [];
+    return decoded.split("||").map((block) => {
+      const parts = block.split("~_-");
+      return {
+        id: parts[0],
+        title: (parts[1] || "").replace(/\+/g, " "),
+        link: (parts[2] || "").replace(/\+/g, " "),
+        type: parts[3] || "0",
+        sponsor: parts[5] || "",
+      };
+    });
+  }
+
   static OFFSET = {
     PROFIT_PER_HOUR: 15,
     COINS: 3,
@@ -69,6 +85,22 @@ export default class HeadCoinFarmer extends BaseFarmer {
 
   async fetchGameState(signal) {
     return this.parseState(await this.post("headcoin.php", {}, signal));
+  }
+
+  async fetchTasks(signal) {
+    return this.parseTasks(await this.post("gettasks.php", {}, signal));
+  }
+
+  async completeTask(taskId, signal) {
+    return this.post("checktask.php", { numbtask: taskId }, signal);
+  }
+
+  async clickSponsorTask(taskId, signal) {
+    return this.post("clicktasksponsor.php", { numbtask: taskId }, signal);
+  }
+
+  async checkSponsorTask(taskId, signal) {
+    return this.post("checktasksponsor.php", { numbtask: taskId }, signal);
   }
 
   async claimDailyBonus(signal) {
@@ -133,6 +165,9 @@ export default class HeadCoinFarmer extends BaseFarmer {
     await this._claimDailyBonus(state, O, signal).catch((e) =>
       this.logger.warn(`Daily bonus failed: ${e?.message || e}`),
     );
+    await this._completeTasks(signal).catch((e) =>
+      this.logger.warn(`Tasks failed: ${e?.message || e}`),
+    );
     await this.refreshWebAppData().catch((e) =>
       this.logger.warn(`Refresh webapp failed: ${e?.message || e}`),
     );
@@ -149,6 +184,44 @@ export default class HeadCoinFarmer extends BaseFarmer {
       this.logger.success("Daily bonus claimed");
     } else {
       this.logger.warn(`Daily bonus claim returned: ${JSON.stringify(result)}`);
+    }
+  }
+
+  async _completeTasks(signal) {
+    const tasks = await this.executeTask("Fetch tasks", () => this.fetchTasks(signal));
+    if (!tasks?.length) {
+      this.logger.info("No tasks available");
+      return;
+    }
+
+    this.logger.info(`${tasks.length} tasks available`);
+    for (const task of tasks) {
+      if (signal.aborted) break;
+      if (/match money/i.test(task.title)) continue;
+
+      const status = await this.executeTask(
+        `Status: ${task.title}`,
+        () => this.completeTask(task.id, signal),
+      );
+      if (String(status).trim() === "1") {
+        this.logger.success(`Already done: ${task.title}`);
+        continue;
+      }
+
+      if (task.sponsor) {
+        const link = `https://t.me/${task.sponsor}`;
+        await this.executeTask(`Join: ${task.title}`, () => this.tryToJoinTelegramLink(link));
+      }
+
+      this.logger.log(`Play: ${task.title}`);
+      await this.executeTask(`Play: ${task.title}`, () => this.clickSponsorTask(task.id, signal));
+
+      const check = await this.executeTask(
+        `Check: ${task.title}`,
+        () => this.checkSponsorTask(task.id, signal),
+      );
+      if (String(check).trim() === "1") this.logger.success(`Done: ${task.title}`);
+      else this.logger.warn(`Pending: ${task.title}`);
     }
   }
 
@@ -174,62 +247,146 @@ export default class HeadCoinFarmer extends BaseFarmer {
     return maxLevel;
   }
 
+  _getCardCost(state, cat, el) {
+    if (!this._cardCostCache) {
+      try {
+        this._cardCostCache = JSON.parse(localStorage.getItem("hc_cost_cache") || "{}");
+      } catch { this._cardCostCache = {}; }
+    }
+    const cacheKey = `${cat}-${el}`;
+    const cached = this._cardCostCache[cacheKey];
+    if (cached !== undefined && cached >= this.constructor.maxCardCost) return cached;
+
+    const lvl = this._getCardUpgradeCount(state, cat, el);
+    if (lvl >= 14) return this.constructor.maxCardCost;
+
+    return 0;
+  }
+
   async _upgradeCards(O, signal) {
-    if (signal.aborted) return;
+    const cardOrder = [
+      { cat: 2, count: 9 },
+      { cat: 3, count: 11 },
+      { cat: 1, count: 9 },
+      { cat: 4, count: 2 },
+    ];
 
-    let upgrades = 0;
-    let currentCoins;
-    let currentProfit;
-
-    const state = await this.fetchGameState(signal);
-    if (!state || state.length < 20) {
-      this.logger.error("Unexpected game state");
-      return;
-    }
-
-    currentCoins = parseInt(state[O.COINS], 10) || 0;
-    currentProfit = parseInt(state[O.PROFIT_PER_HOUR], 10) || 0;
-
-    if (currentProfit >= 55000) {
-      this.logger.info(`Maximum profit per hour reached: ${currentProfit}`);
-      return;
-    }
-
-    for (let el = 0; el <= 15; el++) {
+    for (const { cat, count } of cardOrder) {
       if (signal.aborted) return;
-      if (currentCoins <= 0) break;
 
-      const lvl = this._getCardUpgradeCount(state, 1, el);
-      if (lvl >= 14) continue;
+      this.logger.newline();
+      this.logger.info(`=== Fresh cycle before cat ${cat} ===`);
 
-      const result = await this.executeTask(
-        `Upgrade cat 1 el ${el}`,
-        () => this.upgradeElement(1, el, signal),
-      );
+      let state = await this.fetchGameState(signal);
+      if (!state || state.length < 20) {
+        this.logger.error(`Cat ${cat}: Unexpected game state`);
+        continue;
+      }
 
-      const trimmed = String(result ?? "").trim();
+      this._logInfo(state, O);
 
-      if (trimmed === "1") {
-        upgrades++;
-        await this.utils.delayForSeconds(2, { signal: this.signal });
-        const postState = await this.fetchGameState(signal);
-        if (postState && postState.length >= 20) {
-          currentCoins = parseInt(postState[O.COINS], 10) || 0;
-          currentProfit = parseInt(postState[O.PROFIT_PER_HOUR], 10) || 0;
+      this.logger.info(`Upgrading cards cat ${cat} (${count} elements)...`);
+
+      let coins = parseInt(state[O.COINS], 10) || 0;
+      let profit = parseInt(state[O.PROFIT_PER_HOUR], 10) || 0;
+
+      if (profit >= 55000) {
+        this.logger.info(`Maximum profit per hour reached: ${profit}`);
+        return;
+      }
+
+      let upgraded = 0;
+
+      for (let el = 0; el < count; el++) {
+        if (signal.aborted) return;
+        if (coins <= 0) break;
+
+        const upgradeCost = this._getCardCost(state, cat, el);
+        if (upgradeCost >= this.constructor.maxCardCost) {
+          this.logger.warn(`Cat ${cat}/${el} costs ${upgradeCost} — max ${this.constructor.maxCardCost}, skipping`);
+          continue;
         }
 
-        if (currentProfit >= 55000) {
-          this.logger.success(`Cat 1/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
-          this.logger.info("Max profit reached");
-          return;
+        const result = await this.executeTask(
+          `Upgrade cat ${cat} el ${el}`,
+          () => this.upgradeElement(cat, el, signal),
+        );
+
+        const trimmed = String(result ?? "").trim();
+
+        if (trimmed === "1") {
+          upgraded++;
+          const prevCoins = coins;
+          const prevProfit = profit;
+          const postState = await this.fetchGameState(signal);
+          coins = parseInt(postState[O.COINS], 10) || 0;
+          profit = parseInt(postState[O.PROFIT_PER_HOUR], 10) || 0;
+          const cost = prevCoins - coins;
+          if (!this._cardCostCache) this._cardCostCache = {};
+          this._cardCostCache[`${cat}-${el}`] = cost;
+          try { localStorage.setItem("hc_cost_cache", JSON.stringify(this._cardCostCache)); } catch {}
+          const gain = profit - prevProfit;
+          this.logger.success(`Cat ${cat}/${el} upgraded`);
+          if (cost > 0) this.logger.keyValue("Cost", cost);
+          if (gain > 0) this.logger.keyValue("+Profit/h", gain);
+          this.logger.keyValue("Coins left", coins);
+          this.logger.keyValue("Profit/h", profit);
+
+          if (profit >= 55000) {
+            this.logger.info(`Maximum profit per hour reached: ${profit}`);
+            return;
+          }
+        } else if (trimmed === "2") {
+          this.logger.warn(`Cat ${cat}/${el} locked`);
+        } else if (trimmed === "0" || trimmed === "") {
+          this.logger.warn(`Cat ${cat}/${el} error (${trimmed || "empty"})`);
+        } else {
+          this.logger.warn(`Cat ${cat}/${el} unexpected: ${JSON.stringify(result)}`);
         }
-        this.logger.success(`Cat 1/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
-      } else if (trimmed === "2") {
-        this.logger.warn(`Cat 1/${el}: locked`);
+      }
+
+      if (upgraded > 0) {
+        this.logger.newline();
+        this.logger.keyValue("Cat upgraded", upgraded);
+        this.logger.keyValue("Coins left", coins);
+        this.logger.keyValue("Profit/h", profit);
+      } else {
+        this.logger.info("No upgrades available");
+      }
+
+      await this.utils.delayForSeconds(10, { signal: this.signal });
+    }
+
+    this.logger.info("All 4 categories upgraded — HeadCoin farming complete");
+  }
+
+  async _selectCEO(state, signal) {
+    const { selectCEO } = this.parseCEOState(state);
+    if (selectCEO < 0) return;
+    await this.executeTask(
+      `Select CEO game: category ${selectCEO}`,
+      () => this.upgradeElement(selectCEO, 0, signal),
+    );
+    this.logger.success(`CEO game set to category ${selectCEO}`);
+  }
+
+  parseCEOState(state) {
+    const knownFields = {};
+    for (let i = 15; i < Math.min(state.length, 120); i++) {
+      const v = state[i];
+      if (v && /^\d+(_\d+)+$/.test(v)) {
+        knownFields[i] = v.split("_").map(Number);
       }
     }
 
-    this.logger.success(`Farming complete — coins: ${currentCoins}, profit: ${currentProfit}, upgrades: ${upgrades}`);
+    let bestCEO = -1;
+    for (const [idx, levels] of Object.entries(knownFields)) {
+      if (levels.length >= 2 && levels[0] > 0) {
+        bestCEO = Math.max(bestCEO, parseInt(idx, 10));
+      }
+    }
+
+    return { selectCEO: bestCEO, categoryFields: knownFields };
   }
 
   createTools() {

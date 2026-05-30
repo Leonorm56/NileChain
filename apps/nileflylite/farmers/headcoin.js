@@ -173,13 +173,13 @@ export async function farmHeadCoin(account) {
   let currentProfit = profit;
 
   if (profit < 55000) {
-    for (let el = 0; el <= 15; el++) {
+    for (let el = 0; el <= 25; el++) {
       if (currentCoins <= 0) break;
 
-      const lvl = getCardUpgradeCount(state, 1, el);
+      const lvl = getCardUpgradeCount(state, 2, el);
       if (lvl >= 14) continue;
 
-      const result = await upgradeElement(initData, 1, el);
+      const result = await upgradeElement(initData, 2, el);
       if (result === "1") {
         upgrades++;
         await sleep(2000);
@@ -190,13 +190,13 @@ export async function farmHeadCoin(account) {
         }
 
         if (currentProfit >= 55000) {
-          logger.success(`Cat 1/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
+          logger.success(`Cat 2/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
           logger.info("Max profit reached");
           return { ok: true, coins: currentCoins, profit: currentProfit, mined, dailyBonusClaimed, upgrades };
         }
-        logger.success(`Cat 1/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
+        logger.success(`Cat 2/${el} upgraded — coins: ${currentCoins}, profit: ${currentProfit}`);
       } else if (result === "2") {
-        logger.log(`Cat 1/${el}: locked`);
+        logger.log(`Cat 2/${el}: locked`);
       }
     }
   }
