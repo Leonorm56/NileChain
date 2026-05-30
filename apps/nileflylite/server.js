@@ -72,20 +72,11 @@ const server = http.createServer(async (req, res) => {
     // POST /api/subscription — always active
     if (path === "/api/subscription" && method === "POST") {
       const body = await parseBody(req);
+      logger.info(`[subscription] body=${JSON.stringify(body)}`);
       const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
       const userId = unsafe?.user?.id?.toString();
-      let account = userId ? findAccount(userId) : null;
-
-      if (!account && userId && body?.auth) {
-        upsertAccount({
-          id: userId,
-          title: unsafe.user?.username || unsafe.user?.first_name || userId,
-          initData: body.auth,
-          headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false },
-        });
-        await writeAccounts(readAccounts());
-        account = findAccount(userId);
-      }
+      const account = userId ? findAccount(userId) : null;
+      logger.info(`[subscription] userId=${userId} account=${account?.id} session=${!!account?.session} initData=${!!account?.initData}`);
 
       return sendJson(res, 200, {
         subscription: { endsAt: null },
