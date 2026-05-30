@@ -105,7 +105,6 @@ export async function farmHeadCoin(account) {
     try {
       initData = await refreshAuth(account);
     } catch (err) {
-      logger.error(`MTProto refresh failed: ${err.message}`);
       return { ok: false, error: `initData refresh failed: ${err.message}`, coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0 };
     }
   }
@@ -134,7 +133,7 @@ export async function farmHeadCoin(account) {
       state = await tryFetch(fresh);
       if (state) initData = fresh;
     } catch (err) {
-      logger.error(`Retry MTProto refresh failed: ${err.message}`);
+      logger.warn(`Refresh failed (${err.message}), trying original initData`);
     }
     // If refresh didn't work, try original initData (might still be valid)
     if (!state) state = await tryFetch(account.initData);
