@@ -128,9 +128,8 @@ export async function createClientFromSession(sessionString) {
     appVersion: "2.2 K",
     systemLangCode: "en-US",
     langCode: "en",
-    autoReconnect: false,
   });
-  client._loopStarted = true;
+  client._loopStarted = true; // prevent update loop from starting — we only need one-off RPC calls
   await client.connect();
   return client;
 }
