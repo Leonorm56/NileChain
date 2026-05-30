@@ -79,7 +79,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         subscription: { endsAt: null },
         account: {
-          session: account?.initData ? "active" : null,
+          session: (account?.initData || account?.session) ? "active" : null,
           proxy: null,
         },
       });
