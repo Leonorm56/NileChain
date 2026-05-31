@@ -49,6 +49,7 @@ async function runCycle() {
           mined: result.mined,
           dailyBonusClaimed: result.dailyBonusClaimed,
           upgrades: result.upgrades || 0,
+          diamonds: result.diamonds || 0,
           elapsed,
           ok: result.ok,
         };
