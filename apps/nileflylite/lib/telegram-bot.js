@@ -37,11 +37,13 @@ export function createBot(token, chatId, threadId) {
     if (res.ok && res.data) {
       try { return JSON.parse(res.data); } catch {}
     }
+    logger.error(`Telegram sendMessage failed: ${res?.error || "unknown"}`);
     return null;
   }
 
   return {
     async sendCycleSummary(results, meta) {
+      logger.info(`Sending cycle summary (${results.length} results, ${meta.elapsed}s)...`);
       try {
         const prevId = readLastMessageId();
         if (prevId) {
