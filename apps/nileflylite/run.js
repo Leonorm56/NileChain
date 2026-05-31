@@ -99,6 +99,8 @@ async function run() {
     } catch (err) {
       logger.error("Cycle error:", err.message);
     }
+    logger.info("Sleeping 5 minutes until next cycle...");
+    await sleep(300000);
   }
 }
 
