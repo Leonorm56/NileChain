@@ -4,12 +4,8 @@ import { logger } from "../lib/logger.js";
 const API_BASE = "https://headgun.org/headcoin";
 const SPLIT = "|;1f~";
 const MAX_PPH = 55000;
-const MAX_CARD_COST = 150000;
 
 const OFFSET = { PROFIT_PER_HOUR: 15, COINS: 3, MINED: 6, DAILY_BONUS_STREAK: 8, KEYS: 24, DIAMOND_BALANCE: 28 };
-const CARD_ORDER = [{ cat: 2, count: 9 }, { cat: 3, count: 11 }, { cat: 1, count: 9 }, { cat: 4, count: 2 }];
-
-const _cardCostCache = {};
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -40,21 +36,6 @@ function parseState(raw) {
   }
 }
 
-function parseTasks(raw) {
-  const decoded = decodeURIComponent(raw);
-  if (!decoded || decoded === "0") return [];
-  return decoded.split("||").map((block) => {
-    const parts = block.split("~_-");
-    return {
-      id: parts[0],
-      title: (parts[1] || "").replace(/\+/g, " "),
-      link: (parts[2] || "").replace(/\+/g, " "),
-      type: parts[3] || "0",
-      sponsor: parts[5] || "",
-    };
-  });
-}
-
 async function apiPost(initData, endpoint, extra = {}) {
   const payload = buildPayload(initData, extra);
   const res = await post(`${API_BASE}/${endpoint}`, payload);
@@ -66,38 +47,18 @@ async function fetchGameState(initData) {
   return parseState(await apiPost(initData, "headcoin.php"));
 }
 
-async function fetchTasks(initData) {
-  return parseTasks(await apiPost(initData, "gettasks.php"));
-}
-
-async function completeTask(initData, taskId) {
-  return apiPost(initData, "checktask.php", { numbtask: taskId });
-}
-
-async function clickSponsorTask(initData, taskId) {
-  return apiPost(initData, "clicktasksponsor.php", { numbtask: taskId });
-}
-
-async function checkSponsorTask(initData, taskId) {
-  return apiPost(initData, "checktasksponsor.php", { numbtask: taskId });
-}
-
 async function claimDailyBonus(initData) {
   const data = await apiPost(initData, "claimdailybonus.php");
   return String(data ?? "").trim() === "1";
 }
 
-async function upgradeElement(initData, categIndex, elementIndex) {
+async function upgradeElement(initData, cat, el) {
   const now = Date.now();
-  const payload = {
+  const res = await post(`${API_BASE}/levelupelement.php`, {
     textqueryid: initData || "",
-    numbcateg: String(categIndex),
-    numbelement: String(elementIndex),
+    numbcateg: String(cat),
+    numbelement: String(el),
     timestamp: String(now),
-  };
-  const res = await post(`${API_BASE}/levelupelement.php`, payload, {
-    "Origin": "https://headgun.org",
-    "Referer": "https://headgun.org/",
   });
   return res.ok ? String(res.data ?? "").trim() : "";
 }
@@ -118,7 +79,6 @@ async function claimKey(initData) {
 
 async function openNftBox(initData, numbKeys = 1) {
   const d = new Date(Date.now());
-  const pad2 = (n) => String(n).padStart(2, "0");
   const payload = {
     textqueryid: initData || "",
     time2200encodein: `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`,
@@ -160,7 +120,6 @@ async function addNftToMining(initData, elementId, slot) {
 
 async function removeNftFromSlot(initData, slot) {
   const d = new Date(Date.now());
-  const pad2 = (n) => String(n).padStart(2, "0");
   const res = await post(`${API_BASE}/removenftteam.php`, {
     textqueryid: initData || "",
     time2200encodein: `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`,
@@ -276,58 +235,6 @@ async function runNftFlow(initData, state) {
   return diamondBalance;
 }
 
-function getCardUpgradeCount(state, cat, el) {
-  const cardOrder = [2, 3, 1, 4];
-  const catCounts = { 2: 9, 3: 11, 1: 9, 4: 2 };
-  let pos = 0;
-  for (const c of cardOrder) {
-    if (c === cat) break;
-    pos += catCounts[c];
-  }
-  pos += el;
-
-  let maxLevel = 0;
-  for (let i = 15; i < Math.min(state.length, 120); i++) {
-    const raw = state[i];
-    if (!raw || !/^\d+(_\d+)+$/.test(raw)) continue;
-    const parts = raw.split("_").map(Number);
-    if (pos < parts.length && parts[pos] > maxLevel) {
-      maxLevel = parts[pos];
-    }
-  }
-  return maxLevel;
-}
-
-function getCardCost(state, cat, el) {
-  const cacheKey = `${cat}-${el}`;
-  const cached = _cardCostCache[cacheKey];
-  if (cached !== undefined && cached >= MAX_CARD_COST) return cached;
-
-  const lvl = getCardUpgradeCount(state, cat, el);
-  if (lvl >= 14) return MAX_CARD_COST;
-
-  return 0;
-}
-
-function parseCEOState(state) {
-  const knownFields = {};
-  for (let i = 15; i < Math.min(state.length, 120); i++) {
-    const v = state[i];
-    if (v && /^\d+(_\d+)+$/.test(v)) {
-      knownFields[i] = v.split("_").map(Number);
-    }
-  }
-
-  let bestCEO = -1;
-  for (const [idx, levels] of Object.entries(knownFields)) {
-    if (levels.length >= 2 && levels[0] > 0) {
-      bestCEO = Math.max(bestCEO, parseInt(idx, 10));
-    }
-  }
-
-  return { selectCEO: bestCEO, categoryFields: knownFields };
-}
-
 function logInfo(state) {
   logger.newline();
   logger.keyValue("Coins", parseInt(state[OFFSET.COINS], 10) || 0);
@@ -355,107 +262,52 @@ async function handleDailyBonus(initData, state) {
   return false;
 }
 
-async function handleTasks(initData) {
-  const tasks = await fetchTasks(initData);
-  if (!tasks?.length) {
-    logger.info("No tasks available");
-    return;
+function getCardLevel(state, cat, el) {
+  const cardOrder = [2, 3, 1, 4];
+  const catCounts = { 2: 9, 3: 13, 1: 9, 4: 2 };
+  let pos = 0;
+  for (const c of cardOrder) {
+    if (c === cat) break;
+    pos += catCounts[c];
   }
-
-  logger.info(`${tasks.length} tasks available`);
-  for (const task of tasks) {
-    if (/match money/i.test(task.title)) continue;
-
-    const status = await completeTask(initData, task.id);
-    if (String(status).trim() === "1") {
-      logger.success(`Already done: ${task.title}`);
-      continue;
-    }
-
-    logger.log(`Play: ${task.title}`);
-    await clickSponsorTask(initData, task.id);
-
-    const check = await checkSponsorTask(initData, task.id);
-    if (String(check).trim() === "1") logger.success(`Done: ${task.title}`);
-    else logger.warn(`Pending: ${task.title}`);
+  pos += el;
+  for (let i = 15; i < Math.min(state.length, 120); i++) {
+    const raw = state[i];
+    if (!raw || !/^\d+(_\d+)+$/.test(raw)) continue;
+    const parts = raw.split("_").map(Number);
+    if (pos < parts.length && parts[pos] > 0) return parts[pos];
   }
+  return 0;
 }
 
-async function selectCEO(initData, state) {
-  const { selectCEO: ceoCat } = parseCEOState(state);
-  if (ceoCat < 0) return;
-  const result = await upgradeElement(initData, ceoCat, 0);
-  if (result === "1") logger.success(`CEO game set to category ${ceoCat}`);
-}
-
-async function upgradeCards(initData, state) {
+async function upgradeCat3(initData, state) {
   let coins = parseInt(state[OFFSET.COINS], 10) || 0;
   let profit = parseInt(state[OFFSET.PROFIT_PER_HOUR], 10) || 0;
   let upgrades = 0;
 
-  if (profit >= MAX_PPH) {
-    logger.info(`Max profit per hour reached: ${profit}`);
-    return { coins, profit, upgrades };
-  }
-
-  for (const { cat, count } of CARD_ORDER) {
-    logger.newline();
-    logger.info(`=== Upgrading cat ${cat} (${count} elements) ===`);
-
-    const catState = await fetchGameState(initData);
-    coins = parseInt(catState[OFFSET.COINS], 10) || 0;
-    profit = parseInt(catState[OFFSET.PROFIT_PER_HOUR], 10) || 0;
-    logInfo(catState);
-
-    if (profit >= MAX_PPH) {
-      logger.info(`Max profit per hour reached: ${profit}`);
-      return { coins, profit, upgrades };
-    }
-
-    if (coins <= 0) {
-      logger.info("No coins left");
-      continue;
-    }
-
-    for (let el = 0; el < count; el++) {
+  if (profit < MAX_PPH) {
+    for (let el = 0; el <= 9; el++) {
       if (coins <= 0) break;
+      if (getCardLevel(state, 3, el) >= 14) continue;
 
-      const cost = getCardCost(catState, cat, el);
-      if (cost >= MAX_CARD_COST) {
-        logger.warn(`Cat ${cat}/${el} cost ${cost} — max ${MAX_CARD_COST}, skipping`);
-        continue;
-      }
-
-      const result = await upgradeElement(initData, cat, el);
-
+      const result = await upgradeElement(initData, 3, el);
       if (result === "1") {
         upgrades++;
-        const prevProfit = profit;
         await sleep(2000);
         const postState = await fetchGameState(initData);
-        coins = parseInt(postState[OFFSET.COINS], 10) || 0;
-        profit = parseInt(postState[OFFSET.PROFIT_PER_HOUR], 10) || 0;
-        const spent = prevProfit > 0 ? undefined : (coins - parseInt(catState[OFFSET.COINS], 10));
-        _cardCostCache[`${cat}-${el}`] = Math.abs(spent) || cost;
-        const gain = profit - prevProfit;
-        logger.success(`Cat ${cat}/${el} upgraded`);
-        if (gain > 0) logger.keyValue("+Profit/h", gain);
-        logger.keyValue("Coins left", coins);
-        logger.keyValue("Profit/h", profit);
-
+        if (postState && postState.length >= 20) {
+          coins = parseInt(postState[OFFSET.COINS], 10) || 0;
+          profit = parseInt(postState[OFFSET.PROFIT_PER_HOUR], 10) || 0;
+        }
+        logger.success(`Cat 3/${el} upgraded — coins: ${coins}, profit: ${profit}`);
         if (profit >= MAX_PPH) {
-          logger.info(`Max profit per hour reached: ${profit}`);
-          return { coins, profit, upgrades };
+          logger.info("Max profit reached");
+          break;
         }
       } else if (result === "2") {
-        logger.log(`Cat ${cat}/${el}: locked`);
-      } else if (result === "0" || result === "") {
-        logger.warn(`Cat ${cat}/${el} error (${result || "empty"})`);
-      } else {
-        logger.warn(`Cat ${cat}/${el} unexpected: ${result}`);
+        logger.log(`Cat 3/${el}: locked`);
       }
     }
-    await sleep(10000);
   }
 
   return { coins, profit, upgrades };
@@ -479,11 +331,7 @@ export async function farmHeadCoin(account) {
 
   const dailyBonusClaimed = await handleDailyBonus(initData, state);
 
-  await selectCEO(initData, state).catch((e) => logger.warn(`CEO failed: ${e?.message || e}`));
-
-  await handleTasks(initData).catch((e) => logger.warn(`Tasks failed: ${e?.message || e}`));
-
-  const { coins, profit, upgrades } = await upgradeCards(initData, state);
+  const { coins, profit, upgrades } = await upgradeCat3(initData, state);
 
   let diamonds = 0;
   await sleep(2000);
