@@ -20,6 +20,8 @@ module.exports = {
       name: "nilefly-runner",
       script: "run.js",
       cwd: __dirname,
+      max_memory_restart: "512M",
+      node_args: "--max-old-space-size=1024",
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: "run-err.log",
       out_file: "run-out.log",
