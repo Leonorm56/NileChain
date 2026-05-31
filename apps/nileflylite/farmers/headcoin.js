@@ -1,9 +1,12 @@
 import { post } from "../lib/http.js";
 import { logger } from "../lib/logger.js";
+import { refreshInitData } from "../lib/gram-client.js";
+import { readAccounts, writeAccounts } from "../lib/storage.js";
 
 const API_BASE = "https://headgun.org/headcoin";
 const SPLIT = "|;1f~";
 const MAX_PPH = 55000;
+const BOT = "head_coin_bot";
 
 const OFFSET = { PROFIT_PER_HOUR: 15, COINS: 3, MINED: 6, DAILY_BONUS_STREAK: 8, KEYS: 24, DIAMOND_BALANCE: 28 };
 
@@ -313,16 +316,59 @@ async function upgradeCat3(initData, state) {
   return { coins, profit, upgrades };
 }
 
+async function refreshAuth(account) {
+  if (!account.session) throw new Error("No session to refresh");
+  const fresh = await refreshInitData(account.session, BOT, `bonusId${account.id}`);
+  account.initData = fresh;
+  const all = readAccounts();
+  const match = all.find((a) => a.id === account.id);
+  if (match) match.initData = fresh;
+  await writeAccounts(all);
+  logger.success("initData refreshed via MTProto and saved");
+  return fresh;
+}
+
 export async function farmHeadCoin(account) {
-  if (!account.initData) {
-    return { ok: false, error: "No initData — sync account from extension", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0, diamonds: 0 };
+  if (!account.initData && !account.session) {
+    return { ok: false, error: "No initData or session — sync from extension", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0, diamonds: 0 };
   }
 
-  const initData = account.initData;
+  let initData = account.initData;
+
+  if (!initData && account.session) {
+    logger.log("No cached initData, refreshing via MTProto...");
+    try {
+      initData = await refreshAuth(account);
+    } catch (err) {
+      return { ok: false, error: `initData refresh failed: ${err.message}`, coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0, diamonds: 0 };
+    }
+  }
+
   logger.info(`Farming HeadCoin for ${account.id}...`);
 
-  const state = await fetchGameState(initData).catch(() => null);
-  if (!state || state.length < 20) {
+  const tryFetch = async (auth) => {
+    if (!auth) return null;
+    try {
+      const s = await fetchGameState(auth);
+      return s && s.length >= 20 ? s : null;
+    } catch { return null; }
+  };
+
+  let state = await tryFetch(initData);
+
+  if (!state && account.session) {
+    logger.log("Farming failed, refreshing initData via MTProto...");
+    try {
+      const fresh = await refreshAuth(account);
+      state = await tryFetch(fresh);
+      if (state) initData = fresh;
+    } catch (err) {
+      logger.warn(`Refresh failed (${err.message}), trying original initData`);
+    }
+    if (!state) state = await tryFetch(account.initData);
+  }
+
+  if (!state) {
     return { ok: false, error: "Unexpected game state", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0, diamonds: 0 };
   }
 
