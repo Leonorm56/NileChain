@@ -3,6 +3,7 @@ import { logger } from "../lib/logger.js";
 
 const API_BASE = "https://headgun.org/headcoin";
 const SPLIT = "|;1f~";
+const MAX_PPH = 55000;
 const MAX_CARD_COST = 150000;
 
 const OFFSET = { PROFIT_PER_HOUR: 15, COINS: 3, MINED: 6, DAILY_BONUS_STREAK: 8, KEYS: 24, DIAMOND_BALANCE: 28 };
@@ -392,6 +393,11 @@ async function upgradeCards(initData, state) {
   let profit = parseInt(state[OFFSET.PROFIT_PER_HOUR], 10) || 0;
   let upgrades = 0;
 
+  if (profit >= MAX_PPH) {
+    logger.info(`Max profit per hour reached: ${profit}`);
+    return { coins, profit, upgrades };
+  }
+
   for (const { cat, count } of CARD_ORDER) {
     logger.newline();
     logger.info(`=== Upgrading cat ${cat} (${count} elements) ===`);
@@ -400,6 +406,11 @@ async function upgradeCards(initData, state) {
     coins = parseInt(catState[OFFSET.COINS], 10) || 0;
     profit = parseInt(catState[OFFSET.PROFIT_PER_HOUR], 10) || 0;
     logInfo(catState);
+
+    if (profit >= MAX_PPH) {
+      logger.info(`Max profit per hour reached: ${profit}`);
+      return { coins, profit, upgrades };
+    }
 
     if (coins <= 0) {
       logger.info("No coins left");
@@ -432,6 +443,10 @@ async function upgradeCards(initData, state) {
         logger.keyValue("Coins left", coins);
         logger.keyValue("Profit/h", profit);
 
+        if (profit >= MAX_PPH) {
+          logger.info(`Max profit per hour reached: ${profit}`);
+          return { coins, profit, upgrades };
+        }
       } else if (result === "2") {
         logger.log(`Cat ${cat}/${el}: locked`);
       } else if (result === "0" || result === "") {
