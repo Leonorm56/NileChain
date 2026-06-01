@@ -91,24 +91,15 @@ async function tryAuth(initData) {
 }
 
 async function farmTradingWars(account) {
-  if (!account.tradingwarsInitData) {
-    logger.info(`Skipping TradingWars for ${account.id} — no tradingwarsInitData, open TradingWars in extension to sync`);
-    return { ok: false, error: "No tradingwarsInitData — open TradingWars in extension to sync", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
+  let initData = account.tradingwarsInitData || account.initData;
+  logger.info(`farmTradingWars called for ${account.id}, has twInitData: ${!!account.tradingwarsInitData}, has session: ${!!account.session}, account keys: ${Object.keys(account).join(",")}`);
+
+  if (!initData && !account.session) {
+    logger.warn("No initData or session for TradingWars — sync TradingWars from extension first");
+    return { ok: false, error: "No initData — open TradingWars in extension to sync", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
   }
-  let initData = account.tradingwarsInitData;
-  logger.info(`farmTradingWars called for ${account.id}, has twInitData: true, has session: ${!!account.session}, account keys: ${Object.keys(account).join(",")}`);
 
   let auth = await tryAuth(initData);
-
-  if (!auth && account.session) {
-    logger.log("Auth failed, refreshing via MTProto...");
-    try {
-      const fresh = await refreshInitData(account.session, BOT, START_PARAM);
-      initData = fresh;
-      auth = await tryAuth(initData);
-    } catch (err) {
-      logger.warn(`MTProto refresh failed: ${err.message}`);
-    }
   }
 
   if (!auth) {
