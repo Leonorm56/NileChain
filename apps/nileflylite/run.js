@@ -63,6 +63,10 @@ async function runCycle() {
           ok: result.ok,
         };
 
+        if (!result.ok && result.error) {
+          logger.warn(`${farmer.title} result: ${result.error}`);
+        }
+
         allResults.push({
           farmerId: farmer.id,
           farmerTitle: farmer.title,

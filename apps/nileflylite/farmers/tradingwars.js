@@ -100,24 +100,34 @@ async function tryAuth(account, initData) {
 }
 
 async function farmTradingWars(account) {
+  logger.info(`farmTradingWars called for ${account.id}, has initData: ${!!account.initData}, has session: ${!!account.session}`);
+
   if (!account.initData && !account.session) {
+    logger.warn("No initData or session for TradingWars");
     return { ok: false, error: "No initData or session — sync from extension", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
   }
 
   let initData = account.initData;
   let auth = await tryAuth(account, initData);
 
-  if (!auth && account.session) {
-    logger.log("Auth expired, refreshing via MTProto...");
-    try {
-      initData = await refreshAuth(account);
-      auth = await tryAuth(account, initData);
-    } catch (err) {
-      return { ok: false, error: `Auth refresh failed: ${err.message}`, coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
+  if (!auth) {
+    logger.warn(`Auth failed with stored initData for ${account.id}`);
+    if (account.session) {
+      logger.log("Auth expired, refreshing via MTProto...");
+      try {
+        initData = await refreshAuth(account);
+        auth = await tryAuth(account, initData);
+      } catch (err) {
+        logger.error(`Auth refresh failed: ${err.message}`);
+        return { ok: false, error: `Auth refresh failed: ${err.message}`, coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
+      }
+    } else {
+      logger.warn("No session to refresh initData");
     }
   }
 
   if (!auth) {
+    logger.error("TradingWars authentication failed — initData is from wrong bot, need session");
     return { ok: false, error: "Authentication failed", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
   }
 
