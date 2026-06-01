@@ -8,6 +8,7 @@ import ATFFarmer from "@purrfect/shared/farmers/ATFFarmer.js";
 import DreamcoinProFarmer from "@purrfect/shared/farmers/DreamcoinProFarmer.js";
 import HeadCoinFarmer from "@purrfect/shared/farmers/HeadCoinFarmer.js";
 import SpaceJumpFarmer from "@purrfect/shared/farmers/SpaceJumpFarmer.js";
+import TradingWarsFarmer from "@purrfect/shared/farmers/TradingWarsFarmer.js";
 
 const farmerClasses = [
   ADCLICKERFarmer,
@@ -15,6 +16,7 @@ const farmerClasses = [
   DreamcoinProFarmer,
   HeadCoinFarmer,
   SpaceJumpFarmer,
+  TradingWarsFarmer,
 ];
 
 const farmersIconGlob = import.meta.glob(
