@@ -1,0 +1,10 @@
+config.json
+accounts.json
+last_message.json
+farm.log
+sessions/
+err.log
+out.log
+run-err.log
+run-out.log
+node_modules/

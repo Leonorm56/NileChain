@@ -2,6 +2,7 @@ import { readAccounts, writeAccounts, getConfig, findAccount } from "./lib/stora
 import { logger } from "./lib/logger.js";
 import { createBot } from "./lib/telegram-bot.js";
 import { farmHeadCoin } from "./farmers/headcoin.js";
+import { farmTradingWars } from "./farmers/tradingwars.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -11,7 +12,8 @@ const config = getConfig();
 const bot = createBot(config.telegram.botToken, config.telegram.chatId, config.telegram.threadId);
 
 const FARMERS = [
-  { id: "head-coin", title: "HeadCoin", farm: farmHeadCoin },
+  { id: "head-coin", title: "HeadCoin", farm: farmHeadCoin, interval: 0 },
+  { id: "trading-wars", title: "TradingWars", farm: farmTradingWars, interval: 60 * 60 * 1000 },
 ];
 
 async function runCycle() {
@@ -27,15 +29,22 @@ async function runCycle() {
   const cycleStart = Date.now();
 
   for (const account of accounts) {
-    if (account.headcoin?.enabled === false) {
-      logger.info(`Skipping ${account.id} (disabled)`);
-      continue;
-    }
-
     logger.newline();
     logger.log(`── Account ${account.id} ──`);
 
-    for (const farmer of FARMERS) {
+    const farmerPromises = FARMERS.map(async (farmer) => {
+      if (farmer.interval > 0) {
+        const lastRun = account.farmers?.[farmer.id]?.lastRun;
+        if (lastRun) {
+          const elapsed = Date.now() - new Date(lastRun).getTime();
+          if (elapsed < farmer.interval) {
+            const remaining = Math.round((farmer.interval - elapsed) / 60000);
+            logger.info(`${farmer.title}: ${remaining}m until next run, skipping`);
+            return;
+          }
+        }
+      }
+
       try {
         const start = Date.now();
         const result = await farmer.farm(account);
@@ -55,27 +64,46 @@ async function runCycle() {
         };
 
         allResults.push({
+          farmerId: farmer.id,
+          farmerTitle: farmer.title,
           accountId: account.id,
           profit: result.profit,
+          tokens: result.tokens,
+          upgrades: result.upgrades,
+          trades: result.trades,
           ok: result.ok,
           error: result.error,
         });
       } catch (err) {
         logger.error(`Error farming ${farmer.title} for ${account.id}:`, err.message);
         allResults.push({
+          farmerId: farmer.id,
+          farmerTitle: farmer.title,
           accountId: account.id,
           profit: 0,
           ok: false,
           error: err.message,
         });
       }
-    }
+    });
+
+    await Promise.all(farmerPromises);
 
     await sleep(2000);
   }
 
   const cycleElapsed = Math.round((Date.now() - cycleStart) / 1000);
-  await bot.sendCycleSummary(allResults, { elapsed: cycleElapsed });
+
+  const farmerGroups = {};
+  for (const r of allResults) {
+    const key = r.farmerId || "unknown";
+    if (!farmerGroups[key]) farmerGroups[key] = { farmerId: key, farmerTitle: r.farmerTitle || key, results: [] };
+    farmerGroups[key].results.push(r);
+  }
+
+  for (const group of Object.values(farmerGroups)) {
+    await bot.sendFarmerSummary(group.farmerId, group.farmerTitle, group.results, { elapsed: cycleElapsed });
+  }
 
   // Re-read fresh state and merge farmer results (don't overwrite sync data)
   const freshAccounts = readAccounts();
@@ -99,6 +127,7 @@ async function run() {
     } catch (err) {
       logger.error("Cycle error:", err.message);
     }
+
 
   }
 }

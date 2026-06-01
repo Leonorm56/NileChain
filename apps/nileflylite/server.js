@@ -64,6 +64,7 @@ const server = http.createServer(async (req, res) => {
           id: a.id,
           title: a.title || "",
           headcoin: a.headcoin || null,
+          tradingwars: a.tradingwars || null,
           farmers: a.farmers || {},
         })),
       });
@@ -92,11 +93,14 @@ const server = http.createServer(async (req, res) => {
       const userId = unsafe?.user?.id?.toString();
       const account = userId ? findAccount(userId) : null;
 
-      const farmer = account?.headcoin
-        ? { id: account.id, farmer: "head-coin", initData: account.initData || "", active: true }
-        : null;
-
-      return sendJson(res, 200, farmer ? [farmer] : []);
+      const farmers = [];
+      if (account?.headcoin) {
+        farmers.push({ id: account.id, farmer: "head-coin", initData: account.initData || "", active: true });
+      }
+      if (account?.tradingwars) {
+        farmers.push({ id: account.id, farmer: "trading-wars", initData: account.initData || "", active: true });
+      }
+      return sendJson(res, 200, farmers);
     }
 
     // POST /api/farmers/activate — activate a farmer for this account
@@ -104,8 +108,14 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
       const userId = unsafe?.user?.id?.toString();
-      if (userId) {
-        await writeAccounts(upsertAccount({ id: userId, headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false } }));
+      const farmerId = body?.id;
+      if (userId && farmerId) {
+        const farmerConfig = { enabled: true, lastRun: null };
+        if (farmerId === "head-coin") {
+          await writeAccounts(upsertAccount({ id: userId, headcoin: { ...farmerConfig, coins: 0, profit: 0, dailyBonusClaimed: false } }));
+        } else if (farmerId === "trading-wars") {
+          await writeAccounts(upsertAccount({ id: userId, tradingwars: farmerConfig }));
+        }
       }
       return sendJson(res, 200, { ok: true });
     }
@@ -115,11 +125,16 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const unsafe = body?.auth ? getInitDataUnsafe(body.auth) : null;
       const userId = unsafe?.user?.id?.toString();
-      if (userId) {
+      const farmerId = body?.id;
+      if (userId && farmerId) {
         const accounts = readAccounts();
         const account = accounts.find(a => a.id === userId);
         if (account) {
-          account.headcoin = { enabled: false, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false };
+          if (farmerId === "head-coin") {
+            account.headcoin = { enabled: false, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false };
+          } else if (farmerId === "trading-wars") {
+            account.tradingwars = { enabled: false, lastRun: null };
+          }
           await writeAccounts(accounts);
         }
       }
