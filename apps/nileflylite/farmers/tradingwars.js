@@ -1,6 +1,7 @@
 import { postJson } from "../lib/http.js";
 import { logger } from "../lib/logger.js";
 import { refreshInitData } from "../lib/gram-client.js";
+import { readAccounts, writeAccounts } from "../lib/storage.js";
 
 
 const API_BASE = "https://tradingwars.site";
@@ -90,20 +91,62 @@ async function tryAuth(initData) {
   return null;
 }
 
+async function refreshAuth(account) {
+  if (!account.session) throw new Error("No session to refresh");
+  const fresh = await refreshInitData(account.session, BOT, START_PARAM);
+  account.initData = fresh;
+  const all = readAccounts();
+  const match = all.find((a) => a.id === account.id);
+  if (match) {
+    match.tradingwarsInitData = fresh;
+    match.initData = fresh;
+  }
+  await writeAccounts(all);
+  logger.success("TradingWars initData refreshed via MTProto and saved");
+  return fresh;
+}
+
 async function farmTradingWars(account) {
   let initData = account.tradingwarsInitData || account.initData;
-  logger.info(`farmTradingWars called for ${account.id}, has twInitData: ${!!account.tradingwarsInitData}, has session: ${!!account.session}, account keys: ${Object.keys(account).join(",")}`);
 
   if (!initData && !account.session) {
-    logger.warn("No initData or session for TradingWars — sync TradingWars from extension first");
-    return { ok: false, error: "No initData — open TradingWars in extension to sync", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
+    return { ok: false, error: "No initData or session — sync from extension", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
   }
 
-  let auth = await tryAuth(initData);
+  if (!initData && account.session) {
+    logger.log("No cached initData, refreshing via MTProto...");
+    try {
+      initData = await refreshAuth(account);
+    } catch (err) {
+      return { ok: false, error: `initData refresh failed: ${err.message}`, coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
+    }
+  }
+
+  logger.info(`Farming TradingWars for ${account.id}...`);
+
+  const tryFetch = async (auth) => {
+    if (!auth) return null;
+    try {
+      const res = await tryAuth(auth);
+      return res && res.user ? res : null;
+    } catch { return null; }
+  };
+
+  let auth = await tryFetch(initData);
+
+  if (!auth && account.session) {
+    logger.log("Farming failed, refreshing initData via MTProto...");
+    try {
+      const fresh = await refreshAuth(account);
+      auth = await tryFetch(fresh);
+      if (auth) initData = fresh;
+    } catch (err) {
+      logger.warn(`Refresh failed (${err.message}), trying original initData`);
+    }
+    if (!auth) auth = await tryFetch(account.initData);
   }
 
   if (!auth) {
-    logger.error("TradingWars authentication failed — open TradingWars in extension to sync");
     return { ok: false, error: "Authentication failed", coins: 0, profit: 0, mined: 0, tokens: 0, hashRate: 0, upgrades: 0, trades: 0 };
   }
 
