@@ -158,13 +158,22 @@ const server = http.createServer(async (req, res) => {
       const userId = unsafe?.user?.id?.toString();
       if (!userId) return sendJson(res, 400, { error: "Missing user ID in initData" });
 
-      await writeAccounts(upsertAccount({
+      const farmer = body.farmer || "head-coin";
+      const update = {
         id: userId,
         title: unsafe.user?.username || unsafe.user?.first_name || userId,
-        initData,
-        headcoin: { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false },
-      }));
+      };
 
+      if (farmer === "trading-wars") {
+        update.tradingwarsInitData = initData;
+        update.tradingwars = { enabled: true, lastRun: null };
+      } else {
+        update.headcoinInitData = initData;
+        update.initData = initData;
+        update.headcoin = { enabled: true, lastRun: null, coins: 0, profit: 0, dailyBonusClaimed: false };
+      }
+
+      await writeAccounts(upsertAccount(update));
       return sendJson(res, 200, { ok: true, userId });
     }
 

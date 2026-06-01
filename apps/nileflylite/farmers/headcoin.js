@@ -329,11 +329,10 @@ async function refreshAuth(account) {
 }
 
 export async function farmHeadCoin(account) {
-  if (!account.initData && !account.session) {
+  let initData = account.headcoinInitData || account.initData;
+  if (!initData && !account.session) {
     return { ok: false, error: "No initData or session — sync from extension", coins: 0, profit: 0, mined: 0, dailyBonusClaimed: false, upgrades: 0, diamonds: 0 };
   }
-
-  let initData = account.initData;
 
   if (!initData && account.session) {
     logger.log("No cached initData, refreshing via MTProto...");
