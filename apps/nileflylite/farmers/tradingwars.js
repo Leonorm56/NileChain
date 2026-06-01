@@ -20,7 +20,7 @@ function getAuthHeaders(initData) {
   return {
     "x-auth": initData,
     "x-av": "4",
-    "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.135 Mobile Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Telegram-Android/9.5",
     "x-requested-with": "org.telegram.messenger",
   };
 }
