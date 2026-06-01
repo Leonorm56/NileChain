@@ -13,7 +13,7 @@ const bot = createBot(config.telegram.botToken, config.telegram.chatId, config.t
 
 const FARMERS = [
   { id: "head-coin", title: "HeadCoin", farm: farmHeadCoin, interval: 0 },
-  { id: "trading-wars", title: "TradingWars", farm: farmTradingWars, interval: 60 * 60 * 1000 },
+  { id: "trading-wars", title: "TradingWars", farm: farmTradingWars, interval: 0 },
 ];
 
 async function runCycle() {
