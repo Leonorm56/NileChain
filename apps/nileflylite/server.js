@@ -159,6 +159,7 @@ const server = http.createServer(async (req, res) => {
       if (!userId) return sendJson(res, 400, { error: "Missing user ID in initData" });
 
       const farmer = body.farmer || "head-coin";
+      console.log(`[sync] farmer=${farmer} userId=${userId} hasInitData=${!!initData} title=${body.title}`);
       const update = {
         id: userId,
         title: unsafe.user?.username || unsafe.user?.first_name || userId,

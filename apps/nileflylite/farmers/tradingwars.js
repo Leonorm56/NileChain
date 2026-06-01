@@ -82,13 +82,17 @@ async function tryAuth(initData) {
   try {
     const user = await apiPost(initData, "api/updateUser");
     if (user && user.nickname) return { user, initData };
-  } catch {}
+  } catch (e) {
+    const age = initData.match(/auth_date=(\d+)/);
+    const ageMin = age ? ((Date.now() - parseInt(age[1])*1000)/60000).toFixed(1) : "?";
+    logger.warn(`tryAuth failed: ${e.message}, initData age: ${ageMin} min`);
+  }
   return null;
 }
 
 async function farmTradingWars(account) {
   let initData = account.tradingwarsInitData || account.initData;
-  logger.info(`farmTradingWars called for ${account.id}, has twInitData: ${!!account.tradingwarsInitData}, has session: ${!!account.session}`);
+  logger.info(`farmTradingWars called for ${account.id}, has twInitData: ${!!account.tradingwarsInitData}, has session: ${!!account.session}, account keys: ${Object.keys(account).join(",")}`);
 
   if (!initData && !account.session) {
     logger.warn("No initData or session for TradingWars — sync TradingWars from extension first");
