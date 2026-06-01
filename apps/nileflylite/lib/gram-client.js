@@ -4,8 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 
-const API_ID = 2496;
-const API_HASH = "8da85b0d5bfe62527e5b244c209159c3";
+import { getConfig } from "./storage.js";
+
+const cfg = getConfig();
+const API_ID = cfg.telegram.apiId || 2496;
+const API_HASH = cfg.telegram.apiHash || "8da85b0d5bfe62527e5b244c209159c3";
 const SESSIONS_DIR = path.resolve("sessions");
 
 async function ensureDir() {

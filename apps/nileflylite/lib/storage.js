@@ -48,7 +48,7 @@ export function readConfig() {
   } catch {
     return {
       server: { port: 3000, apiKey: "" },
-      telegram: { botToken: "", chatId: "", threadId: "" },
+      telegram: { botToken: "", chatId: "", threadId: "", apiId: 2496, apiHash: "8da85b0d5bfe62527e5b244c209159c3" },
     };
   }
 }
