@@ -103,7 +103,7 @@ export function createBot(token, chatId, threadId) {
           lines.push("");
           lines.push("<b>Errors:</b>");
           for (const r of errors) {
-            lines.push(`${r.accountId} — ${r.error || "Unknown"}`);
+            lines.push(`${r.accountId} — Error`);
           }
         }
 
@@ -149,7 +149,7 @@ export function createBot(token, chatId, threadId) {
           lines.push("");
           lines.push("<b>Errors:</b>");
           for (const r of errors) {
-            lines.push(`${r.accountId} — ${r.error || "Unknown"}`);
+            lines.push(`${r.accountId} — Error`);
           }
         }
 
