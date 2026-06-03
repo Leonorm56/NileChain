@@ -137,7 +137,7 @@ export function createBot(token, chatId, threadId) {
         ];
 
         for (const r of okResults) {
-          const parts = [`${r.accountId}`];
+          const parts = [r.accountTitle || r.accountId];
           if (farmerId === "trading-wars") {
             if (r.tokens != null) parts.push(`${parseFloat(r.tokens.toFixed(2))} TWARS`);
           } else {
