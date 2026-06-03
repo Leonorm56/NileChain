@@ -273,6 +273,7 @@ export default function useDropFarmer() {
     account,
     instance,
     shouldSyncToCloud,
+    telegramWebApp,
   });
 
   /** Create Notification */
