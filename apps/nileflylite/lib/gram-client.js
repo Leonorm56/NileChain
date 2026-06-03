@@ -207,7 +207,7 @@ export async function refreshInitData(sessionString, botUsername, startParam, sh
   const afterPrefix = hash.slice(startIdx + "tgWebAppData=".length);
   const endIdx = afterPrefix.indexOf("&");
   const rawValue = endIdx === -1 ? afterPrefix : afterPrefix.slice(0, endIdx);
-  const initData = rawValue.replace(/%26/g, "&").replace(/%3D/g, "=");
+  const initData = rawValue.replace(/%26/g, "&").replace(/%3D/g, "=").replace(/%25/g, "%");
   if (!initData) throw new Error("Empty tgWebAppData");
 
   return initData;
