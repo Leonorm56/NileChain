@@ -302,6 +302,12 @@ async function farmTradingWars(account) {
       }
 
       // Upgrade all if all venues full
+      const allFull = VENUE_ORDER.every((vk) => {
+        const venue = equipment.find((i) => i.key === vk);
+        if (!venue) return false;
+        const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+        return venueGpus.length >= (TOTAL_SLOTS[vk] || 0);
+      });
       if (allFull) {
         logger.info("All venue slots filled, upgrading equipment...");
         try {
