@@ -98,7 +98,7 @@ export function createBot(token, chatId, threadId) {
         ];
 
         for (const r of okResults) {
-          lines.push(`${r.accountId} — ${r.profit?.toLocaleString() || "0"}/h`);
+          lines.push(`${r.accountTitle || r.accountId} — ${r.profit?.toLocaleString() || "0"}/h`);
         }
 
         lines.push("─────────────────────────────────");
@@ -108,7 +108,7 @@ export function createBot(token, chatId, threadId) {
           lines.push("");
           lines.push("<b>Errors:</b>");
           for (const r of errors) {
-            lines.push(`${r.accountId} — Error`);
+            lines.push(`${r.accountTitle || r.accountId} — Error`);
           }
         }
 
@@ -154,7 +154,7 @@ export function createBot(token, chatId, threadId) {
           lines.push("");
           lines.push("<b>Errors:</b>");
           for (const r of errors) {
-            lines.push(`${r.accountId} — Error`);
+            lines.push(`${r.accountTitle || r.accountId} — Error`);
           }
         }
 
