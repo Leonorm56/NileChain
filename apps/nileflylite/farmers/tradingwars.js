@@ -83,7 +83,7 @@ async function tryAuth(initData) {
   if (!initData) return null;
   try {
     const user = await apiPost(initData, "api/updateUser");
-    if (user && user.nickname) return { user, initData };
+    if (user && user.id) return { user, initData };
   } catch (e) {
     const age = initData.match(/auth_date=(\d+)/);
     const ageMin = age ? ((Date.now() - parseInt(age[1])*1000)/60000).toFixed(1) : "?";
@@ -152,7 +152,7 @@ async function farmTradingWars(account) {
   }
 
   const { user } = auth;
-  logger.info(`Farming TradingWars for ${account.id} (${user.nickname || "?"})...`);
+  logger.info(`Farming TradingWars for ${account.id} (${user.username || user.first_name || "?"})...`);
 
   let wallet, equipment, totalHashRate;
   try {
@@ -170,7 +170,7 @@ async function farmTradingWars(account) {
   const hashRate = totalHashRate ?? 0;
 
   logger.newline();
-  logger.keyValue("Nickname", user.nickname || "(unknown)");
+  logger.keyValue("Username", user.username || user.first_name || "(unknown)");
   logger.keyValue("Balance", `${typeof coins === "number" ? coins.toFixed(2) : coins} coins`);
   logger.keyValue("Tokens", `${tokens} TWARS`);
   if (Array.isArray(equipment)) {
