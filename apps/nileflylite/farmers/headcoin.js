@@ -5,7 +5,7 @@ import { readAccounts, writeAccounts } from "../lib/storage.js";
 
 const API_BASE = "https://headgun.org/headcoin";
 const SPLIT = "|;1f~";
-const MAX_PPH = 55000;
+const MAX_PPH = 10000;
 const BOT = "head_coin_bot";
 
 const OFFSET = { PROFIT_PER_HOUR: 15, COINS: 3, MINED: 6, DAILY_BONUS_STREAK: 8, KEYS: 24, DIAMOND_BALANCE: 28 };

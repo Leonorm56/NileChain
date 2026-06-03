@@ -138,7 +138,6 @@ export function createBot(token, chatId, threadId) {
           } else {
             if (r.profit != null) parts.push(`${r.profit.toLocaleString()}/h`);
             if (r.upgrades) parts.push(`⬆${r.upgrades}`);
-            if (r.diamonds) parts.push(`💎${r.diamonds}`);
           }
           lines.push(parts.join(" — "));
         }
