@@ -26,7 +26,12 @@ export function createBot(token, chatId, threadId) {
       ...(threadId ? { message_thread_id: threadId } : {}),
     });
     if (res.ok && res.data) {
-      try { return JSON.parse(res.data); } catch {}
+      try {
+        const parsed = JSON.parse(res.data);
+        if (parsed.ok) return parsed;
+        logger.error(`Telegram API error: ${parsed.description}`);
+      } catch {}
+      return null;
     }
     logger.error(`Telegram sendMessage failed: ${res?.error || "unknown"}`);
     return null;
