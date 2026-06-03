@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { customLogger } from "@/utils";
 import toast from "react-hot-toast";
 import { useCallback } from "react";
@@ -12,22 +13,34 @@ export default function useDropFarmerCloudSync({
   instance,
   queryClient,
   shouldSyncToCloud,
+  telegramWebApp,
 }) {
   /** Cloud Sync Mutation */
   const { isPending, mutateAsync } = useCloudSyncMutation(id, queryClient);
   const isPendingRef = useSyncedRef(isPending);
+  const lastSentHashRef = useRef(null);
 
   const accountTitle = account.title;
   const accountUserId = account.user?.id;
-  const accountTelegramInitData = account.telegramInitData;
 
   const syncToCloud = useCallback(async () => {
+    const initData = instance.getInitData();
+    if (!initData) {
+      customLogger(`SYNC SKIPPED for ${id} — no initData available yet`);
+      return;
+    }
+    const hash = telegramWebApp?.initData || "";
+    if (hash && hash === lastSentHashRef.current) {
+      customLogger(`SYNC SKIPPED for ${id} — initData unchanged`);
+      return;
+    }
+    lastSentHashRef.current = hash;
     const cookies = await instance.getCookiesForSync?.();
     const data = {
       farmer: id,
       title: accountTitle,
       userId: instance.getUserId() || accountUserId,
-      initData: instance.getInitData() || accountTelegramInitData,
+      initData,
       headers: instance.api.defaults.headers.common,
       cookies: cookies || [],
     };
@@ -40,9 +53,9 @@ export default function useDropFarmerCloudSync({
     title,
     accountTitle,
     accountUserId,
-    accountTelegramInitData,
     instance,
     mutateAsync,
+    telegramWebApp,
   ]);
 
   /** Sync to Cloud */
@@ -53,6 +66,3 @@ export default function useDropFarmerCloudSync({
     }
   }, [shouldSyncToCloud, syncToCloud]);
 }
-
-
-
