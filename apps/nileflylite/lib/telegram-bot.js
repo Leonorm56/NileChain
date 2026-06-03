@@ -12,6 +12,11 @@ export function createBot(token, chatId, threadId) {
   }
 
   async function sendMessage(text) {
+    const MAX = 4000;
+    if (text.length > MAX) {
+      logger.warn(`Message too long (${text.length} chars), truncating to ${MAX}`);
+      text = text.slice(0, MAX - 100) + `\n\n<b>... truncated (${text.length - MAX + 100} chars removed)</b>`;
+    }
     const url = `${BASE}${token}/sendMessage`;
     const res = await postJson(url, {
       chat_id: chatId,
