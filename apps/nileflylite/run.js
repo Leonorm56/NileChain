@@ -106,7 +106,11 @@ async function runCycle() {
   }
 
   for (const group of Object.values(farmerGroups)) {
-    await bot.sendFarmerSummary(group.farmerId, group.farmerTitle, group.results, { elapsed: cycleElapsed });
+    if (typeof bot.sendFarmerSummary === "function") {
+      await bot.sendFarmerSummary(group.farmerId, group.farmerTitle, group.results, { elapsed: cycleElapsed });
+    } else {
+      logger.warn(`bot.sendFarmerSummary not available, skipping ${group.farmerTitle} summary`);
+    }
   }
 
   // Re-read fresh state and merge farmer results (don't overwrite sync data)
