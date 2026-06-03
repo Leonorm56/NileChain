@@ -230,15 +230,21 @@ async function farmTradingWars(account) {
         for (let i = 0; i < maxSlots; i++) {
           const g = venueGpus[i];
           if (g) continue;
-          logger.info(`  [${i}] (empty) → buy gpu_1050ti`);
-          try {
-            await apiPost(initData, "api/mining/buyItem", { key: "gpu_1050ti", parentId: venue.id });
-            logger.success("    Bought!");
-            anyBought = true;
-          } catch (e) {
-            logger.warn(`    Failed: ${e.message}`);
-            break;
+          const machineKeys = ["asic_s9", "gpu_5090", "gpu_4090", "gpu_1050ti"];
+          let bought = false;
+          for (const key of machineKeys) {
+            try {
+              logger.info(`  [${i}] (empty) → buy ${key}`);
+              await apiPost(initData, "api/mining/buyItem", { key, parentId: venue.id });
+              logger.success("    Bought!");
+              bought = true;
+              break;
+            } catch {
+              logger.warn(`    ${key} failed, trying cheaper...`);
+            }
           }
+          if (!bought) break;
+          anyBought = true;
         }
       }
 
