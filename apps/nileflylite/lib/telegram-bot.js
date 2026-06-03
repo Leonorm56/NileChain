@@ -8,7 +8,7 @@ const LAST_MSG_PATH = path.resolve("last_message.json");
 
 export function createBot(token, chatId, threadId) {
   if (!token || !chatId) {
-    return { sendCycleSummary: () => {} };
+    return { sendCycleSummary: () => {}, sendFarmerSummary: () => {} };
   }
 
   async function sendMessage(text) {
