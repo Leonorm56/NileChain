@@ -201,9 +201,14 @@ export async function refreshInitData(sessionString, botUsername, startParam, sh
   if (!url) throw new Error("No URL returned");
 
   const parsedUrl = new URL(url);
-  const params = new URLSearchParams(parsedUrl.hash.replace(/^#/, ""));
-  const initData = params.get("tgWebAppData");
-  if (!initData) throw new Error("No tgWebAppData in URL");
+  const hash = parsedUrl.hash.replace(/^#/, "");
+  const startIdx = hash.indexOf("tgWebAppData=");
+  if (startIdx === -1) throw new Error("No tgWebAppData in URL");
+  const afterPrefix = hash.slice(startIdx + "tgWebAppData=".length);
+  const endIdx = afterPrefix.indexOf("&");
+  const rawValue = endIdx === -1 ? afterPrefix : afterPrefix.slice(0, endIdx);
+  const initData = rawValue.replace(/%26/g, "&").replace(/%3D/g, "=");
+  if (!initData) throw new Error("Empty tgWebAppData");
 
   return initData;
 }
