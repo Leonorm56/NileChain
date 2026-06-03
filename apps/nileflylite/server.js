@@ -206,8 +206,8 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 200, { user: { id: Number(userId) } });
         }
 
-        if (result.type === "password") {
-          return sendJson(res, 200, { type: "password", hint: result.hint });
+        if (result.stage === "password") {
+          return sendJson(res, 200, { stage: "password", hint: result.hint });
         }
 
         return sendJson(res, 200, result);

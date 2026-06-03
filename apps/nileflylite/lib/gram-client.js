@@ -107,7 +107,7 @@ export async function waitForAuth(sessionId, timeoutMs = 60000) {
       throw new Error(auth.error);
     }
     if (auth.stage === "password") {
-      return { type: "password", hint: auth.passwordHint };
+      return { stage: "password", hint: auth.passwordHint };
     }
     await new Promise((r) => setTimeout(r, 100));
   }
