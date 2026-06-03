@@ -6,6 +6,7 @@ import { readAccounts, writeAccounts } from "../lib/storage.js";
 
 const API_BASE = "https://tradingwars.site";
 const BOT = "TradingWars_bot";
+const SHORT_NAME = "TradingWars";
 const START_PARAM = "referral6627962056";
 
 const VENUE_ORDER = ["venue_home", "venue_garage", "venue_hotel", "venue_datacenter"];
@@ -93,7 +94,7 @@ async function tryAuth(initData) {
 
 async function refreshAuth(account) {
   if (!account.session) throw new Error("No session to refresh");
-  const fresh = await refreshInitData(account.session, BOT, START_PARAM);
+  const fresh = await refreshInitData(account.session, BOT, START_PARAM, SHORT_NAME);
   account.initData = fresh;
   const all = readAccounts();
   const match = all.find((a) => a.id === account.id);

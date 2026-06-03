@@ -153,29 +153,52 @@ export async function deleteSessionFile(sessionId) {
   } catch {}
 }
 
-export async function refreshInitData(sessionString, botUsername, startParam) {
+export async function refreshInitData(sessionString, botUsername, startParam, shortName) {
   const client = await createClientFromSession(sessionString);
 
   let url;
   try {
     const entity = await client.getInputEntity(botUsername);
     const me = await client.getMe();
-    const peer = await client.getInputEntity(me.id);
-    const result = await client.invoke(
-      new (await import("telegram")).Api.messages.RequestWebView({
-        peer: entity,
-        bot: entity,
-        fromBotMenu: false,
-        platform: "android",
-        startParam,
-      })
-    );
-    url = result.url;
+    const api = await import("telegram");
+
+    if (shortName) {
+      const result = await client.invoke(
+        new api.Api.messages.RequestAppWebView({
+          platform: "android",
+          peer: entity,
+          app: new api.Api.InputBotAppShortName({
+            botId: entity,
+            shortName,
+          }),
+          startParam,
+          themeParams: new api.Api.DataJSON({
+            data: JSON.stringify({
+              bg_color: "#ffffff", text_color: "#000000",
+              hint_color: "#aaaaaa", link_color: "#006aff",
+              button_color: "#2cab37", button_text_color: "#ffffff",
+            }),
+          }),
+        })
+      );
+      url = result.url;
+    } else {
+      const result = await client.invoke(
+        new api.Api.messages.RequestWebView({
+          peer: entity,
+          bot: entity,
+          fromBotMenu: false,
+          platform: "android",
+          startParam,
+        })
+      );
+      url = result.url;
+    }
   } finally {
     try { await client.destroy(); } catch {}
   }
 
-  if (!url) throw new Error("No URL returned from RequestWebView");
+  if (!url) throw new Error("No URL returned");
 
   const parsedUrl = new URL(url);
   const params = new URLSearchParams(parsedUrl.hash.replace(/^#/, ""));
