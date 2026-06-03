@@ -230,7 +230,7 @@ async function farmTradingWars(account) {
         for (let i = 0; i < maxSlots; i++) {
           const g = venueGpus[i];
           if (g) continue;
-          const machineKeys = ["asic_s9", "gpu_5090", "gpu_4090", "gpu_1050ti"];
+          const machineKeys = ["gpu_1050ti", "asic_s9"];
           let bought = false;
           for (const key of machineKeys) {
             try {
@@ -240,7 +240,7 @@ async function farmTradingWars(account) {
               bought = true;
               break;
             } catch {
-              logger.warn(`    ${key} failed, trying cheaper...`);
+              logger.warn(`    ${key} failed, trying ${key === "gpu_1050ti" ? "asic_s9" : "next"}...`);
             }
           }
           if (!bought) break;
