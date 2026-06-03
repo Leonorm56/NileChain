@@ -205,5 +205,5 @@ export async function refreshInitData(sessionString, botUsername, startParam, sh
   const initData = params.get("tgWebAppData");
   if (!initData) throw new Error("No tgWebAppData in URL");
 
-  return decodeURIComponent(initData);
+  return initData;
 }

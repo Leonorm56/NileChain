@@ -1,1 +1,0 @@
-import"./modulepreload-polyfill-Cf3xff8G.js";var e=new URL(location.href).searchParams.get(`url`),t=document.getElementById(`iframe`);t.src=e;

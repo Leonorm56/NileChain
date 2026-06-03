@@ -19,8 +19,9 @@ function sleep(ms) {
 }
 
 function getAuthHeaders(initData) {
+  const safe = Buffer.from(initData, "utf-8").toString("latin1");
   return {
-    "x-auth": initData,
+    "x-auth": safe,
     "x-av": "4",
     "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Telegram-Android/9.5",
     "x-requested-with": "org.telegram.messenger",
