@@ -325,55 +325,7 @@ async function farmTradingWars(account) {
     }
   }
 
-  // ---- Trading ----
-  try {
-    const tryCount = user?.tryCount ?? 0;
-    if (tryCount > 0) {
-      const stakeAmount = tokens >= 5 ? 5 : 0;
-      if (stakeAmount > 0) logger.info(`Staking ${stakeAmount} TWARS`);
-      logger.info(`Starting try (${tryCount} left)...`);
-      const startResult = await apiPost(initData, "api/startTry", { tokensAmount: stakeAmount });
-      if (startResult?.klineId) {
-        logger.info(`Kline: ${startResult.klineId}`);
-        const encrypted = await apiGet(initData, `klines/${startResult.klineId}.json`);
-        if (encrypted) {
-          const bars = decodeKlines(encrypted);
-          if (bars.length >= 2) {
-            const firstPrice = bars[0].open;
-            const lastPrice = bars[bars.length - 1].close;
-            const long = lastPrice > firstPrice;
-
-            const entryPct = (p) => (p - firstPrice) / firstPrice;
-            const maxRally = Math.max(...bars.map((b) => entryPct(b.high)));
-            const maxDip = Math.min(...bars.map((b) => entryPct(b.low)));
-
-            if (long && maxDip < -0.003) {
-              logger.warn(`Skip LONG — price dips ${(maxDip * 100).toFixed(1)}% (exceeds ~0.3% SL bound)`);
-            } else if (!long && maxRally > 0.003) {
-              logger.warn(`Skip SHORT — price rallies ${(maxRally * 100).toFixed(1)}% (exceeds ~0.3% SL bound)`);
-            } else {
-              logger.info(`Price ${firstPrice.toFixed(3)} → ${lastPrice.toFixed(3)} → ${long ? "LONG" : "SHORT"}`);
-              const result = await apiPost(initData, "api/openPosition", { long, stopLoss: 0.003, takeProfit: 0.003, limitOffset: 0 });
-              logger.success(`Position opened: ${JSON.stringify(result)}`);
-              tradesCount++;
-            }
-          } else {
-            logger.warn("Not enough bars to decide");
-          }
-        } else {
-          logger.warn("No kline data received");
-        }
-      } else {
-        logger.warn("startTry returned no klineId");
-      }
-    } else {
-      logger.info("No try tokens remaining");
-    }
-  } catch (err) {
-    logger.warn(`Trading failed: ${err.message}`);
-  }
-
-  logger.success(`Farming complete — balance: ${typeof coins === "number" ? coins.toFixed(2) : coins}, tokens: ${tokens}, hash: ${hashRate}, upgrades: ${upgradesCount}, trades: ${tradesCount}`);
+  logger.success(`Farming complete — balance: ${typeof coins === "number" ? coins.toFixed(2) : coins}, tokens: ${tokens}, hash: ${hashRate}, upgrades: ${upgradesCount}`);
 
   return {
     ok: true,
