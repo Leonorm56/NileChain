@@ -133,10 +133,13 @@ export function createBot(token, chatId, threadId) {
 
         for (const r of okResults) {
           const parts = [`${r.accountId}`];
-          if (r.profit != null) parts.push(`${r.profit.toLocaleString()}/h`);
-          if (r.tokens != null) parts.push(`${r.tokens} TWARS`);
-          if (r.upgrades) parts.push(`⬆${r.upgrades}`);
-          if (r.trades) parts.push(`📈${r.trades}`);
+          if (farmerId === "trading-wars") {
+            if (r.tokens != null) parts.push(`${r.tokens} TWARS`);
+          } else {
+            if (r.profit != null) parts.push(`${r.profit.toLocaleString()}/h`);
+            if (r.upgrades) parts.push(`⬆${r.upgrades}`);
+            if (r.diamonds) parts.push(`💎${r.diamonds}`);
+          }
           lines.push(parts.join(" — "));
         }
 
