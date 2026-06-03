@@ -437,6 +437,12 @@ importers:
         specifier: ^11.1.1
         version: 11.1.1
 
+  apps/nileflylite:
+    dependencies:
+      telegram:
+        specifier: ^2.26.22
+        version: 2.26.22
+
   apps/purrfect-fly:
     dependencies:
       '@fastify/autoload':

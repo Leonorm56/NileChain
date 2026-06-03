@@ -187,69 +187,118 @@ async function farmTradingWars(account) {
   if (Array.isArray(equipment)) {
     try {
       const gpus = equipment.filter((i) => i.key?.startsWith("gpu_"));
-      const miningBalance = wallet?.miningBalance ?? 0;
+      let miningBalance = wallet?.miningBalance ?? 0;
       let anyBought = false;
-      let allFull = true;
 
+      const gpu1050tiSlots = { venue_home: 12, venue_garage: 12, venue_hotel: 12, venue_datacenter: 6 };
+      const machineCost = { gpu_1050ti: 50, asic_s9: 9300 };
+
+      // ---- Phase 1: fill gpu_1050ti in each venue, then unlock next ----
+      let lastUnlockedIdx = -1;
       for (let vi = 0; vi < VENUE_ORDER.length; vi++) {
         const vk = VENUE_ORDER[vi];
         const venue = equipment.find((i) => i.key === vk);
-        if (!venue) {
-          logger.log(`--- ${LABELS[vk]} ---`);
-          logger.info("Not unlocked yet");
-          allFull = false;
-          break;
-        }
+        if (!venue) break;
+        lastUnlockedIdx = vi;
+
         const venueGpus = gpus.filter((g) => g.parentId === venue.id);
         const maxSlots = TOTAL_SLOTS[vk];
-        const filled = venueGpus.length;
-        logger.log(`--- ${LABELS[vk]} (${filled}/${maxSlots}) ---`);
+        const gpuCount = gpu1050tiSlots[vk];
 
-        if (filled >= maxSlots) {
-          logger.info("Full!");
-          const nextVk = VENUE_ORDER[vi + 1];
-          if (nextVk && !equipment.find((i) => i.key === nextVk)) {
-            const cost = UNLOCK_COST[nextVk];
-            if (miningBalance >= cost) {
-              logger.info(`Unlocking ${LABELS[nextVk]} (${cost.toLocaleString()} coins)...`);
-              try {
-                await apiPost(initData, "api/mining/buyItem", { key: nextVk, parentId: null });
-                logger.success(`Unlocked ${LABELS[nextVk]}!`);
-              } catch (e) {
-                logger.warn(`Failed to unlock: ${e.message}`);
-              }
-            } else {
-              logger.info(`${LABELS[nextVk]} needs ${cost.toLocaleString()} coins (${(cost - miningBalance).toFixed(0)} more to earn)`);
-              allFull = false;
-            }
+        logger.log(`--- ${LABELS[vk]} (${venueGpus.length}/${maxSlots}) ---`);
+        for (let i = 0; i < gpuCount; i++) {
+          if (venueGpus[i]) continue;
+          const cost = machineCost.gpu_1050ti;
+          if (cost > miningBalance) {
+            logger.info(`  [${i}] needs gpu_1050ti (${cost.toLocaleString()} coins) — need ${(cost - miningBalance).toFixed(0)} more`);
+            continue;
           }
-          continue;
+          try {
+            logger.info(`  [${i}] (empty) → buy gpu_1050ti (${cost.toLocaleString()} coins)`);
+            await apiPost(initData, "api/mining/buyItem", { key: "gpu_1050ti", parentId: venue.id });
+            logger.success("    Bought!");
+            anyBought = true;
+            miningBalance -= cost;
+          } catch (e) {
+            logger.warn(`  [${i}] gpu_1050ti failed: ${e.message}`);
+          }
         }
+      }
 
-        allFull = false;
-        for (let i = 0; i < maxSlots; i++) {
-          const g = venueGpus[i];
-          if (g) continue;
-          const machineKeys = ["gpu_1050ti", "asic_s9"];
-          let bought = false;
-          for (const key of machineKeys) {
-            try {
-              logger.info(`  [${i}] (empty) → buy ${key}`);
-              await apiPost(initData, "api/mining/buyItem", { key, parentId: venue.id });
-              logger.success("    Bought!");
-              bought = true;
-              break;
-            } catch {
-              logger.warn(`    ${key} failed, trying ${key === "gpu_1050ti" ? "asic_s9" : "next"}...`);
+      // unlock next venue if all gpu_1050ti slots filled in current last venue
+      const nextIdx = lastUnlockedIdx + 1;
+      if (nextIdx < VENUE_ORDER.length) {
+        const vk = VENUE_ORDER[lastUnlockedIdx];
+        const venue = equipment.find((i) => i.key === vk);
+        if (venue) {
+          const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+          const gpuCount = gpu1050tiSlots[vk];
+          const allGpuFilled = gpuCount === 0 || venueGpus.slice(0, gpuCount).every(Boolean);
+          if (allGpuFilled) {
+            const nextVk = VENUE_ORDER[nextIdx];
+            if (!equipment.find((i) => i.key === nextVk)) {
+              const cost = UNLOCK_COST[nextVk];
+              if (cost <= miningBalance) {
+                logger.info(`Unlocking ${LABELS[nextVk]} (${cost.toLocaleString()} coins)...`);
+                try {
+                  await apiPost(initData, "api/mining/buyItem", { key: nextVk, parentId: null });
+                  logger.success(`Unlocked ${LABELS[nextVk]}!`);
+                  anyBought = true;
+                  miningBalance -= cost;
+                } catch (e) {
+                  logger.warn(`Failed to unlock: ${e.message}`);
+                }
+              } else {
+                logger.info(`${LABELS[nextVk]} needs ${cost.toLocaleString()} coins (${(cost - miningBalance).toFixed(0)} more)`);
+              }
             }
           }
-          if (!bought) break;
-          anyBought = true;
+        }
+      }
+
+      // ---- Phase 2: fill asic_s9 only after all 4 venues unlocked ----
+      const allUnlocked = VENUE_ORDER.every((vk) => equipment.find((i) => i.key === vk));
+      if (allUnlocked) {
+        const allGpuDone = VENUE_ORDER.every((vk) => {
+          const venue = equipment.find((i) => i.key === vk);
+          if (!venue) return false;
+          const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+          const gpuCount = gpu1050tiSlots[vk];
+          return gpuCount === 0 || venueGpus.slice(0, gpuCount).every(Boolean);
+        });
+        if (allGpuDone) {
+          logger.info("All venues unlocked and 1050ti slots filled — buying asic_s9");
+          for (const vk of VENUE_ORDER) {
+            const venue = equipment.find((i) => i.key === vk);
+            if (!venue) continue;
+            const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+            const gpuCount = gpu1050tiSlots[vk];
+            const maxSlots = TOTAL_SLOTS[vk];
+            for (let i = gpuCount; i < maxSlots; i++) {
+              if (venueGpus[i]) continue;
+              const cost = machineCost.asic_s9;
+              if (cost > miningBalance) {
+                logger.info(`  [${i}] needs asic_s9 (${cost.toLocaleString()} coins) — need ${(cost - miningBalance).toFixed(0)} more`);
+                continue;
+              }
+              try {
+                logger.info(`  [${i}] (empty) → buy asic_s9 (${cost.toLocaleString()} coins)`);
+                await apiPost(initData, "api/mining/buyItem", { key: "asic_s9", parentId: venue.id });
+                logger.success("    Bought!");
+                anyBought = true;
+                miningBalance -= cost;
+              } catch (e) {
+                logger.warn(`  [${i}] asic_s9 failed: ${e.message}`);
+              }
+            }
+          }
+        } else {
+          logger.info("Still filling gpu_1050ti slots before switching to asic_s9");
         }
       }
 
       if (anyBought) {
-        logger.info("New GPUs bought, will upgrade once all slots are filled");
+        logger.info("New machines bought, will check upgrades next cycle");
       }
 
       // Upgrade all if all venues full

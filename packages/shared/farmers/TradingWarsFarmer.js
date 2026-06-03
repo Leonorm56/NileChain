@@ -49,10 +49,24 @@ export default class TradingWarsFarmer extends BaseFarmer {
 
   // ---- API methods ----
 
-  apiPost(endpoint, body = {}, signal) {
-    return this.api
-      .post(`${API_BASE}/${endpoint}`, body, { signal })
-      .then((r) => r.data);
+  async apiPost(endpoint, body = {}, signal) {
+    const maxRetries = 2;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const r = await this.api.post(`${API_BASE}/${endpoint}`, body, { signal });
+        return r.data;
+      } catch (e) {
+        if (attempt < maxRetries && e.response?.status >= 500) {
+          this.logger.warn(`  ${endpoint} attempt ${attempt}/${maxRetries} (${e.response.status}), retrying...`);
+          await new Promise((r) => setTimeout(r, 3000 * attempt));
+          continue;
+        }
+        const status = e.response?.status ? `status ${e.response.status}` : "no response";
+        const body = e.response?.data ? ` — ${JSON.stringify(e.response.data).slice(0, 200)}` : "";
+        e.message = `${endpoint}: ${status}${body}`;
+        throw e;
+      }
+    }
   }
 
   updateUser(signal) {
@@ -246,7 +260,7 @@ export default class TradingWarsFarmer extends BaseFarmer {
 
     this.logger.newline();
     this.logger.log("=== Mining Management ===");
-    const miningBalance = wallet?.miningBalance ?? 0;
+    let miningBalance = wallet?.miningBalance ?? 0;
     this.logger.info(`Mining Balance: ${miningBalance.toFixed(2)} coins`);
 
     const gpus = equipment.filter((i) => i.key?.startsWith("gpu_"));
@@ -254,69 +268,120 @@ export default class TradingWarsFarmer extends BaseFarmer {
     const totalSlots = { venue_home: 21, venue_garage: 24, venue_hotel: 27, venue_datacenter: 36 };
     const unlockCost = { venue_garage: 1000, venue_hotel: 10000, venue_datacenter: 100000 };
     const labels = { venue_home: "Home", venue_garage: "Garage", venue_hotel: "Mining Hotel", venue_datacenter: "Data Center" };
+    const gpu1050tiSlots = { venue_home: 12, venue_garage: 12, venue_hotel: 12, venue_datacenter: 6 };
+    const machineCost = { gpu_1050ti: 50, asic_s9: 9300 };
     let anyBought = false;
 
+    // ---- Phase 1: fill gpu_1050ti in each venue, then unlock next ----
+    let lastUnlockedIdx = -1;
     for (let vi = 0; vi < venueOrder.length; vi++) {
-      if (this.signal.aborted) break;
+      if (this.signal.aborted) return;
       const vk = venueOrder[vi];
       const venue = equipment.find((i) => i.key === vk);
-      if (!venue) {
-        this.logger.log(`--- ${labels[vk]} ---`);
-        this.logger.info(`Not unlocked yet`);
-        break;
-      }
+      if (!venue) break;
+      lastUnlockedIdx = vi;
 
       const venueGpus = gpus.filter((g) => g.parentId === venue.id);
       const maxSlots = totalSlots[vk];
-      const filled = venueGpus.length;
-      this.logger.log(`--- ${labels[vk]} (${filled}/${maxSlots}) ---`);
+      const gpuCount = gpu1050tiSlots[vk];
 
-      if (filled >= maxSlots) {
-        this.logger.info(`Full!`);
-        const nextVk = venueOrder[vi + 1];
-        if (nextVk && !equipment.find((i) => i.key === nextVk)) {
-          const cost = unlockCost[nextVk];
-          const needed = cost - miningBalance;
-          if (needed <= 0) {
-            this.logger.info(`Attempting to unlock ${labels[nextVk]} (${cost.toLocaleString()} coins)...`);
-            try {
-              await this.buyItem(nextVk, null);
-              this.logger.success(`Unlocked ${labels[nextVk]}!`);
-            } catch (e) {
-              this.logger.warn(`Failed to unlock: ${e.message}`);
-            }
-          } else {
-            this.logger.info(`${labels[nextVk]} needs ${cost.toLocaleString()} coins (${needed.toFixed(0)} more to earn)`);
-          }
+      this.logger.log(`--- ${labels[vk]} (${venueGpus.length}/${maxSlots}) ---`);
+      for (let i = 0; i < gpuCount; i++) {
+        if (this.signal.aborted) return;
+        if (venueGpus[i]) continue;
+        const cost = machineCost.gpu_1050ti;
+        if (cost > miningBalance) {
+          this.logger.info(`  [${i}] needs gpu_1050ti (${cost.toLocaleString()} coins) — need ${(cost - miningBalance).toFixed(0)} more`);
+          continue;
         }
-        continue;
+        try {
+          this.logger.info(`  [${i}] (empty) → buy gpu_1050ti (${cost.toLocaleString()} coins)`);
+          await this.buyItem("gpu_1050ti", venue.id);
+          this.logger.success("    Bought!");
+          anyBought = true;
+          miningBalance -= cost;
+        } catch (e) {
+          this.logger.warn(`  [${i}] gpu_1050ti failed: ${e.message}`);
+        }
       }
+    }
 
-      for (let i = 0; i < maxSlots; i++) {
-        if (this.signal.aborted) break;
-        const g = venueGpus[i];
-        if (g) continue;
-
-        const machineKeys = ["gpu_1050ti", "asic_s9"];
-        let bought = false;
-        for (const key of machineKeys) {
-          try {
-            this.logger.info(`  [${i}] (empty) → buy ${key}`);
-            await this.buyItem(key, venue.id);
-            this.logger.success(`    Bought!`);
-            bought = true;
-            break;
-          } catch (e) {
-            this.logger.warn(`    ${key} failed: ${e.message}`);
+    // unlock next venue if all gpu_1050ti slots filled in current last venue
+    const nextIdx = lastUnlockedIdx + 1;
+    if (nextIdx < venueOrder.length) {
+      const vk = venueOrder[lastUnlockedIdx];
+      const venue = equipment.find((i) => i.key === vk);
+      if (venue) {
+        const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+        const gpuCount = gpu1050tiSlots[vk];
+        const allGpuFilled = gpuCount === 0 || venueGpus.slice(0, gpuCount).every(Boolean);
+        if (allGpuFilled) {
+          const nextVk = venueOrder[nextIdx];
+          if (!equipment.find((i) => i.key === nextVk)) {
+            const cost = unlockCost[nextVk];
+            if (cost <= miningBalance) {
+              this.logger.info(`Attempting to unlock ${labels[nextVk]} (${cost.toLocaleString()} coins)...`);
+              try {
+                await this.buyItem(nextVk, null);
+                this.logger.success(`Unlocked ${labels[nextVk]}!`);
+                anyBought = true;
+                miningBalance -= cost;
+              } catch (e) {
+                this.logger.warn(`Failed to unlock: ${e.message}`);
+              }
+            } else {
+              this.logger.info(`${labels[nextVk]} needs ${cost.toLocaleString()} coins (${(cost - miningBalance).toFixed(0)} more)`);
+            }
           }
         }
-        if (!bought) break;
-        anyBought = true;
+      }
+    }
+
+    // ---- Phase 2: fill asic_s9 only after all 4 venues unlocked ----
+    const allUnlocked = venueOrder.every((vk) => equipment.find((i) => i.key === vk));
+    if (allUnlocked) {
+      const allGpuDone = venueOrder.every((vk) => {
+        const venue = equipment.find((i) => i.key === vk);
+        if (!venue) return false;
+        const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+        const gpuCount = gpu1050tiSlots[vk];
+        return gpuCount === 0 || venueGpus.slice(0, gpuCount).every(Boolean);
+      });
+      if (allGpuDone) {
+        this.logger.info("All venues unlocked and 1050ti slots filled — buying asic_s9");
+        for (const vk of venueOrder) {
+          if (this.signal.aborted) return;
+          const venue = equipment.find((i) => i.key === vk);
+          if (!venue) continue;
+          const venueGpus = gpus.filter((g) => g.parentId === venue.id);
+          const gpuCount = gpu1050tiSlots[vk];
+          const maxSlots = totalSlots[vk];
+          for (let i = gpuCount; i < maxSlots; i++) {
+            if (this.signal.aborted) return;
+            if (venueGpus[i]) continue;
+            const cost = machineCost.asic_s9;
+            if (cost > miningBalance) {
+              this.logger.info(`  [${i}] needs asic_s9 (${cost.toLocaleString()} coins) — need ${(cost - miningBalance).toFixed(0)} more`);
+              continue;
+            }
+            try {
+              this.logger.info(`  [${i}] (empty) → buy asic_s9 (${cost.toLocaleString()} coins)`);
+              await this.buyItem("asic_s9", venue.id);
+              this.logger.success("    Bought!");
+              anyBought = true;
+              miningBalance -= cost;
+            } catch (e) {
+              this.logger.warn(`  [${i}] asic_s9 failed: ${e.message}`);
+            }
+          }
+        }
+      } else {
+        this.logger.info("Still filling gpu_1050ti slots before switching to asic_s9");
       }
     }
 
     if (anyBought) {
-      this.logger.info(`New GPUs bought, will upgrade once all slots are filled`);
+      this.logger.info(`New machines bought, will check upgrades next cycle`);
     }
   }
 
