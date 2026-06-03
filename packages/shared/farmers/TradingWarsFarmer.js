@@ -297,15 +297,21 @@ export default class TradingWarsFarmer extends BaseFarmer {
         const g = venueGpus[i];
         if (g) continue;
 
-        this.logger.info(`  [${i}] (empty) → buy gpu_1050ti`);
-        try {
-          await this.buyItem("gpu_1050ti", venue.id);
-          this.logger.success(`    Bought!`);
-          anyBought = true;
-        } catch (e) {
-          this.logger.warn(`    Failed: ${e.message}`);
-          break;
+        const machineKeys = ["gpu_1050ti", "asic_s9"];
+        let bought = false;
+        for (const key of machineKeys) {
+          try {
+            this.logger.info(`  [${i}] (empty) → buy ${key}`);
+            await this.buyItem(key, venue.id);
+            this.logger.success(`    Bought!`);
+            bought = true;
+            break;
+          } catch (e) {
+            this.logger.warn(`    ${key} failed: ${e.message}`);
+          }
         }
+        if (!bought) break;
+        anyBought = true;
       }
     }
 
