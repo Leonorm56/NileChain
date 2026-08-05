@@ -1,30 +1,30 @@
 <p align="center">
-  <a href="https://t.me/purrfect_community" target="_blank">
-    <img src="resources/images/icon.png" width="128" alt="Purrfect Fly Logo">
+  <a href="https://t.me/nilechain_community" target="_blank">
+    <img src="resources/images/icon.png" width="128" alt="NileCloud Logo">
   </a>
 </p>
 
-<h1 align="center">Purrfect Fly</h1>
+<h1 align="center">NileCloud</h1>
 
 <p align="center">
   <strong>Cloud-Based Farming Platform</strong>
 </p>
 
 <p align="center">
-  Run all Purrfect Farmer bots autonomously on your server, 24/7
+  Run all NileChain Farmer bots autonomously on your server, 24/7
 </p>
 
 ---
 
 ## Overview
 
-**Purrfect Fly** is a cloud-based farming platform that runs all Purrfect Farmer bots directly on your server. Unlike the browser extension which runs locally, Purrfect Fly operates autonomously in the cloud, managing multiple Telegram accounts, executing farming tasks 24/7, and providing centralized control through the Cloud Manager tool in Purrfect Farmer.
+**NileCloud** is a cloud-based farming platform that runs all NileChain Farmer bots directly on your server. Unlike the browser extension which runs locally, NileCloud operates autonomously in the cloud, managing multiple Telegram accounts, executing farming tasks 24/7, and providing centralized control through the Cloud Manager tool in NileChain Farmer.
 
 ### Key Features
 
 - **Cloud-Based Farming** - Runs all farmers directly on your server, no browser needed
 - **Autonomous Operation** - 24/7 automated farming without manual intervention
-- **Cloud Manager Integration** - Control everything through Purrfect Farmer's Cloud Manager
+- **Cloud Manager Integration** - Control everything through NileChain Farmer's Cloud Manager
 - **Multi-Account Management** - Handle unlimited Telegram accounts
 - **Real-Time Monitoring** - Live updates and notifications via Telegram topics
 - **Database Backend** - Persistent storage for accounts, proxies, and sessions
@@ -40,12 +40,12 @@
 
 **Using curl:**
 ```bash
-curl -o- https://raw.githubusercontent.com/purrfect-farmer/purrfect-farmer/main/apps/purrfect-fly/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nilecloud/nilecloud/main/apps/nilecloud/install.sh | bash
 ```
 
 **Using wget:**
 ```bash
-wget -qO- https://raw.githubusercontent.com/purrfect-farmer/purrfect-farmer/main/apps/purrfect-fly/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/nilecloud/nilecloud/main/apps/nilecloud/install.sh | bash
 ```
 
 The installation script will:
@@ -86,7 +86,7 @@ Before installation, you need:
    - **Farming** - Farming activity logs
    - **Additional Topics (Optional)** - One topic per farmer for detailed logs
 
-**Note:** The Telegram bot is used for notifications and logs only. All management is done through the Cloud Manager tool in Purrfect Farmer extension/PWA.
+**Note:** The Telegram bot is used for notifications and logs only. All management is done through the Cloud Manager tool in NileChain Farmer extension/PWA.
 
 ---
 
@@ -151,8 +151,8 @@ Copy and run the generated command.
 ### Step 4: Clone Repository
 
 ```bash
-git clone https://github.com/purrfect-farmer/purrfect-farmer.git ~/purrfect-farmer
-cd ~/purrfect-farmer
+git clone https://github.com/nilecloud/nilecloud.git ~/nilecloud
+cd ~/nilecloud
 ```
 
 ### Step 5: Install Dependencies
@@ -166,21 +166,21 @@ pnpm install
 Create environment file:
 
 ```bash
-cp apps/purrfect-fly/.env.example apps/purrfect-fly/.env
+cp apps/nilecloud/.env.example apps/nilecloud/.env
 ```
 
 Generate JWT secret:
 
 ```bash
-pnpm -F purrfect-fly fly generate-jwt-secret
+pnpm -F nilecloud fly generate-jwt-secret
 ```
 
 Copy the generated secret and edit `.env`:
 
 ```bash
-micro apps/purrfect-fly/.env
+micro apps/nilecloud/.env
 # or
-nano apps/purrfect-fly/.env
+nano apps/nilecloud/.env
 ```
 
 **Required environment variables:**
@@ -210,10 +210,10 @@ NODE_ENV=production
 Run migrations and seeders (SQLite database will be created automatically):
 
 ```bash
-pnpm -F purrfect-fly db:migrate && pnpm -F purrfect-fly db:seed
+pnpm -F nilecloud db:migrate && pnpm -F nilecloud db:seed
 ```
 
-**Note:** Purrfect Fly uses SQLite for database storage. The database file will be created in `apps/purrfect-fly/db/` on first run.
+**Note:** NileCloud uses SQLite for database storage. The database file will be created in `apps/nilecloud/db/` on first run.
 
 **Default Admin User:**
 - **Username:** `admin`
@@ -224,7 +224,7 @@ pnpm -F purrfect-fly db:migrate && pnpm -F purrfect-fly db:seed
 ### Step 8: Start Application
 
 ```bash
-pm2 start apps/purrfect-fly/ecosystem.config.cjs
+pm2 start apps/nilecloud/ecosystem.config.cjs
 pm2 save
 ```
 
@@ -232,7 +232,7 @@ Verify it's running:
 
 ```bash
 pm2 status
-pm2 logs purrfect-fly
+pm2 logs nilecloud
 ```
 
 ---
@@ -242,7 +242,7 @@ pm2 logs purrfect-fly
 ### Step 1: Create Nginx Server Block
 
 ```bash
-sudo micro /etc/nginx/sites-available/purrfect-fly
+sudo micro /etc/nginx/sites-available/nilecloud
 ```
 
 ### Step 2: Add Configuration
@@ -292,8 +292,8 @@ server {
 # Disable default site (optional)
 sudo rm /etc/nginx/sites-enabled/default
 
-# Enable Purrfect Fly
-sudo ln -s /etc/nginx/sites-available/purrfect-fly /etc/nginx/sites-enabled/
+# Enable NileCloud
+sudo ln -s /etc/nginx/sites-available/nilecloud /etc/nginx/sites-enabled/
 ```
 
 ### Step 4: Test and Reload
@@ -325,20 +325,20 @@ sudo certbot --nginx -d your-domain.com
 Keep your installation up to date:
 
 ```bash
-cd ~/purrfect-farmer
+cd ~/nilecloud
 
 git pull && \
 pnpm install && \
-pnpm -F purrfect-fly db:migrate && \
-pnpm -F purrfect-fly db:seed && \
-pm2 reload apps/purrfect-fly/ecosystem.config.cjs --update-env && \
+pnpm -F nilecloud db:migrate && \
+pnpm -F nilecloud db:seed && \
+pm2 reload apps/nilecloud/ecosystem.config.cjs --update-env && \
 pm2 save
 ```
 
 Or use the update script:
 
 ```bash
-bash apps/purrfect-fly/update.sh
+bash apps/nilecloud/update.sh
 ```
 
 ---
@@ -352,16 +352,16 @@ bash apps/purrfect-fly/update.sh
 pm2 status
 
 # View logs
-pm2 logs purrfect-fly
+pm2 logs nilecloud
 
 # Restart
-pm2 restart purrfect-fly
+pm2 restart nilecloud
 
 # Stop
-pm2 stop purrfect-fly
+pm2 stop nilecloud
 
 # Delete process
-pm2 delete purrfect-fly
+pm2 delete nilecloud
 
 # Monitor
 pm2 monit
@@ -371,41 +371,41 @@ pm2 monit
 
 ```bash
 # Run migrations
-pnpm -F purrfect-fly db:migrate
+pnpm -F nilecloud db:migrate
 
 # Rollback last migration
-pnpm -F purrfect-fly db:migrate:undo
+pnpm -F nilecloud db:migrate:undo
 
 # Seed database
-pnpm -F purrfect-fly db:seed
+pnpm -F nilecloud db:seed
 
 # Reset database
-pnpm -F purrfect-fly db:migrate:refresh
+pnpm -F nilecloud db:migrate:refresh
 ```
 
 ### Fly CLI Commands
 
 ```bash
 # Generate JWT secret
-pnpm -F purrfect-fly fly generate-jwt-secret
+pnpm -F nilecloud fly generate-jwt-secret
 
 # List accounts
-pnpm -F purrfect-fly fly list-accounts
+pnpm -F nilecloud fly list-accounts
 
 # Update accounts
-pnpm -F purrfect-fly fly update-accounts
+pnpm -F nilecloud fly update-accounts
 
 # Test proxies
-pnpm -F purrfect-fly fly test-proxies
+pnpm -F nilecloud fly test-proxies
 
 # Clean database
-pnpm -F purrfect-fly fly clean-db
+pnpm -F nilecloud fly clean-db
 
 # Export backup
-pnpm -F purrfect-fly fly export-backup
+pnpm -F nilecloud fly export-backup
 
 # Import backup
-pnpm -F purrfect-fly fly import-backup <file>
+pnpm -F nilecloud fly import-backup <file>
 ```
 
 ---
@@ -439,10 +439,10 @@ pm2 startup
 pm2 status
 
 # Check app logs
-pm2 logs purrfect-fly
+pm2 logs nilecloud
 
 # Restart app
-pm2 restart purrfect-fly
+pm2 restart nilecloud
 ```
 
 ---
@@ -451,7 +451,7 @@ pm2 restart purrfect-fly
 
 ```
 ┌─────────────────────┐
-│  Purrfect Farmer    │
+│  NileChain Farmer    │
 │  Cloud Manager      │◄────── Manage accounts, proxies, farmers
 │  (Extension/PWA)    │
 └──────────┬──────────┘
@@ -459,7 +459,7 @@ pm2 restart purrfect-fly
            │ HTTPS/REST API (JWT Auth)
            │
 ┌──────────▼──────────┐
-│  Purrfect Fly       │
+│  NileCloud       │
 │  Node.js Server     │◄────── Runs all farmers in cloud
 │  (PM2)              │
 │                     │
@@ -481,7 +481,7 @@ pm2 restart purrfect-fly
 ```
 
 **How It Works:**
-- **Cloud Manager** (in Purrfect Farmer) - Interface to manage Fly
+- **Cloud Manager** (in NileChain Farmer) - Interface to manage Fly
 - **API Communication** - Secure JWT-authenticated REST API
 - **Server Execution** - All farmers run on server, not in browser
 - **Telegram Notifications** - Logs sent to Telegram group topics
@@ -519,9 +519,9 @@ This project is licensed under the [MIT License](../../LICENSE).
 
 ## Community & Support
 
-- **Telegram Community:** [Join @purrfect_community](https://t.me/purrfect_community)
-- **Issues:** [GitHub Issues](https://github.com/purrfect-farmer/purrfect-farmer/issues)
-- **Main Repository:** [purrfect-farmer](https://github.com/purrfect-farmer/purrfect-farmer)
+- **Telegram Community:** [Join @nilechain_community](https://t.me/nilechain_community)
+- **Issues:** [GitHub Issues](https://github.com/nilecloud/nilecloud/issues)
+- **Main Repository:** [nilecloud](https://github.com/nilecloud/nilecloud)
 
 ---
 

@@ -1,4 +1,4 @@
-import BaseATFAutoWalletTransfer from "@purrfect/shared/lib/BaseATFAutoWalletTransfer.js";
+import BaseATFAutoWalletTransfer from "@nile/shared/lib/BaseATFAutoWalletTransfer.js";
 
 class ATFAutoWalletTransfer extends BaseATFAutoWalletTransfer {}
 

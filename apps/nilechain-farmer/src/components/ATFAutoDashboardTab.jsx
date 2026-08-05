@@ -12,7 +12,7 @@ import { Dialog } from "radix-ui";
 import Input from "./Input";
 import PrimaryButton from "./PrimaryButton";
 import { Reorder } from "motion/react";
-import { searchAtfAutoAccount } from "@purrfect/shared/lib/atf-auto";
+import { searchAtfAutoAccount } from "@nile/shared/lib/atf-auto";
 import useATFAuto from "@/hooks/useATFAuto";
 import { useDebounce } from "react-use";
 

@@ -1,6 +1,6 @@
 import { Api, Logger } from "telegram";
 
-import BaseTelegramWebClient from "@purrfect/shared/lib/BaseTelegramWebClient.js";
+import BaseTelegramWebClient from "@nile/shared/lib/BaseTelegramWebClient.js";
 import fsp from "node:fs/promises";
 import { getCurrentPath } from "./path.js";
 import { globby } from "globby";

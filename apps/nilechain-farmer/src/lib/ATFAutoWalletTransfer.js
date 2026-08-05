@@ -1,4 +1,4 @@
-import BaseATFAutoWalletTransfer from "@purrfect/shared/lib/BaseATFAutoWalletTransfer.js";
+import BaseATFAutoWalletTransfer from "@nile/shared/lib/BaseATFAutoWalletTransfer.js";
 import { fromNano } from "@ton/core";
 import toast from "react-hot-toast";
 

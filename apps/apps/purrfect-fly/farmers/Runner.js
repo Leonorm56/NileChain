@@ -7,9 +7,9 @@ import {
 import { HttpProxyAgent, HttpsProxyAgent } from "hpagent";
 import userAgents, {
   regularMobileUserAgents,
-} from "@purrfect/shared/resources/userAgents.js";
+} from "@nile/shared/resources/userAgents.js";
 
-import ConsoleLogger from "@purrfect/shared/lib/ConsoleLogger.js";
+import ConsoleLogger from "@nile/shared/lib/ConsoleLogger.js";
 import GramClient from "../lib/GramClient.js";
 import axios from "axios";
 import bot from "../lib/bot.js";
@@ -25,7 +25,7 @@ const HttpProxyAgentWithCookies = createCookieAgent(HttpProxyAgent);
 const HttpsProxyAgentWithCookies = createCookieAgent(HttpsProxyAgent);
 
 /**
- * @param {import("@purrfect/shared/lib/BaseFarmer.js").default} FarmerClass
+ * @param {import("@nile/shared/lib/BaseFarmer.js").default} FarmerClass
  */
 export default function createRunner(FarmerClass) {
   /** Environment Variables key */

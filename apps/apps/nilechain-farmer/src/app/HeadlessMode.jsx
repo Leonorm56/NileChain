@@ -1,8 +1,8 @@
 import { cn, getPrimaryFarmerLinkStorageKey } from "@/utils";
 
 import AppIcon from "@/assets/images/icon.png?format=webp&w=80";
-import BrowserLogger from "@purrfect/shared/lib/BrowserLogger";
-import CronRunner from "@purrfect/shared/lib/CronRunner";
+import BrowserLogger from "@nile/shared/lib/BrowserLogger";
+import CronRunner from "@nile/shared/lib/CronRunner";
 import TelegramWebClient from "@/lib/TelegramWebClient";
 import TerminalArea from "@/components/TerminalArea";
 import axios from "axios";
@@ -12,7 +12,7 @@ import storage from "@/lib/storage";
 import { useEffect } from "react";
 import { useRef } from "react";
 import useSharedContext from "@/hooks/useSharedContext";
-import userAgents from "@purrfect/shared/resources/userAgents";
+import userAgents from "@nile/shared/resources/userAgents";
 import utils from "@/utils/bundle";
 
 /** Headless Telegram Client */
@@ -33,8 +33,8 @@ class HeadlessTelegramClient extends TelegramWebClient {
 /**
  *
  * @param {Object} param0
- * @param {import("@purrfect/shared/lib/BaseFarmer.js").default} param0.FarmerClass
- * @returns {import("@purrfect/shared/lib/BaseFarmer.js").default}
+ * @param {import("@nile/shared/lib/BaseFarmer.js").default} param0.FarmerClass
+ * @returns {import("@nile/shared/lib/BaseFarmer.js").default}
  */
 const createRunner = ({ FarmerClass, logger, captcha, controller }) => {
   const Runner = class extends FarmerClass {
@@ -43,7 +43,7 @@ const createRunner = ({ FarmerClass, logger, captcha, controller }) => {
     /**
      *
      * @param {Object} param0
-     * @param {import("@purrfect/shared/lib/BaseTelegramWebClient.js").default} param0.client
+     * @param {import("@nile/shared/lib/BaseTelegramWebClient.js").default} param0.client
      */
     constructor({ client, account }) {
       super();

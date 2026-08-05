@@ -2,7 +2,7 @@ import { JSDOM } from "jsdom";
 import app from "../config/app.js";
 import base64url from "base64url";
 import crypto from "crypto";
-import sharedUtils from "@purrfect/shared/utils/bundle.js";
+import sharedUtils from "@nile/shared/utils/bundle.js";
 import tweetnacl from "tweetnacl";
 
 const KEYCAP_EMOJIS = [

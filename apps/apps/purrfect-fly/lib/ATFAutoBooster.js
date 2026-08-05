@@ -1,4 +1,4 @@
-import BaseATFAutoBooster from "@purrfect/shared/lib/BaseATFAutoBooster.js";
+import BaseATFAutoBooster from "@nile/shared/lib/BaseATFAutoBooster.js";
 
 class ATFAutoBooster extends BaseATFAutoBooster {}
 

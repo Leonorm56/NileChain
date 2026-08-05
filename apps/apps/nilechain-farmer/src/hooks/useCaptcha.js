@@ -1,4 +1,4 @@
-import CaptchaSolver from "@purrfect/shared/lib/CaptchaSolver";
+import CaptchaSolver from "@nile/shared/lib/CaptchaSolver";
 import { useMemo } from "react";
 
 export default function useCaptcha(enabled, provider, apiKey) {

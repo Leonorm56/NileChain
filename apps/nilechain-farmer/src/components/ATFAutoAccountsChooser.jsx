@@ -12,7 +12,7 @@ import ATFAutoAvatar from "./ATFAutoAvatar";
 import ATFAutoVersionBadge from "./ATFAutoVersionBadge";
 import Input from "./Input";
 import { cn } from "@/utils";
-import { searchAtfAutoAccount } from "@purrfect/shared/lib/atf-auto";
+import { searchAtfAutoAccount } from "@nile/shared/lib/atf-auto";
 import { useState } from "react";
 
 function getInitials(title) {

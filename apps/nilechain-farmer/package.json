@@ -29,7 +29,7 @@
                          "@noble/ciphers":  "^2.2.0",
                          "@noble/hashes":  "^2.2.0",
                          "@paystack/inline-js":  "^2.22.8",
-                         "@purrfect/shared":  "workspace:*",
+                         "@nile/shared":  "workspace:*",
                          "@pwabucket/pwa-router":  "^0.0.16",
                          "@scure/base":  "^2.2.0",
                          "@smastrom/react-rating":  "^1.5.0",

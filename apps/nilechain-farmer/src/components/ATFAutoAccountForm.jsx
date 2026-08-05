@@ -8,7 +8,7 @@ import PrimaryButton from "./PrimaryButton";
 import Select from "./Select";
 import Textarea from "./Textarea";
 import { cn } from "@/utils";
-import { getWalletAddressFromMnemonic } from "@purrfect/shared/lib/atf-auto";
+import { getWalletAddressFromMnemonic } from "@nile/shared/lib/atf-auto";
 import { mnemonicNew } from "@ton/crypto";
 import toast from "react-hot-toast";
 import { yup } from "@/lib/yup";

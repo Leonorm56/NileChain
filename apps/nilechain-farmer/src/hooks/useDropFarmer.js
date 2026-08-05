@@ -1,4 +1,4 @@
-import BrowserLogger from "@purrfect/shared/lib/BrowserLogger";
+import BrowserLogger from "@nile/shared/lib/BrowserLogger";
 import axios from "axios";
 import { createQueryClient } from "@/lib/createQueryClient";
 import useAppContext from "./useAppContext";

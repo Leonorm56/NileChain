@@ -1,8 +1,8 @@
 import { HiPlay, HiStop } from "react-icons/hi2";
 import { cn, getPrimaryFarmerLinkStorageKey } from "@/utils";
 
-import BrowserLogger from "@purrfect/shared/lib/BrowserLogger";
-import CronRunner from "@purrfect/shared/lib/CronRunner.js";
+import BrowserLogger from "@nile/shared/lib/BrowserLogger";
+import CronRunner from "@nile/shared/lib/CronRunner.js";
 import TerminalArea from "@/components/TerminalArea";
 import axios from "axios";
 import { memo } from "react";
@@ -21,9 +21,9 @@ import utils from "@/utils/bundle";
 /**
  *
  * @param {Object} param0
- * @param {import("@purrfect/shared/lib/BaseFarmer.js").default} param0.FarmerClass
+ * @param {import("@nile/shared/lib/BaseFarmer.js").default} param0.FarmerClass
  * @param {string} param0.userAgent
- * @returns {import("@purrfect/shared/lib/BaseFarmer.js").default}
+ * @returns {import("@nile/shared/lib/BaseFarmer.js").default}
  */
 const createInstance = ({
   FarmerClass,

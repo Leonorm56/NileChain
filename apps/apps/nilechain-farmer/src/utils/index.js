@@ -2,10 +2,10 @@ import { clsx } from "clsx";
 import defaultSharedSettings from "@/core/defaultSharedSettings";
 import storage from "../lib/storage";
 import { twMerge } from "tailwind-merge";
-import userAgents from "@purrfect/shared/resources/userAgents.js";
-import { uuid } from "@purrfect/shared/utils";
+import userAgents from "@nile/shared/resources/userAgents.js";
+import { uuid } from "@nile/shared/utils";
 
-export * from "@purrfect/shared/utils";
+export * from "@nile/shared/utils";
 
 export function downloadFile(filename, data) {
   const jsonStr = JSON.stringify(data, null, 2);
@@ -390,5 +390,29 @@ export async function setCookies(cookies = []) {
   }
 }
 
+/**
+ * Detect the exit country of the currently configured proxy by querying
+ * ipwho.is through the proxy. Returns the ISO 3166-1 alpha-2 country
+ * code or null when detection fails (no proxy, proxy unreachable, etc.).
+ */
+export async function detectProxyCountry() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
+    const res = await fetch('https://ipwho.is/', {
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+
+    return data?.country_code || null;
+  } catch {
+    return null;
+  }
+}
 

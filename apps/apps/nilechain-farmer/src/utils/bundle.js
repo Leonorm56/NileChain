@@ -1,7 +1,7 @@
 import { downloadFile, getCookies, parseHTML, setCookies } from ".";
 
 import { encryption } from "@/services/encryption";
-import sharedUtils from "@purrfect/shared/utils/bundle.js";
+import sharedUtils from "@nile/shared/utils/bundle.js";
 
 export default {
   ...sharedUtils,

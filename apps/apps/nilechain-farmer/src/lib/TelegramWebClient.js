@@ -1,4 +1,4 @@
-import BaseTelegramWebClient from "@purrfect/shared/lib/BaseTelegramWebClient.js";
+import BaseTelegramWebClient from "@nile/shared/lib/BaseTelegramWebClient.js";
 
 export default class TelegramWebClient extends BaseTelegramWebClient {
   /** Construct Class */

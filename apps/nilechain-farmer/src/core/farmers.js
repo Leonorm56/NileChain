@@ -3,12 +3,12 @@ import { customLogger } from "@/utils";
 import path from "path-browserify";
 
 // Import farmers directly — the pnpm symlink breaks import.meta.glob on this system
-import ADCLICKERFarmer from "@purrfect/shared/farmers/ADCLICKERFarmer.js";
-import ATFFarmer from "@purrfect/shared/farmers/ATFFarmer.js";
-import DreamcoinProFarmer from "@purrfect/shared/farmers/DreamcoinProFarmer.js";
-import HeadCoinFarmer from "@purrfect/shared/farmers/HeadCoinFarmer.js";
-import SpaceJumpFarmer from "@purrfect/shared/farmers/SpaceJumpFarmer.js";
-import TradingWarsFarmer from "@purrfect/shared/farmers/TradingWarsFarmer.js";
+import ADCLICKERFarmer from "@nile/shared/farmers/ADCLICKERFarmer.js";
+import ATFFarmer from "@nile/shared/farmers/ATFFarmer.js";
+import DreamcoinProFarmer from "@nile/shared/farmers/DreamcoinProFarmer.js";
+import HeadCoinFarmer from "@nile/shared/farmers/HeadCoinFarmer.js";
+import SpaceJumpFarmer from "@nile/shared/farmers/SpaceJumpFarmer.js";
+import TradingWarsFarmer from "@nile/shared/farmers/TradingWarsFarmer.js";
 
 const farmerClasses = [
   ADCLICKERFarmer,
@@ -20,7 +20,7 @@ const farmerClasses = [
 ];
 
 const farmersIconGlob = import.meta.glob(
-  "../../node_modules/@purrfect/shared/assets/images/farmers/*.png",
+  "../../node_modules/@nile/shared/assets/images/farmers/*.png",
   {
     eager: true,
     import: "default",

@@ -10,8 +10,8 @@ import utils from "@/utils/bundle";
 /**
  *
  * @param {Object} param0
- * @param {import("@purrfect/shared/lib/BaseFarmer.js").default} param0.FarmerClass
- * @returns {import("@purrfect/shared/lib/BaseFarmer.js").default}
+ * @param {import("@nile/shared/lib/BaseFarmer.js").default} param0.FarmerClass
+ * @returns {import("@nile/shared/lib/BaseFarmer.js").default}
  */
 const createDropFarmerInstance = ({ FarmerClass }) => {
   const InstanceClass = class extends FarmerClass {
@@ -58,8 +58,8 @@ const createDropFarmerInstance = ({ FarmerClass }) => {
 /**
  *
  * @param {Object} param0
- * @param {import("@purrfect/shared/lib/BaseFarmer.js").default} param0.FarmerClass
- * @returns {import("@purrfect/shared/lib/BaseFarmer.js").default}
+ * @param {import("@nile/shared/lib/BaseFarmer.js").default} param0.FarmerClass
+ * @returns {import("@nile/shared/lib/BaseFarmer.js").default}
  */
 export default function useDropFarmerInstance({
   FarmerClass,

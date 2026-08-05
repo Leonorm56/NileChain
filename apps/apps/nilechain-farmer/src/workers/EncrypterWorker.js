@@ -1,4 +1,4 @@
-import Encrypter from "@purrfect/shared/lib/Encrypter.js";
+import Encrypter from "@nile/shared/lib/Encrypter.js";
 import { expose } from "comlink";
 expose(Encrypter);
 

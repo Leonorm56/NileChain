@@ -1,4 +1,4 @@
-import { sendWebviewMessage } from "@/utils";
+import { detectProxyCountry, sendWebviewMessage } from "@/utils";
 import updateNetRules from "@/lib/updateNetRules";
 import useAppContext from "./useAppContext";
 import useCloudSubscriptionQuery from "./useCloudSubscriptionQuery";
@@ -43,6 +43,16 @@ export default function useProxy(app) {
             ...parsedCloudProxy,
             proxyEnabled: true,
           },
+        });
+
+        /** Detect proxy exit country so the-nile can align timezone. */
+        detectProxyCountry().then((country) => {
+          if (country) {
+            sendWebviewMessage({
+              action: "set-proxy-country",
+              data: { proxyCountry: country },
+            });
+          }
         });
       } else {
         updateSharedSettings(

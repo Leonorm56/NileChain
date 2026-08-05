@@ -6,7 +6,7 @@ const env = dotenv.parse(fs.readFileSync(path.join(__dirname, ".env")));
 module.exports = {
   apps: [
     {
-      name: env.PM2_APP_NAME || "purrfect-fly",
+      name: env.PM2_APP_NAME || "nilecloud",
       script: "pnpm",
       args: "start --options",
       interpreter: "none",

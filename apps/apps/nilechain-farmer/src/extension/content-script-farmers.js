@@ -1,4 +1,4 @@
-import.meta.glob("../../node_modules/@purrfect/shared/content-scripts/*.js", {
+import.meta.glob("../../node_modules/@nile/shared/content-scripts/*.js", {
   eager: true,
 });
 

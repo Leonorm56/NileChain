@@ -1,4 +1,4 @@
-import userAgents from "@purrfect/shared/resources/userAgents";
+import userAgents from "@nile/shared/resources/userAgents";
 
 import useSharedStorageState from "./useSharedStorageState";
 

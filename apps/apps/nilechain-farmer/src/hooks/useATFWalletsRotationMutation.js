@@ -1,7 +1,7 @@
 import ATFAutoWalletTransfer from "@/lib/ATFAutoWalletTransfer";
 import { downloadFile } from "@/utils";
 import { encryption } from "@/services/encryption";
-import { getWalletFromMnemonic } from "@purrfect/shared/lib/atf-auto";
+import { getWalletFromMnemonic } from "@nile/shared/lib/atf-auto";
 import { mnemonicNew } from "@ton/crypto";
 import toast from "react-hot-toast";
 import useATFAuto from "./useATFAuto";

@@ -1,4 +1,4 @@
-import BaseATFAutoBooster from "@purrfect/shared/lib/BaseATFAutoBooster.js";
+import BaseATFAutoBooster from "@nile/shared/lib/BaseATFAutoBooster.js";
 import { fromNano } from "@ton/core";
 import toast from "react-hot-toast";
 

@@ -10,7 +10,7 @@ const farmers = {};
 
 const farmersDir = path.join(
   __dirname,
-  "../node_modules/@purrfect/shared/farmers",
+  "../node_modules/@nile/shared/farmers",
 );
 const farmerClasses = fs
   .readdirSync(farmersDir)

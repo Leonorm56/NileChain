@@ -1,6 +1,6 @@
 import "./config/env.js";
 
-import CronRunner from "@purrfect/shared/lib/CronRunner.js";
+import CronRunner from "@nile/shared/lib/CronRunner.js";
 import app from "./config/app.js";
 import expireSubscriptions from "./actions/expire-subscriptions.js";
 import farmers from "./farmers/index.js";

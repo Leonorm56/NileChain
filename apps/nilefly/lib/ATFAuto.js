@@ -1,11 +1,11 @@
 import ATFAutoBooster from "./ATFAutoBooster.js";
 import ATFAutoWalletTransfer from "./ATFAutoWalletTransfer.js";
-import Encrypter from "@purrfect/shared/lib/Encrypter.js";
+import Encrypter from "@nile/shared/lib/Encrypter.js";
 import bot from "./bot.js";
 import db from "../db/models/index.js";
 import farmers from "../farmers/index.js";
 import logger from "./logger.js";
-import { prepareMaster } from "@purrfect/shared/lib/atf-auto-transactions.js";
+import { prepareMaster } from "@nile/shared/lib/atf-auto-transactions.js";
 import utils from "./utils.js";
 
 class ATFAuto {
@@ -187,7 +187,7 @@ class ATFAuto {
     /** Terminate */
     FarmerClass.terminate(cloudAccount.id);
 
-    /** @type {import("@purrfect/shared/farmers/ATFFarmer.js").default} */
+    /** @type {import("@nile/shared/farmers/ATFFarmer.js").default} */
     const runner = new FarmerClass(cloudAccount);
 
     /** Prepare runner */

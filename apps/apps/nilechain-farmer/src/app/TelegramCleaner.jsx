@@ -18,7 +18,7 @@ const ConversationIcon = ({ conversation }) => {
   const [src, setSrc] = useState(null);
 
   const loadImage = useCallback(async () => {
-    /** @type {import("@purrfect/shared/lib/BaseTelegramWebClient").default} */
+    /** @type {import("@nile/shared/lib/BaseTelegramWebClient").default} */
     const client = ref.current;
 
     const media = await client.execute(() =>
@@ -117,7 +117,7 @@ export default function TelegramCleaner() {
 
   useEffect(() => {
     if (farmerMode !== "session") return;
-    /** @type {import("@purrfect/shared/lib/BaseTelegramWebClient").default} */
+    /** @type {import("@nile/shared/lib/BaseTelegramWebClient").default} */
     const client = ref.current;
 
     /** Fetch Dialogs */
@@ -127,7 +127,7 @@ export default function TelegramCleaner() {
   const [, dispatchAndLeaveConversation] = useMirroredCallback(
     "telegram-cleaner.leave-conversation",
     (conversationId) => {
-      /** @type {import("@purrfect/shared/lib/BaseTelegramWebClient").default} */
+      /** @type {import("@nile/shared/lib/BaseTelegramWebClient").default} */
       const client = ref.current;
 
       const conversationBigIntId = BigInt(conversationId);

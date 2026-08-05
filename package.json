@@ -3,7 +3,7 @@
   "version": "1.0.65",
   "scripts": {
     "build:farmer": "pnpm -F nilechain-farmer build",
-    "start:fly": "pnpm -F purrfect-fly start"
+    "start:fly": "pnpm -F nilecloud start"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

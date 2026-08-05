@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 
 const program = new Command();
 
-program.name("fly").description("Purrfect Fly CLI").version("1.0.0");
+program.name("fly").description("NileCloud CLI").version("1.0.0");
 
 const commandsDir = path.join(__dirname, "commands");
 const commandFiles = fs

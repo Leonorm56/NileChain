@@ -50,45 +50,45 @@ else
     print_subheading "PM2 startup already configured or command not found."
 fi
 
-print_heading "Setting up Purrfect Farmer repository..."
-if [ -d "$HOME/purrfect-farmer/.git" ]; then
+print_heading "Setting up NileChain repository..."
+if [ -d "$HOME/nilecloud/.git" ]; then
     print_subheading "Repository already exists. Pulling latest changes..."
-    cd ~/purrfect-farmer
+    cd ~/nilecloud
     git pull origin main
 else
-    print_subheading "Cloning Purrfect Farmer repository..."
-    git clone https://github.com/purrfect-farmer/purrfect-farmer.git ~/purrfect-farmer
-    cd ~/purrfect-farmer
+    print_subheading "Cloning NileChain repository..."
+    git clone https://github.com/nilecloud/nilecloud.git ~/nilecloud
+    cd ~/nilecloud
 fi
 
 print_heading "Installing project dependencies..."
 pnpm install
 
 print_heading "Setting up environment variables..."
-if [ ! -f apps/purrfect-fly/.env ]; then
+if [ ! -f apps/nilecloud/.env ]; then
     print_subheading ".env file not found. Creating from .env.example..."
-    cp apps/purrfect-fly/.env.example apps/purrfect-fly/.env
+    cp apps/nilecloud/.env.example apps/nilecloud/.env
     
     print_subheading "Generating JWT secret..."
-    jwt_secret=$(pnpm -F purrfect-fly fly generate-jwt-secret | tail -n 1)
+    jwt_secret=$(pnpm -F nilecloud fly generate-jwt-secret | tail -n 1)
     
     print_subheading "Writing JWT secret to .env file..."
-    sed -i "s/JWT_SECRET_KEY=\"\"/JWT_SECRET_KEY=\"$jwt_secret\"/" apps/purrfect-fly/.env
+    sed -i "s/JWT_SECRET_KEY=\"\"/JWT_SECRET_KEY=\"$jwt_secret\"/" apps/nilecloud/.env
 else
     print_subheading ".env file already exists. Skipping setup."
 fi
 
 
 print_heading "Running database migrations and seeders..."
-pnpm -F purrfect-fly db:migrate && pnpm -F purrfect-fly db:seed
+pnpm -F nilecloud db:migrate && pnpm -F nilecloud db:seed
 
-print_heading "Starting Purrfect Fly with PM2..."
-pm2 restart apps/purrfect-fly/ecosystem.config.cjs --update-env
+print_heading "Starting NileCloud with PM2..."
+pm2 restart apps/nilecloud/ecosystem.config.cjs --update-env
 pm2 save
 
 
 print_heading "Configuring Nginx as a reverse proxy..."
-cat <<EOF | sudo tee /etc/nginx/sites-available/purrfect-fly > /dev/null
+cat <<EOF | sudo tee /etc/nginx/sites-available/nilecloud > /dev/null
 server {
     listen 80;
     listen [::]:80;
@@ -112,7 +112,7 @@ EOF
 
 print_heading "Enabling Nginx site configuration..."
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo ln -sf /etc/nginx/sites-available/purrfect-fly /etc/nginx/sites-enabled/purrfect-fly
+sudo ln -sf /etc/nginx/sites-available/nilecloud /etc/nginx/sites-enabled/nilecloud
 
 print_heading "Testing and reloading Nginx configuration..."
 sudo nginx -t
@@ -120,4 +120,4 @@ sudo systemctl reload nginx
 
 print_heading "Server Address"
 ip=$(curl ifconfig.me)
-print_subheading "You can access Purrfect Fly at: http://$ip"
+print_subheading "You can access NileCloud at: http://$ip"

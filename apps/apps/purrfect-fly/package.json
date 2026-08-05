@@ -32,7 +32,7 @@
     "@fastify/jwt": "^9.1.0",
     "@fastify/sensible": "^6.0.4",
     "@keyv/sqlite": "^4.0.8",
-    "@purrfect/shared": "workspace:*",
+    "@nile/shared": "workspace:*",
     "axios": "^1.15.2",
     "base64url": "^3.0.1",
     "bcryptjs": "^3.0.3",

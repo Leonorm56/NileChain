@@ -1,7 +1,7 @@
 import ATFAutoAccountForm from "./ATFAutoAccountForm";
 import CenteredDialog from "./CenteredDialog";
 import { encryption } from "@/services/encryption";
-import { getWalletAddressFromMnemonic } from "@purrfect/shared/lib/atf-auto";
+import { getWalletAddressFromMnemonic } from "@nile/shared/lib/atf-auto";
 import toast from "react-hot-toast";
 import useATFAuto from "@/hooks/useATFAuto";
 import { uuid } from "@/utils";

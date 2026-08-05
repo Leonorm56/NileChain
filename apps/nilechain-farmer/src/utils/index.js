@@ -2,10 +2,10 @@ import { clsx } from "clsx";
 import defaultSharedSettings from "@/core/defaultSharedSettings";
 import storage from "../lib/storage";
 import { twMerge } from "tailwind-merge";
-import userAgents from "@purrfect/shared/resources/userAgents.js";
-import { uuid } from "@purrfect/shared/utils";
+import userAgents from "@nile/shared/resources/userAgents.js";
+import { uuid } from "@nile/shared/utils";
 
-export * from "@purrfect/shared/utils";
+export * from "@nile/shared/utils";
 
 export function downloadFile(filename, data) {
   const jsonStr = JSON.stringify(data, null, 2);
