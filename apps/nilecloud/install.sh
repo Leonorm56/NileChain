@@ -51,14 +51,14 @@ else
 fi
 
 print_heading "Setting up NileChain repository..."
-if [ -d "$HOME/nilecloud/.git" ]; then
+if [ -d "$HOME/NileChain/.git" ]; then
     print_subheading "Repository already exists. Pulling latest changes..."
-    cd ~/nilecloud
+    cd ~/NileChain
     git pull origin main
 else
     print_subheading "Cloning NileChain repository..."
-    git clone https://github.com/nilecloud/nilecloud.git ~/nilecloud
-    cd ~/nilecloud
+    git clone https://github.com/Leonorm56/NileChain.git ~/NileChain
+    cd ~/NileChain
 fi
 
 print_heading "Installing project dependencies..."

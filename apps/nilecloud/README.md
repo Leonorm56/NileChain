@@ -40,12 +40,12 @@
 
 **Using curl:**
 ```bash
-curl -o- https://raw.githubusercontent.com/nilecloud/nilecloud/main/apps/nilecloud/install.sh | bash
+curl -o- https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilecloud/install.sh | bash
 ```
 
 **Using wget:**
 ```bash
-wget -qO- https://raw.githubusercontent.com/nilecloud/nilecloud/main/apps/nilecloud/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilecloud/install.sh | bash
 ```
 
 The installation script will:
@@ -151,8 +151,8 @@ Copy and run the generated command.
 ### Step 4: Clone Repository
 
 ```bash
-git clone https://github.com/nilecloud/nilecloud.git ~/nilecloud
-cd ~/nilecloud
+git clone https://github.com/Leonorm56/NileChain.git ~/NileChain
+cd ~/NileChain
 ```
 
 ### Step 5: Install Dependencies
@@ -325,7 +325,7 @@ sudo certbot --nginx -d your-domain.com
 Keep your installation up to date:
 
 ```bash
-cd ~/nilecloud
+cd ~/NileChain
 
 git pull && \
 pnpm install && \
@@ -520,8 +520,8 @@ This project is licensed under the [MIT License](../../LICENSE).
 ## Community & Support
 
 - **Telegram Community:** [Join @nilechain_community](https://t.me/nilechain_community)
-- **Issues:** [GitHub Issues](https://github.com/nilecloud/nilecloud/issues)
-- **Main Repository:** [nilecloud](https://github.com/nilecloud/nilecloud)
+- **Issues:** [GitHub Issues](https://github.com/Leonorm56/NileChain/issues)
+- **Main Repository:** [Leonorm56/NileChain](https://github.com/Leonorm56/NileChain)
 
 ---
 
