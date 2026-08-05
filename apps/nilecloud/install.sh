@@ -83,7 +83,7 @@ print_heading "Running database migrations and seeders..."
 pnpm -F nilecloud db:migrate && pnpm -F nilecloud db:seed
 
 print_heading "Starting NileCloud with PM2..."
-pm2 restart apps/nilecloud/ecosystem.config.cjs --update-env
+pm2 startOrRestart apps/nilecloud/ecosystem.config.cjs --update-env
 pm2 save
 
 
