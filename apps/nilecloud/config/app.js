@@ -62,6 +62,7 @@ export default {
     planId: env("PROXY_PLAN_ID", ""),
     page: env("PROXY_PAGE", 1),
     pageSize: env("PROXY_PAGE_SIZE", 100),
+    clearUnsubscribed: env("PROXY_CLEAR_UNSUBSCRIBED", false),
   },
 
   seeker: {

@@ -645,28 +645,6 @@ export default function createRunner(FarmerClass) {
         /** Get accounts to be executed  */
         const executableList = accounts;
 
-        /* Skipped accounts */
-        const skippedAccounts = accountsWithFarmer.filter(
-          (account) => !executableList.some((item) => item.id === account.id),
-        );
-
-        /* Unused proxies */
-        const unusedProxies = skippedAccounts
-          .filter((account) => account.proxy)
-          .map((account) => account.proxy);
-
-        /* Assign unused proxies to executable accounts without proxy */
-        executableList.forEach((account) => {
-          if (account.proxy) {
-            return;
-          }
-
-          const proxy = unusedProxies.shift();
-          if (proxy) {
-            account.proxy = proxy;
-          }
-        });
-
         /** Prepare accounts to be executed */
         this.utils
           .shuffle(executableList)

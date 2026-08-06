@@ -354,6 +354,35 @@ export default async function (fastify, opts) {
       },
     );
 
+    /** Update Member Proxy */
+    fastify.post(
+      "/members/proxy",
+      {
+        schema: {
+          body: {
+            type: "object",
+            required: ["id"],
+            properties: {
+              id: { type: "string" },
+              proxy: { type: ["string", "null"] },
+            },
+          },
+        },
+      },
+      async (request, reply) => {
+        const account = await fastify.db.Account.findByPk(request.body.id);
+
+        if (!account) {
+          return reply.badRequest("Account not found!");
+        }
+
+        /** Set proxy (empty string clears it) */
+        await account.update({ proxy: request.body.proxy || "" });
+
+        return reply.send({ success: true });
+      },
+    );
+
     /** Kick Member */
     fastify.post(
       "/members/kick",

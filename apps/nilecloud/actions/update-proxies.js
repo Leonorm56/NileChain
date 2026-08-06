@@ -21,65 +21,78 @@ async function updateProxies() {
         .sort((a, b) => a.duration - b.duration)
         .map((item) => item.proxy);
 
-      /** Get unsubscribed accounts with proxy */
-      const unsubscribedAccounts = await db.Account.findAll({
-        where: {
-          proxy: { [db.Sequelize.Op.ne]: null },
-          "$subscriptions.id$": { [db.Sequelize.Op.eq]: null },
-        },
-        include: [
-          {
-            required: false,
-            association: "subscriptions",
-            where: { active: true },
-          },
-        ],
-      });
+      /** Log dead proxies (monitoring only, no reassignment) */
+      const deadProxies = workingProxies.filter((item) => !item.status);
+      if (deadProxies.length > 0) {
+        console.log(
+          chalk.bold.yellow(
+            `${deadProxies.length} dead proxies detected (not reassigned):`,
+          ),
+        );
+        console.table(deadProxies.map((item) => ({ proxy: item.proxy, ip: item.ip })));
+      }
 
-      /** Clear proxies for unsubscribed accounts that currently have proxies */
-      if (unsubscribedAccounts.length > 0) {
-        await db.Account.update(
-          { proxy: "" },
-          {
-            where: {
-              id: {
-                [db.Sequelize.Op.in]: unsubscribedAccounts.map(
-                  (account) => account.id,
-                ),
+      /** Optionally clear proxies from unsubscribed accounts */
+      if (app.proxy.clearUnsubscribed) {
+        const unsubscribedAccounts = await db.Account.findAll({
+          where: {
+            proxy: { [db.Sequelize.Op.ne]: null },
+            "$subscriptions.id$": { [db.Sequelize.Op.eq]: null },
+          },
+          include: [
+            {
+              required: false,
+              association: "subscriptions",
+              where: { active: true },
+            },
+          ],
+        });
+
+        /** Clear proxies for unsubscribed accounts that currently have proxies */
+        if (unsubscribedAccounts.length > 0) {
+          await db.Account.update(
+            { proxy: "" },
+            {
+              where: {
+                id: {
+                  [db.Sequelize.Op.in]: unsubscribedAccounts.map(
+                    (account) => account.id,
+                  ),
+                },
               },
             },
-          },
-        );
+          );
+        }
       }
 
       /* Get subscribed accounts */
       const accounts = await db.Account.findAllWithActiveSubscription();
 
-      /** Get proxies currently used by subscribed accounts (non-null) */
+      /** Proxies currently used by subscribed accounts (non-null) */
       const usedProxies = accounts
         .map((account) => account.proxy)
         .filter(Boolean);
 
-      /** Filter accounts that have proxies not in the working list (invalid accounts) */
-      const invalidAccounts = accounts.filter(
-        (account) => !sortedProxies.includes(account.proxy),
-      );
+      /** Accounts with no proxy yet (blank) */
+      const blankAccounts = accounts.filter((account) => !account.proxy);
 
-      if (invalidAccounts.length > 0) {
-        /** Available proxies = proxies in working list not currently used by subscribed accounts */
+      if (blankAccounts.length > 0) {
+        /** Available proxies = working proxies not currently used by subscribed accounts */
         const availableProxies = sortedProxies.filter(
           (p) => !usedProxies.includes(p),
         );
 
-        /** Assign proxies from available list to invalid accounts */
-        invalidAccounts.forEach((account) => {
+        /** Assign proxies only to accounts without a proxy */
+        blankAccounts.forEach((account) => {
           const newProxy = availableProxies.shift();
-          account.proxy = newProxy || "";
+          if (newProxy) {
+            account.proxy = newProxy;
+          }
         });
 
         /** Save Accounts */
         await Promise.allSettled(
-          invalidAccounts
+          blankAccounts
             .filter((account) => account.changed())
             .map((account) => account.save()),
         );

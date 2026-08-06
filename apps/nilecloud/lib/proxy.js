@@ -71,9 +71,20 @@ class ProxyProvider {
 
         if (!planId) {
           const list = await client.getAllPlans();
-          const plan = list.find(
+
+          /** Prefer residential / mobile plans over datacenter */
+          const preferred = list.find((item) => {
+            const type = (item.type || "").toUpperCase();
+            return (
+              type.includes("RESIDENTIAL") || type.includes("MOBILE")
+            );
+          });
+
+          const fallback = list.find(
             (item) => item.type === "DEDICATED_DATACENTER",
           );
+
+          const plan = preferred || fallback || list[0];
 
           if (plan) {
             planId = plan.id;
