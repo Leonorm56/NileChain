@@ -74,11 +74,15 @@ print_heading "Setting up environment variables..."
 if [ ! -f apps/nilecloud/.env ]; then
     print_subheading ".env file not found. Creating from .env.example..."
     cp apps/nilecloud/.env.example apps/nilecloud/.env
-    
-    print_subheading "Generating JWT secret..."
+else
+    print_subheading ".env file already exists. Using existing file."
+fi
+
+if ! grep -q '^JWT_SECRET_KEY="[^"]*"' apps/nilecloud/.env || grep -q '^JWT_SECRET_KEY=""' apps/nilecloud/.env; then
+    print_subheading "JWT secret missing or empty. Generating..."
     pnpm -F nilecloud fly generate-jwt-secret
 else
-    print_subheading ".env file already exists. Skipping setup."
+    print_subheading "JWT secret already set. Skipping."
 fi
 
 
