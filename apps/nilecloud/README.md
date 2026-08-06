@@ -111,7 +111,7 @@ sudo apt-get install \
 Install NVM (Node Version Manager):
 
 ```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 ```
 
 Load NVM:
@@ -191,10 +191,10 @@ JWT_SECRET_KEY=<paste-generated-secret-here>
 
 # Telegram
 TELEGRAM_BOT_TOKEN=<your-bot-token>
-TELEGRAM_GROUP_ID=<your-group-id>
-TELEGRAM_ANNOUNCEMENTS_TOPIC_ID=<topic-id>
-TELEGRAM_ERRORS_TOPIC_ID=<topic-id>
-TELEGRAM_FARMING_TOPIC_ID=<topic-id>
+TELEGRAM_CHAT_ID=-100<your-group-id>
+TELEGRAM_ANNOUNCEMENT_THREAD_ID=<thread-id>
+TELEGRAM_ERROR_THREAD_ID=<thread-id>
+TELEGRAM_FARMING_THREAD_ID=<thread-id>
 
 # Server
 PORT=3000
@@ -465,7 +465,7 @@ pm2 restart nilecloud
 │                     │
 │  ┌───────────────┐  │
 │  │ Farmer Bots   │  │
-│  │ - 20+ bots    │  │
+│  │ - 6 farmers   │  │
 │  │ - Auto-farming│  │
 │  │ - 24/7 uptime │  │
 │  └───────────────┘  │
@@ -481,7 +481,7 @@ pm2 restart nilecloud
 ```
 
 **How It Works:**
-- **Cloud Manager** (in NileChain Farmer) - Interface to manage Fly
+- **Cloud Manager** (in NileChain Farmer) - Interface to manage NileCloud
 - **API Communication** - Secure JWT-authenticated REST API
 - **Server Execution** - All farmers run on server, not in browser
 - **Telegram Notifications** - Logs sent to Telegram group topics
@@ -513,7 +513,7 @@ pm2 restart nilecloud
 
 ## License
 
-This project is licensed under the [MIT License](../../LICENSE).
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 ---
 
