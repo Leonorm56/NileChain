@@ -141,10 +141,10 @@
 
 /* Override injected styles */
 html {
-  @apply bg-neutral-50 dark:bg-neutral-900;
+  @apply bg-nile-gold-50 dark:bg-[#0d0a04];
 }
 
 body {
-  @apply font-sans text-xs bg-gradient-to-b from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-950;
+  @apply font-sans text-xs bg-gradient-to-b from-nile-gold-50 to-nile-gold-100 dark:from-[#181207] dark:to-[#0d0a04];
   background-attachment: fixed;
 }
