@@ -1,6 +1,6 @@
 {
   "license": "MIT",
-  "version": "1.0.67",
+  "version": "1.0.68",
   "scripts": {
     "build:farmer": "pnpm -F nilechain-farmer build",
     "start:fly": "pnpm -F nilecloud start"

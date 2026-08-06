@@ -69,6 +69,13 @@ export default class BaseFarmer {
     this.controller = new AbortController();
     this.signal = this.controller.signal;
     this._cloudMode = false;
+
+    /* Mirror the statics so subclasses can read them off `this` too */
+    this.platform = this.constructor.platform;
+    this.type = this.constructor.type;
+    this.telegramLink = this.constructor.telegramLink;
+    this.link = this.constructor.link;
+    this.apiDelay = this.constructor.apiDelay;
   }
 
   /** Set Cloud Mode */
@@ -453,6 +460,93 @@ export default class BaseFarmer {
   /** Get Auth Headers */
   getAuthHeaders(data) {
     return {};
+  }
+
+  /** Make Request ID */
+  makeRequestId() {
+    return this.utils.uuid();
+  }
+
+  /** Determine if the request should be retried */
+  shouldRetryRequest(error) {
+    const retryAfter = error.response?.data?.retry_after;
+    if (retryAfter) {
+      return true;
+    }
+    return false;
+  }
+
+  /** Restore cached auth data */
+  restoreCachedAuthData(data) {}
+
+  /** Load data */
+  load() {}
+
+  /** Persist data */
+  persist() {}
+
+  /** Set Cache Auth */
+  setCacheAuth(status) {
+    this.cacheAuth = status;
+  }
+
+  /** Set cache telegram web app */
+  setCacheTelegramWebApp(status) {
+    this.cacheTelegramWebApp = status;
+  }
+
+  /** Can Solve ReCaptcha */
+  canSolveReCaptcha() {
+    return this.captcha?.isConfigured();
+  }
+
+  /** Solve ReCaptcha */
+  solveReCaptcha({ siteKey, pageUrl }) {
+    return this.captcha?.solveReCaptcha({ siteKey, pageUrl });
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Auto adapter                                                          */
+  /*                                                                       */
+  /* Drops opt in by declaring `static auto`. Every drop's API returns a    */
+  /* different shape, so the orchestrator never touches raw responses — it  */
+  /* only talks to the three methods below plus `withdraw()`, which each    */
+  /* farmer normalizes on its own side.                                     */
+  /* --------------------------------------------------------------------- */
+
+  /** The drop's declared minimum withdrawal. */
+  getMinimumWithdrawal() {
+    return Number(this.constructor.auto?.minWithdrawal ?? 0);
+  }
+
+  /** Link a TON wallet to the account and refresh the drop's view of it. */
+  async connectAutoWallet(wallet) {
+    throw new Error("connectAutoWallet method must be implemented in subclass");
+  }
+
+  /** Claim whatever is pending so the next summary reflects current balances. */
+  async refreshAutoState() {
+    throw new Error("refreshAutoState method must be implemented in subclass");
+  }
+
+  /** Normalized account snapshot shared by every Auto drop. */
+  getAutoSummary() {
+    throw new Error("getAutoSummary method must be implemented in subclass");
+  }
+
+  /** Request a withdrawal. */
+  async withdraw(options) {
+    throw new Error("withdraw method must be implemented in subclass");
+  }
+
+  /** Notify the server admin */
+  async notifyAdmin(messages) {
+    return false;
+  }
+
+  /** Format account link (Telegram HTML) */
+  formatAccountLink(id) {
+    return `<a href="tg://user?id=${id}">${id}</a>`;
   }
 
   /** Log Current User */
