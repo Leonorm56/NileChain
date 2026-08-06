@@ -68,6 +68,8 @@ else
 fi
 
 print_heading "Installing project dependencies..."
+print_subheading "Cleaning stale node_modules..."
+rm -rf node_modules apps/nilecloud/node_modules
 pnpm install
 
 print_heading "Setting up environment variables..."
