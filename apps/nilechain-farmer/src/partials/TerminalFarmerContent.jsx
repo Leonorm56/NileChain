@@ -7,7 +7,6 @@ import TerminalArea from "@/components/TerminalArea";
 import TerminalFarmerContext from "@/contexts/TerminalFarmerContext";
 import { TerminalFarmerPrompt } from "./TerminalFarmerPrompt";
 import { TerminalFarmerTools } from "./TerminalFarmerTools";
-import { SpaceJumpFarmerContent } from "./SpaceJumpFarmerContent";
 import { cn } from "@/utils";
 import useMirroredState from "@/hooks/useMirroredState";
 import useStorageState from "@/hooks/useStorageState";
@@ -32,10 +31,6 @@ export const TerminalFarmerContent = () => {
     `farmer-storage:${context.id}:${context.id}-balance`,
     null,
   );
-
-  if (context.id === "spacejump") {
-    return <SpaceJumpFarmerContent terminalFarmer={terminalFarmer} />;
-  }
 
   return (
     <TerminalFarmerContext.Provider value={terminalFarmer}>

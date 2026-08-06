@@ -236,40 +236,6 @@ if (!isWhisker) {
 
   /** Always Setup Extension  */
   setupExtension();
-
-  /** ========== SpaceJump Bridge ========== */
-  let spacejumpPort = null;
-
-  chrome.runtime.onConnect.addListener((port) => {
-    if (port.name?.startsWith('mini-app:')) {
-      spacejumpPort = port;
-      customLogger('[SpaceJump] Mini-app port connected:', port.name);
-
-      port.onMessage.addListener((message) => {
-        if (message.type === 'spacejump-status') {
-          chrome.storage.local.set({ spacejumpData: message.data });
-        }
-      });
-
-      port.onDisconnect.addListener(() => {
-        customLogger('[SpaceJump] Mini-app port disconnected');
-        if (spacejumpPort === port) spacejumpPort = null;
-      });
-    }
-  });
-
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'spacejump-command') {
-      customLogger('[SpaceJump] CMD received:', msg.action, 'port:', !!spacejumpPort);
-      if (spacejumpPort) {
-        spacejumpPort.postMessage(msg);
-        sendResponse({ success: true, forwarded: true });
-      } else {
-        sendResponse({ success: false, error: 'No game page port connected' });
-      }
-      return true;
-    }
-  });
 }
 
 

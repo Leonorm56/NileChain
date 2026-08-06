@@ -164,16 +164,6 @@ if (!TELEGRAM_WEB_HOSTS.includes(location.host)) {
             console.error(e);
           }
           break;
-
-        case "get-spacejump-status":
-          try {
-            const status = localStorage.getItem('spacejumpStatus');
-            const userData = localStorage.getItem('spacejumpUserData');
-            reply({ status: status ? JSON.parse(status) : null, userData: userData ? JSON.parse(userData) : null });
-          } catch (e) {
-            reply({ status: null, userData: null, error: e.message });
-          }
-          break;
       }
     });
 
@@ -185,42 +175,9 @@ if (!TELEGRAM_WEB_HOSTS.includes(location.host)) {
 
     /** Setup Mini-App Toolbar */
     setupMiniAppToolbar();
-
-    /** Forward spacejump data to bridge */
-    setInterval(() => {
-      try {
-        const status = localStorage.getItem('spacejumpStatus');
-        const userData = localStorage.getItem('spacejumpUserData');
-        if (status && userData) {
-          port.postMessage({
-            type: 'spacejump-status',
-            data: { status: JSON.parse(status), userData: JSON.parse(userData) }
-          });
-        }
-      } catch (e) {}
-    }, 1000);
-
-    /** Listen for commands from farmer (via bridge) and forward to game */
-    port.onMessage.addListener((message) => {
-      if (message.type === 'spacejump-command') {
-        const { action, value } = message;
-        // Primary: postMessage to main world IIFE
-        window.postMessage({ type: 'spacejump:command', action, value }, '*');
-        // Fallback: write to localStorage (main world polls sj_cmd every 2s)
-        try {
-          localStorage.setItem('sj_cmd', JSON.stringify({ action, value }));
-        } catch (e) {}
-        console.log('[SpaceJump] Command forwarded:', action, value);
-      }
-    });
   }
 
-  /** SpaceJump: initialize bridge immediately (no Telegram dependency) */
-  if (location.host.endsWith('mywebapp.ru') && location.pathname.startsWith('/SpaceJump')) {
-    initialize();
-  } else {
-    watchTelegramMiniApp(initialize);
-  }
+  watchTelegramMiniApp(initialize);
 }
 
 
