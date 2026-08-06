@@ -3,14 +3,11 @@ import { Api, Logger } from "telegram";
 import BaseTelegramWebClient from "@nile/shared/lib/BaseTelegramWebClient.js";
 import fsp from "node:fs/promises";
 import { getCurrentPath } from "./path.js";
+import generateFingerprint from "./fingerprint.js";
 import { globby } from "globby";
 import path from "node:path";
 
 const { __dirname } = getCurrentPath(import.meta.url);
-
-const DEVICE_MODEL =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
-const SYSTEM_VERSION = "Linux x86_64";
 
 class GramClient extends BaseTelegramWebClient {
   /**
@@ -19,10 +16,9 @@ class GramClient extends BaseTelegramWebClient {
   static instances = new Map();
 
   /** Constructor */
-  constructor({ name, session, proxy, sessionFilePath, sessionFileExists }) {
+  constructor({ name, session, device, proxy, sessionFilePath, sessionFileExists }) {
     super(session, {
-      deviceModel: DEVICE_MODEL,
-      systemVersion: SYSTEM_VERSION,
+      ...device,
       proxy,
       ...(process.env.NODE_ENV === "production" && {
         baseLogger: new Logger("error"),
@@ -31,6 +27,9 @@ class GramClient extends BaseTelegramWebClient {
 
     /** Store Name */
     this._name = name;
+
+    /** Store Device Fingerprint */
+    this._device = device;
 
     /** Store File Path */
     this._sessionFilePath = sessionFilePath;
@@ -243,7 +242,7 @@ class GramClient extends BaseTelegramWebClient {
   /** Save Session */
   async _saveSession() {
     /** Write to File */
-    await this.constructor.writeSession(this._name, this.session.save());
+    await this.constructor.writeSession(this._name, this.session.save(), this._device);
 
     /** Mark as Saved */
     this._sessionFileExists = true;
@@ -272,9 +271,9 @@ class GramClient extends BaseTelegramWebClient {
     const sessionFilePath = await this.getSessionPath(name);
     const sessionFileExists = await this.sessionFileExists(name);
 
-    const session = sessionFileExists
-      ? JSON.parse(await fsp.readFile(sessionFilePath))
-      : "";
+    const file = await this.readSessionFile(name);
+    const session = file?.session ?? "";
+    const device = file?.device ?? (await this.getDevice(name, sessionFileExists));
 
     return this.instances
       .set(
@@ -282,6 +281,7 @@ class GramClient extends BaseTelegramWebClient {
         new this({
           name,
           session,
+          device,
           proxy: this.parseProxy(proxy),
           sessionFilePath,
           sessionFileExists,
@@ -314,9 +314,59 @@ class GramClient extends BaseTelegramWebClient {
       .catch(() => false);
   }
 
+  /** Read session file content */
+  static async readSessionFile(name) {
+    const filePath = this.getSessionPath(name);
+
+    if (!(await this.sessionFileExists(name))) return null;
+
+    const parsed = JSON.parse(await fsp.readFile(filePath, "utf8"));
+
+    if (parsed && typeof parsed === "object" && "session" in parsed) {
+      return parsed;
+    }
+
+    /** Legacy: file content is the raw session string */
+    return { session: parsed };
+  }
+
+  /** Read a saved device fingerprint (or null) */
+  static async readDevice(name) {
+    const file = await this.readSessionFile(name);
+    return file?.device || null;
+  }
+
+  /**
+   * Get the permanent device fingerprint for an account.
+   * Generates once on first session create and persists it.
+   */
+  static async getDevice(name, sessionFileExists) {
+    const saved = await this.readDevice(name);
+
+    if (saved) return saved;
+
+    const device = generateFingerprint();
+
+    if (sessionFileExists) {
+      const file = await this.readSessionFile(name);
+      await this.writeSession(name, file?.session ?? "", device);
+    }
+
+    return device;
+  }
+
   /** Write session */
-  static writeSession(session, content) {
-    return fsp.writeFile(this.getSessionPath(session), JSON.stringify(content));
+  static async writeSession(session, content, device) {
+    const resolvedDevice =
+      device || (await this.readDevice(session)) || generateFingerprint();
+
+    return fsp.writeFile(
+      this.getSessionPath(session),
+      JSON.stringify({
+        session: content,
+        device: resolvedDevice,
+      }),
+    );
   }
 
   /** Get session file path */
