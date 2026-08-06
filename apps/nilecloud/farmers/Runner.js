@@ -10,6 +10,7 @@ import userAgents, {
 } from "@nile/shared/resources/userAgents.js";
 
 import ConsoleLogger from "@nile/shared/lib/ConsoleLogger.js";
+import { delay } from "@nile/shared/utils/delay.js";
 import GramClient from "../lib/GramClient.js";
 import axios from "axios";
 import bot from "../lib/bot.js";
@@ -71,6 +72,34 @@ export default function createRunner(FarmerClass) {
     static logger = new ConsoleLogger(true);
     static queue = [];
     static isProcessingQueue = false;
+    static feedDone = false;
+    static lastResults = new Map();
+
+    /** Staggering window (seconds) and jitter (seconds) */
+    static staggerWindowSeconds = 600;
+    static staggerJitterSeconds = 15;
+
+    /** Stable (per-account) stagger offset in seconds, derived from account.id */
+    static getStaggerOffsetMs(accountId) {
+      const windowMs = this.staggerWindowSeconds * 1000;
+      const jitterMs = (
+        (Math.random() * 2 - 1) * this.staggerJitterSeconds * 1000
+      );
+      const offsetMs =
+        (this.hashAccountId(accountId) % this.staggerWindowSeconds) * 1000;
+      return Math.max(0, Math.min(windowMs, offsetMs + jitterMs));
+    }
+
+    /** Deterministic hash of account id -> stable 0..window base */
+    static hashAccountId(accountId) {
+      const str = String(accountId);
+      let hash = 2166136261;
+      for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return (hash >>> 0) % this.staggerWindowSeconds;
+    }
 
     constructor(account) {
       super();
@@ -510,7 +539,13 @@ export default function createRunner(FarmerClass) {
       this.isProcessingQueue = true;
 
       try {
-        while (this.queue.length > 0) {
+        while (this.queue.length > 0 || !this.feedDone) {
+          /** Wait for the next staggered account to be fed */
+          if (this.queue.length === 0) {
+            await delay(250, { precised: true });
+            continue;
+          }
+
           let skipExecution = false;
           let instance;
 
@@ -549,6 +584,12 @@ export default function createRunner(FarmerClass) {
 
           try {
             await this.execute(instance, skipExecution);
+
+            /** Capture the final result while the instance is still alive */
+            this.lastResults.set(
+              instance.account.id,
+              this.getResult(instance.account),
+            );
           } catch (err) {
             /** Log error */
             this.logger.error("Queue processing error:", err);
@@ -562,6 +603,7 @@ export default function createRunner(FarmerClass) {
       } finally {
         this.runners.clear();
         this.isProcessingQueue = false;
+        this.feedDone = false;
       }
     }
 
@@ -645,20 +687,53 @@ export default function createRunner(FarmerClass) {
         /** Get accounts to be executed  */
         const executableList = accounts;
 
-        /** Prepare accounts to be executed */
-        this.utils
-          .shuffle(executableList)
-          .forEach((account) => this.prepare(account));
+        if (executableList.length === 0) {
+          return this.logger.success(`> ${this.title} Farmer: no accounts`);
+        }
 
-        /** Process queue */
-        this.processQueue();
+        /** Window start timestamp */
+        const windowStart = Date.now();
+
+        /** Sort by permanent stagger offset so the same account stays in
+         *  the same time band every window */
+        const scheduled = executableList
+          .map((account) => ({
+            account,
+            offsetMs: this.getStaggerOffsetMs(account.id),
+          }))
+          .sort((a, b) => a.offsetMs - b.offsetMs);
+
+        /** Reset feeding flag */
+        this.feedDone = false;
+        this.lastResults.clear();
+
+        /** Start the sequence processor (stays alive until feeding is done) */
+        const processing = this.processQueue();
+
+        /** Feed accounts to the queue at their staggered times */
+        for (const { account, offsetMs } of scheduled) {
+          const remaining = offsetMs - (Date.now() - windowStart);
+          if (remaining > 0) {
+            await delay(remaining, { precised: true });
+          }
+          this.prepare(account);
+        }
+
+        /** Signal that all accounts were fed; wait for the queue to finish */
+        this.feedDone = true;
+        await processing;
 
         /** Get results */
         const results = executableList.map((account) => {
-          return { account, result: this.getResult(account) };
+          return {
+            account,
+            result: this.lastResults.get(account.id) || {
+              status: "skipped",
+            },
+          };
         });
 
-        /** Send Farming Initiated Message */
+        /** Send Farming Summary Message */
         try {
           await bot?.sendFarmingInitiatedMessage({
             id: this.id,
