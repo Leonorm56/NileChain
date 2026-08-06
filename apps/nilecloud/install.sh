@@ -76,10 +76,7 @@ if [ ! -f apps/nilecloud/.env ]; then
     cp apps/nilecloud/.env.example apps/nilecloud/.env
     
     print_subheading "Generating JWT secret..."
-    jwt_secret=$(pnpm -F nilecloud fly generate-jwt-secret | tail -n 1)
-    
-    print_subheading "Writing JWT secret to .env file..."
-    sed -i "s/JWT_SECRET_KEY=\"\"/JWT_SECRET_KEY=\"$jwt_secret\"/" apps/nilecloud/.env
+    pnpm -F nilecloud fly generate-jwt-secret
 else
     print_subheading ".env file already exists. Skipping setup."
 fi
