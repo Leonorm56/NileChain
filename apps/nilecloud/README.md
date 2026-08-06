@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://t.me/nilechain_community" target="_blank">
-    <img src="resources/images/icon.png" width="128" alt="NileCloud Logo">
+    <img src="resources/images/icon.png" width="128" alt="NileChain Logo">
   </a>
 </p>
 
