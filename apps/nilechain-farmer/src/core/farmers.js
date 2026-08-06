@@ -5,12 +5,10 @@ import path from "path-browserify";
 // Import farmers directly — the pnpm symlink breaks import.meta.glob on this system
 import ATFFarmer from "@nile/shared/farmers/ATFFarmer.js";
 import DreamcoinProFarmer from "@nile/shared/farmers/DreamcoinProFarmer.js";
-import TradingWarsFarmer from "@nile/shared/farmers/TradingWarsFarmer.js";
 
 const farmerClasses = [
   ATFFarmer,
   DreamcoinProFarmer,
-  TradingWarsFarmer,
 ];
 
 const farmersIconGlob = import.meta.glob(
