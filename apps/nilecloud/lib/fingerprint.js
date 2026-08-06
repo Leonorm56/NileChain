@@ -104,7 +104,7 @@ function pick(list) {
 /**
  * Generate a unique, permanent device fingerprint for an account.
  *
- * @returns {{ deviceModel: string, systemVersion: string, appVersion: string, langCode: string, systemLangCode: string }}
+ * @returns {{ deviceModel: string, systemVersion: string, appVersion: string, langCode: string, systemLangCode: string, platform: string }}
  */
 export function generateFingerprint() {
   const useMobile = pick([false, false, false, true]);
@@ -118,6 +118,7 @@ export function generateFingerprint() {
     appVersion: pick(APP_VERSIONS),
     langCode: language.langCode,
     systemLangCode: language.systemLangCode,
+    platform: useMobile ? "android" : "web",
   };
 }
 

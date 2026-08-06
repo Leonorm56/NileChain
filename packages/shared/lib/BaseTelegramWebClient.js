@@ -70,6 +70,18 @@ export default class BaseTelegramWebClient extends TelegramClient {
     return this.emitter.removeListener("update-connection-state", callback);
   }
 
+  /** Resolve the webview platform from the account's device fingerprint.
+   *  Falls back to inferring from deviceModel when `platform` is missing. */
+  getPlatform() {
+    const device = this._device || this.options || {};
+
+    if (device.platform) {
+      return device.platform;
+    }
+
+    return /Android/i.test(device.deviceModel || "") ? "android" : "web";
+  }
+
   /** Connect */
   async connect() {
     if (this.connected) return;
@@ -285,7 +297,7 @@ export default class BaseTelegramWebClient extends TelegramClient {
         result = await this.invoke(
           webview.type === "webview"
             ? new Api.messages.RequestWebView({
-                platform: "android",
+                platform: this.getPlatform(),
                 bot: parsed.entity,
                 peer: parsed.entity,
                 url: webview.url,
@@ -293,7 +305,7 @@ export default class BaseTelegramWebClient extends TelegramClient {
                 themeParams,
               })
             : new Api.messages.RequestSimpleWebView({
-                platform: "android",
+                platform: this.getPlatform(),
                 bot: parsed.entity,
                 url: webview.url,
                 startParam,
@@ -304,7 +316,7 @@ export default class BaseTelegramWebClient extends TelegramClient {
         /** Mini App Webview */
         result = await this.invoke(
           new Api.messages.RequestAppWebView({
-            platform: "android",
+            platform: this.getPlatform(),
             peer: miniApp.entity,
             app: new Api.InputBotAppShortName({
               botId: await this.getInputEntity(miniApp.entity),
@@ -318,7 +330,7 @@ export default class BaseTelegramWebClient extends TelegramClient {
         /** Main Webview */
         result = await this.invoke(
           new Api.messages.RequestMainWebView({
-            platform: "android",
+            platform: this.getPlatform(),
             bot: parsed.entity,
             peer: parsed.entity,
             startParam,
