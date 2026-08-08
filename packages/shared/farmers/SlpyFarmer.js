@@ -159,8 +159,8 @@ const INVITE_MILESTONES = [
 ];
 
 /**
- * The two Telegram tasks the app hardcodes in its markup rather than serving
- * from `official_tasks`. They share the 24h reset of the table-driven ones.
+ * The tasks the app hardcodes in its markup rather than serving from
+ * `official_tasks`. They share the 24h reset of the table-driven ones.
  */
 const STATIC_OFFICIAL_TASKS = [
   {
@@ -173,6 +173,30 @@ const STATIC_OFFICIAL_TASKS = [
     type: "tg_group",
     title: "Join Telegram Group",
     link: "https://t.me/SleepyMineChats",
+    reward: STATIC_TASK_REWARD,
+  },
+  {
+    type: "x_follow",
+    title: "Follow us on X (Twitter)",
+    link: "https://x.com/SleepyMineTon",
+    reward: STATIC_TASK_REWARD,
+  },
+  {
+    type: "proj_852",
+    title: "Retweet On Twitter",
+    link: "https://x.com/i/status/2083827323057451056",
+    reward: STATIC_TASK_REWARD,
+  },
+  {
+    type: "proj_915",
+    title: "Twitter Retweet",
+    link: "https://x.com/i/status/2082527878718083072",
+    reward: STATIC_TASK_REWARD,
+  },
+  {
+    type: "proj_379",
+    title: "Visit Official Website",
+    link: "https://sleepymine.xyz/official/",
     reward: STATIC_TASK_REWARD,
   },
 ];
@@ -230,16 +254,35 @@ export default class SlpyFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   /** Post an envelope and unwrap it */
-  async request(payload) {
-    const response = await this.api
-      .post(API_URL, payload)
-      .then((res) => res.data);
+  async request(payload, { retries = 2 } = {}) {
+    let attempt = 0;
 
-    if (response?.error) {
-      throw new Error(response.error.message || "Request failed");
+    while (true) {
+      let response;
+
+      try {
+        response = await this.api
+          .post(API_URL, payload)
+          .then((res) => res.data);
+      } catch (error) {
+        if (error.response?.status === 429 && attempt < retries) {
+          attempt++;
+          this.logger.warn(
+            `Rate limited - backing off and retrying (${attempt}/${retries}).`,
+          );
+          await this.utils.delayForSeconds(30, { signal: this.signal });
+          continue;
+        }
+
+        throw error;
+      }
+
+      if (response?.error) {
+        throw new Error(response.error.message || "Request failed");
+      }
+
+      return response?.data;
     }
-
-    return response?.data;
   }
 
   /** Call a stored procedure */
@@ -324,15 +367,7 @@ export default class SlpyFarmer extends BaseFarmer {
     });
   }
 
-  /** Official tasks, newest first */
-  getOfficialTasks() {
-    return this.table({
-      table: "official_tasks",
-      order: { col: "created_at", ascending: false },
-    });
-  }
-
-  /** User-created community missions, newest first */
+/** User-created community missions, newest first */
   getCommunityTasks() {
     return this.table({
       table: "community_tasks",
@@ -380,26 +415,6 @@ export default class SlpyFarmer extends BaseFarmer {
   /** Pay this account's referrer their activation bonus */
   creditReferralBonus() {
     return this.rpc("credit_referral_bonus", { uid: this.getUid() });
-  }
-
-  /** The running giveaway campaign, this account's entry and the leaderboard */
-  getGiveawayState(uid = this.getUid()) {
-    return this.rpc("giveaway_get_state", { uid });
-  }
-
-  /** Re-read the wallet's on-chain holding for the giveaway's own counter */
-  verifyGiveawayWallet(address) {
-    return this.rpc("giveaway_verify_wallet", { uid: this.getUid(), address });
-  }
-
-  /** Credit a watched ad towards the giveaway's ad requirement */
-  watchGiveawayAd() {
-    return this.rpc("giveaway_watch_ad", { uid: this.getUid() });
-  }
-
-  /** Give the referrer a giveaway ticket for this activated referral */
-  creditGiveawayReferralTicket(uid) {
-    return this.rpc("giveaway_referral_ticket", { uid });
   }
 
   /** Request a withdrawal */
@@ -675,30 +690,41 @@ export default class SlpyFarmer extends BaseFarmer {
     for (let i = 0; i < limit; i++) {
       if (this.signal.aborted) break;
 
-      const result = await this.creditAdReward();
-      this.debugger.log("Ad reward:", result);
+      try {
+        const result = await this.creditAdReward();
+        this.debugger.log("Ad reward:", result);
 
-      if (!result?.success) {
-        if (result?.reason === "daily_limit") {
-          this.logger.warn("Daily ad limit reached.");
+        if (!result?.success) {
+          if (result?.reason === "daily_limit") {
+            this.logger.warn("Daily ad limit reached.");
+            break;
+          }
+
+          this.logger.warn("Ad reward rejected - stopping.");
           break;
         }
 
-        this.logger.warn("Ad reward rejected - stopping.");
-        break;
+        watched++;
+
+        Object.assign(this.user_data, {
+          points: result.points,
+          ["ads_watched_count"]: result.count,
+          ["ads_watched_reset_at"]: result["reset_at"],
+        });
+
+        this.logger.info(
+          `Watched ${watched} ad(s) - ${this.getAdsWatchedToday()} today.`,
+        );
+      } catch (error) {
+        if (error.response?.status === 429) {
+          this.logger.warn(
+            "Rate limited - skipping remaining ads for this run.",
+          );
+          break;
+        }
+
+        throw error;
       }
-
-      watched++;
-
-      Object.assign(this.user_data, {
-        points: result.points,
-        ["ads_watched_count"]: result.count,
-        ["ads_watched_reset_at"]: result["reset_at"],
-      });
-
-      this.logger.info(
-        `Watched ${watched} ad(s) - ${this.getAdsWatchedToday()} today.`,
-      );
 
       await this.utils.delayForSeconds(10, { signal: this.signal });
     }
@@ -723,20 +749,9 @@ export default class SlpyFarmer extends BaseFarmer {
     return false;
   }
 
-  /** Complete the hardcoded and table-driven official tasks */
+  /** Complete the hardcoded official tasks */
   async completeOfficialTasks() {
-    const tasks = await this.getOfficialTasks();
-    this.debugger.log("Official tasks:", tasks);
-
-    const completed = this.user_data?.tasks || {};
-    const pending = STATIC_OFFICIAL_TASKS.concat(
-      (tasks || []).map((task) => ({
-        type: task.type || `off_${task.id}`,
-        title: task.title,
-        link: task.link,
-        reward: task.reward,
-      })),
-    ).filter((task) => !this.isOfficialTaskDone(completed[task.type]));
+    const pending = STATIC_OFFICIAL_TASKS;
 
     if (!pending.length) {
       this.logger.info("No official tasks to complete.");
@@ -854,16 +869,6 @@ export default class SlpyFarmer extends BaseFarmer {
     if (result?.success) {
       this.user_data["referral_rewarded"] = true;
       this.logger.success(`Referrer credited ${result.credited} SLPY!`);
-
-      /**
-       * An activated referral is also worth a giveaway ticket to the inviter
-       * while a campaign is running - a no-op otherwise.
-       */
-      try {
-        await this.creditGiveawayReferralTicket(referrer);
-      } catch (error) {
-        this.debugger.log("Giveaway referral ticket failed:", error.message);
-      }
     } else {
       this.logger.info("Referral bonus not credited yet.");
     }
@@ -976,117 +981,7 @@ export default class SlpyFarmer extends BaseFarmer {
     await this.refreshUserRow();
     const holding = Number(this.user_data?.["wallet_holding"] || 0);
 
-    /**
-     * The giveaway keeps its own verified-holding column that the wallet bind
-     * does not touch, so it is re-read here too. It is best-effort: no campaign
-     * running is not a reason to fail the connection.
-     */
-    try {
-      const entry = await this.verifyGiveawayWallet(normalized);
-      this.debugger.log("Giveaway wallet verification:", entry);
-    } catch (error) {
-      this.debugger.log("Giveaway verification failed:", error.message);
-    }
-
     return { address: normalized, holding };
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* Giveaway                                                              */
-  /*                                                                       */
-  /* A campaign hands out tickets for holding, active referrals, ads and    */
-  /* tasks. Only the ads and the holding check are something a run can act  */
-  /* on - the rest is a side effect of the account's ordinary progress.     */
-  /* --------------------------------------------------------------------- */
-
-  /** Watch the giveaway's ad quota and report where the entry stands */
-  async enterGiveaway() {
-    const state = await this.getGiveawayState();
-    this.debugger.log("Giveaway state:", state);
-
-    const campaign = state?.campaign;
-
-    if (!campaign?.["is_active"]) {
-      this.logger.info(
-        campaign?.["draw_completed"]
-          ? "Giveaway has been drawn."
-          : "No giveaway running.",
-      );
-      return;
-    }
-
-    this.logger.info(`${campaign.title} is live.`);
-
-    let entry = state?.entry;
-
-    /* The giveaway verifies the holding itself rather than reusing the bind */
-    const address = this.user_data?.["wallet_address"];
-
-    if (address) {
-      entry = (await this.verifyGiveawayWallet(address)) || entry;
-      this.debugger.log("Giveaway entry after verification:", entry);
-    }
-
-    const required = Number(campaign["required_ads"] || 0);
-    let watched = Number(entry?.["ads_watched"] || 0);
-
-    for (let i = watched; i < required; i++) {
-      if (this.signal.aborted) break;
-
-      const result = await this.watchGiveawayAd();
-      this.debugger.log("Giveaway ad:", result);
-
-      const credited = Number(result?.["ads_watched"] ?? watched);
-
-      /* Stop rather than spin when the server stops counting them */
-      if (!result || credited <= watched) {
-        this.logger.warn("Giveaway ad not credited - stopping.");
-        break;
-      }
-
-      entry = result;
-      watched = credited;
-
-      await this.utils.delayForSeconds(10, { signal: this.signal });
-    }
-
-    this.logGiveawayEntry(campaign, entry);
-  }
-
-  /** Log the entry against what the campaign asks for */
-  logGiveawayEntry(campaign, entry) {
-    if (!entry) {
-      this.logger.info("No giveaway entry yet.");
-      return;
-    }
-
-    const met = entry["requirements_met"] || {};
-    const mark = (ok) => (ok ? "✅" : "❌");
-
-    this.logger.keyValue("Tickets", entry.tickets ?? 0, {
-      valueStyle: this.logger.c.greenBright,
-    });
-    this.logger.keyValue(
-      "Giveaway Holding",
-      `${entry["verified_holding"] ?? 0}/${campaign["min_holding"]} ${mark(met.holding)}`,
-    );
-    this.logger.keyValue(
-      "Giveaway Referrals",
-      `${entry["active_referrals"] ?? 0}/${campaign["required_referrals"]} ${mark(met.referrals)}`,
-    );
-    this.logger.keyValue(
-      "Giveaway Ads",
-      `${entry["ads_watched"] ?? 0}/${campaign["required_ads"]} ${mark(met.ads)}`,
-    );
-    this.logger.keyValue(
-      "Giveaway Tasks",
-      `${entry["tasks_completed"] ?? 0}/${campaign["required_tasks"]} ${mark(met.tasks)}`,
-    );
-    this.logger.keyValue(
-      "Eligible",
-      entry["is_eligible"] ? "Yes" : "Not yet",
-      entry["is_eligible"] ? { valueStyle: this.logger.c.greenBright } : {},
-    );
   }
 
   /* --------------------------------------------------------------------- */
@@ -1436,7 +1331,6 @@ export default class SlpyFarmer extends BaseFarmer {
     await this.executeTask("Invite Milestones", () =>
       this.claimInviteMilestones(),
     );
-    await this.executeTask("Giveaway", () => this.enterGiveaway());
     await this.executeTask("Withdraw", () => this.withdraw());
   }
 
