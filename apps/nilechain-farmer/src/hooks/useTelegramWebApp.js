@@ -132,7 +132,17 @@ export default function useTelegramWebApp({
 
     /** Set From Session or Port */
     const setWebAppFromSessionOrPort = () => {
-      if (farmerMode === "session" && telegramLink) {
+      /** Connected Mini-App Port */
+      const connectedPort = [...(messaging.ports?.values?.() || [])].some(
+        (port) => port.name === `mini-app:${host}`,
+      );
+
+      /** If the mini-app is open in the in-app browser, read its own
+          Telegram.WebApp data straight off the page. Only fall back to a
+          fresh Telegram API call when no webview is live. */
+      if (connectedPort) {
+        setWebAppFromPort();
+      } else if (farmerMode === "session" && telegramLink) {
         setWebAppFromSession();
       } else {
         setWebAppFromPort();
@@ -166,6 +176,7 @@ export default function useTelegramWebApp({
     }
   }, [
     host,
+    port,
     setPort,
     enabled,
     external,

@@ -8,11 +8,13 @@ import DreamcoinProFarmer from "@nile/shared/farmers/DreamcoinProFarmer.js";
 import OneGramFarmer from "@nile/shared/farmers/OneGramFarmer.js";
 import SlpyFarmer from "@nile/shared/farmers/SlpyFarmer.js";
 import SurfEarnFarmer from "@nile/shared/farmers/SurfEarnFarmer.js";
+import MiningBuddiesFarmer from "@nile/shared/farmers/MiningBuddiesFarmer.js";
 import TonoreumFarmer from "@nile/shared/farmers/TonoreumFarmer.js";
 
 const farmerClasses = [
   ATFFarmer,
   DreamcoinProFarmer,
+  MiningBuddiesFarmer,
   OneGramFarmer,
   SlpyFarmer,
   SurfEarnFarmer,
