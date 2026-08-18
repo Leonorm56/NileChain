@@ -282,9 +282,20 @@ export default class SoulfarmFarmer extends BaseFarmer {
     this.logger.newline();
   }
 
-  /** Store the latest state snapshot returned anywhere in the run. */
+  /**
+   * Store the latest state snapshot returned anywhere in the run. Only real
+   * state-shaped payloads are kept — action endpoints answer 201 with a
+   * `{wallet, hero, …}` body, while errors answer `{error}` / a bare string,
+   * and storing one of those would poison every later `this.state` read.
+   */
   applyState(state) {
-    if (state) this.state = state;
+    if (
+      state &&
+      typeof state === "object" &&
+      (state.wallet || state.hero || state.user || state.checkin)
+    ) {
+      this.state = state;
+    }
     return state;
   }
 
@@ -325,27 +336,41 @@ export default class SoulfarmFarmer extends BaseFarmer {
     }
   }
 
-  /** Claim today's check-in reward when it's available. */
+  /** Claim today's check-in (the daily-login reward) when it's available. */
   async claimCheckInReward() {
     const checkin = this.state?.checkin;
-    if (checkin?.canClaimToday) {
-      const result = await this.claimCheckin(false).catch((e) => {
-        this.logger.warn("Check-in claim failed:", this.readError(e));
-        return null;
-      });
-      if (result?.ok || result?.granted) {
-        const chests = result?.granted?.chests ?? 0;
-        this.logger.success(
-          `Check-in claimed: +${chests} chest${chests === 1 ? "" : "s"}.`,
-        );
-        this.applyState(result?.state || result);
-      } else {
-        this.logger.warn(`Check-in not credited: ${result?.error || "?"}`);
-      }
-    } else {
+    if (!checkin?.canClaimToday) {
       this.logger.info("Check-in not available yet.");
+      return true;
+    }
+
+    const result = await this.claimCheckin(false).catch((e) => {
+      this.logger.warn("Check-in claim failed:", this.readError(e));
+      return null;
+    });
+
+    // The API answers 201 with a state-shaped body (wallet/hero/checkin) and
+    // no `ok`/`granted` envelope, so treat any non-error response as claimed.
+    if (result && !result.error) {
+      const reward = this.describeCheckinReward(result, checkin);
+      this.logger.success(`Check-in claimed${reward ? `: +${reward}` : "."}`);
+      this.applyState(result.state || result);
+    } else {
+      this.logger.warn(`Check-in not credited: ${result?.error || "unknown"}`);
     }
     return true;
+  }
+
+  /** Best-effort label for the check-in reward just claimed. */
+  describeCheckinReward(result, checkin) {
+    if (result?.granted && typeof result.granted === "object") {
+      return this.summarizeReward(result.granted);
+    }
+    // Fall back to the reward listed on the day we just claimed.
+    const div = (checkin?.divisions || []).find(
+      (d) => d.day === checkin.position,
+    );
+    return div?.free ? this.summarizeReward(div.free) : "";
   }
 
   /** Claim the free hero daily chests. */
@@ -369,10 +394,10 @@ export default class SoulfarmFarmer extends BaseFarmer {
 
   /** Open pending chests, equipping upgrades and recycling the rest. */
   async openChestsAndUpgrade() {
-    let pending =
-      Number(this.state?.pendingChests ?? 0) -
-      Number(this.state?.dailyChestsClaimedToday ?? 0);
-    if (pending <= 0) pending = 0;
+    // `pendingChests` is the count waiting to be opened; each open response
+    // also reports `remaining`, which we use to stop early.
+    let pending = Number(this.state?.pendingChests ?? 0);
+    if (!Number.isFinite(pending) || pending < 0) pending = 0;
 
     if (pending <= 0) {
       this.logger.info("No pending chests to open.");
@@ -402,18 +427,22 @@ export default class SoulfarmFarmer extends BaseFarmer {
       opened++;
       const item = result.item;
 
-      // Equip the best item in each slot; recycle anything else below the
-      // keep-line for hero xp (matches autopilot defaults).
-      await this.handleOpenedItem(item);
-
-      if (item.power && item.rarity && this.shouldRecycle(item)) {
-        const recycledOk = await this.recycleOpenedItem(item, result);
-        if (recycledOk) recycled++;
-        else if (this.isUpgradeForSlot(item)) equipped++;
-      } else if (this.isUpgradeForSlot(item)) {
+      // Equip-if-upgrade takes priority (matches the app: it wears every
+      // early upgrade and only recycles what it can't use). Anything that
+      // isn't an upgrade and sits below the keep-line is recycled for xp.
+      if (this.isUpgradeForSlot(item)) {
         const equippedOk = await this.equipOpenedItem(item, result);
-        if (equippedOk) equipped++;
+        if (equippedOk) {
+          equipped++;
+        } else if (item.rarity && this.shouldRecycle(item)) {
+          if (await this.recycleOpenedItem(item, result)) recycled++;
+        }
+      } else if (item.rarity && this.shouldRecycle(item)) {
+        if (await this.recycleOpenedItem(item, result)) recycled++;
       }
+
+      // Stop as soon as the server says the pile is empty.
+      if (Number(result.remaining) === 0) break;
     }
 
     if (opened) {
@@ -477,12 +506,6 @@ export default class SoulfarmFarmer extends BaseFarmer {
     if (!RARITY_XP[item.rarity]) return false;
     const order = ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"];
     return order.indexOf(item.rarity) < order.indexOf(KEEP_MIN_RARITY);
-  }
-
-  /** Decide the final fate of the opened item once. */
-  async handleOpenedItem(item) {
-    // No-op holder — upgrade/recycle decisions happen in the caller.
-    return item;
   }
 
   /** Claim every task that is done but not claimed yet. */
