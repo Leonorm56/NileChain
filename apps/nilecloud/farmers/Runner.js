@@ -596,7 +596,7 @@ export default function createRunner(FarmerClass) {
 
             /** Unblock queue */
             if (instance.account.id === this.primaryAccountId) {
-              this.resetPrimaryFarmerLink();
+              this.resetPrimaryFarmerLink(instance);
             }
           }
         }
@@ -707,8 +707,19 @@ export default function createRunner(FarmerClass) {
         this.feedDone = false;
         this.lastResults.clear();
 
-        /** Start the sequence processor (stays alive until feeding is done) */
-        const processing = this.processQueue();
+        /**
+         * Start the sequence processor (stays alive until feeding is done).
+         *
+         * The rejection handler is attached *here*, at creation. The feeding
+         * loop below parks on `await delay(...)` for up to the whole stagger
+         * window before `await processing` is ever reached, so a rejection in
+         * that gap would be an *unhandled* rejection — fatal under
+         * `fastify start` (close-with-grace calls `process.exit(1)`), which is
+         * why the run died mid-window and the summary message never sent.
+         */
+        const processing = this.processQueue().catch((error) => {
+          this.logger.error("Farming queue processing failed:", error);
+        });
 
         /** Feed accounts to the queue at their staggered times */
         for (const { account, offsetMs } of scheduled) {

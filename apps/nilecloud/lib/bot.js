@@ -184,7 +184,9 @@ class GroupBot extends Bot {
   /** Send Private Message */
   async sendPrivateMessage(id, messages, options = {}) {
     try {
-      this.api.sendMessage(id, messages.join("\n"), {
+      /* Must be awaited: an un-awaited reject escapes this try and becomes an
+       * unhandled rejection (fatal under close-with-grace). */
+      return await this.api.sendMessage(id, messages.join("\n"), {
         ["parse_mode"]: "HTML",
         ...options,
       });
