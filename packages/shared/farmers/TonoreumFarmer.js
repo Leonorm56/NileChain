@@ -286,7 +286,7 @@ export default class TonoreumFarmer extends BaseFarmer {
   }
 
   /** Upgrade a regular gear slot (pickaxe, suit, helm, boots, gloves, goggles) */
-  upgradeGear(slot) {
+  upgradeGearSlot(slot) {
     return this.post("city/upgrade_gear", this.authPayload({ slot }));
   }
 
@@ -1243,7 +1243,7 @@ export default class TonoreumFarmer extends BaseFarmer {
       if (level >= 10) continue;
       if (this.signal.aborted) break;
 
-      const result = await this.upgradeGear(slot).catch((error) => {
+      const result = await this.upgradeGearSlot(slot).catch((error) => {
         this.debugger.log(`Gear ${slot} upgrade failed:`, this.readCityError(error));
         return null;
       });
