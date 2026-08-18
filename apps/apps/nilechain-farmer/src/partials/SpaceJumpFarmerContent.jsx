@@ -137,7 +137,7 @@ export const SpaceJumpFarmerContent = ({ terminalFarmer }) => {
         )}
 
         {statusMessage && (
-          <div className="px-3 py-0.5 text-xs text-center bg-yellow-900/50 text-yellow-400 border-b dark:border-neutral-600">
+          <div className="px-3 py-0.5 text-xs text-center bg-nile-gold-900/50 text-nile-gold-400 border-b dark:border-neutral-600">
             {statusMessage}
           </div>
         )}

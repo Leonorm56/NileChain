@@ -1,3 +1,4 @@
+import "@/lib/polyfills";
 import "@/lib/bridge-service-worker";
 
 import {
@@ -6,6 +7,10 @@ import {
   getSharedSettings,
   getWindowCoords,
 } from "@/utils";
+import { setupNileWalletBackground } from "@/extension/nile-wallet/background";
+
+/** NileWallet — per-account local TON wallet (all builds). */
+setupNileWalletBackground();
 
 const isBridge = typeof import.meta.env.VITE_BRIDGE !== "undefined";
 const isWhisker = typeof import.meta.env.VITE_WHISKER !== "undefined";

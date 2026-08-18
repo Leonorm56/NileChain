@@ -23,7 +23,7 @@ if (app.cron.enabled) {
   /**  Farmers */
   const minimumRating = env("MINIMUM_FARMER_RATING", 0);
 
-  const excludedFarmers = ["atf", "spacejump"];
+  const excludedFarmers = ["spacejump"];
 
   Object.values(farmers)
     .filter((FarmerClass) => {

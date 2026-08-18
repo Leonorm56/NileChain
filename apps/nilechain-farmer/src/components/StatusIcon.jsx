@@ -9,7 +9,7 @@ export default function StatusIcon({ icon: Icon, status, ...props }) {
         {
           success: ["text-green-800 dark:text-green-900", "bg-green-100"],
           error: ["text-red-800 dark:text-red-900", "bg-red-100"],
-          pending: ["text-orange-800 dark:text-orange-900", "bg-orange-100"],
+          pending: ["text-nile-gold-800 dark:text-nile-gold-900", "bg-nile-gold-100"],
         }[status],
         props.className
       )}

@@ -20,9 +20,10 @@ const Point = styled.button`
   left: 0;
   top: 0;
   transform: translateX(-50%) translateY(-50%);
-  background-color: rgb(252 159 48 / 60%);
-  color: black;
-  border: 2px solid red;
+  background-color: var(--nc-gold, #D4A843);
+  color: var(--nc-canvas, #040a14);
+  border: 2px solid var(--nc-gold-bright, #E8C454);
+  box-shadow: 0 0 6px 2px rgb(212 168 67 / 60%);
   border-radius: 999px;
   width: 36px;
   height: 36px;

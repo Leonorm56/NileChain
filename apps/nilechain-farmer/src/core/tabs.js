@@ -1,10 +1,10 @@
-import ATFAutoIcon from "@/assets/images/atf-auto.png?format=webp&w=80";
 import AppIcon from "@/assets/images/icon.png?format=webp&w=80";
 import BackupAndRestoreIcon from "@/assets/images/backup-and-restore.png?format=webp&w=80";
 import CloudIcon from "@/assets/images/cloud.png?format=webp&w=80";
 import CloudTelegramSessionIcon from "@/assets/images/cloud-telegram-session.png?format=webp&w=80";
 import LocalTelegramSessionIcon from "@/assets/images/local-telegram-session.png?format=webp&w=80";
 import MyCloudIcon from "@/assets/images/my-cloud.png?format=webp&w=80";
+import NileWalletIcon from "@/assets/images/toncoin-ton-logo.svg";
 import ReorderTelegramWebIcon from "@/assets/images/reorder-telegram-web.png?format=webp&w=80";
 import SpiderIcon from "@/assets/images/spider-logo.png?format=webp&w=80";
 import TelegramCleanerIcon from "@/assets/images/telegram-cleaner.png?format=webp&w=80";
@@ -45,7 +45,7 @@ export const ReorderTelegramWeb = safeImport(() =>
 );
 
 export const Spider = safeImport(() => import("@/app/Spider"));
-export const ATFAuto = safeImport(() => import("@/app/ATFAuto"));
+export const NileWallet = safeImport(() => import("@/app/NileWallet"));
 export const MyCloud = safeImport(() => import("@/app/MyCloud"));
 export const CloudManager = lazy(() => import("@/app/CloudManager"));
 export const LocalTelegramSession = lazy(
@@ -82,20 +82,6 @@ export const telegramWeb = [
 ];
 
 export const utils = [
-  /** Extra */
-  {
-    name: "Extra",
-    list: [
-      /** ATF Auto */
-      {
-        id: "atf-auto",
-        title: "ATF Auto",
-        icon: ATFAutoIcon,
-        component: createElement(ATFAuto),
-        singleton: true,
-      },
-    ],
-  },
   /** Account */
   {
     name: "Account",
@@ -114,6 +100,19 @@ export const utils = [
         title: "Telegram Cleaner",
         icon: TelegramCleanerIcon,
         component: createElement(TelegramCleaner),
+      },
+    ],
+  },
+  /** Wallet */
+  {
+    name: "Wallet",
+    list: [
+      /** NileWallet */
+      {
+        id: "nile-wallet",
+        title: "NileWallet",
+        icon: NileWalletIcon,
+        component: createElement(NileWallet),
       },
     ],
   },

@@ -25,8 +25,8 @@ const DialogContent = styled(Dialog.Content)`
   position: fixed;
   inset-inline: 0px;
   z-index: 999920;
-  background-color: #192940;
-  color: white;
+  background-color: var(--nc-surface-2, #192940);
+  color: var(--nc-text, #f0f4fa);
   display: flex;
   flex-direction: column;
   height: 75%;
@@ -36,6 +36,7 @@ const DialogContent = styled(Dialog.Content)`
   gap: 16px;
   font-size: 12px;
   font-family: "Noto Sans";
+  border-top: 1px solid var(--nc-border, #2a3d59);
 `;
 
 const DialogHeader = styled.div`
@@ -61,15 +62,15 @@ const DialogTitle = styled(Dialog.Title)`
 `;
 
 const DialogDescription = styled(Dialog.Description)`
-  color: #a8bcd4;
+  color: var(--nc-text-muted, #a8bcd4);
   text-align: center;
   font-size: 12px;
   margin: 0px;
 `;
 
 const BaseToolbarButton = styled.button`
-  background-color: #2a3d59;
-  color: white;
+  background-color: var(--nc-surface, #0b1526);
+  color: var(--nc-text, #f0f4fa);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -77,7 +78,7 @@ const BaseToolbarButton = styled.button`
   border-radius: 12px;
   padding: 10px;
   font-size: 12px;
-  border: 0px;
+  border: 1px solid var(--nc-border, #2a3d59);
   outline: 0px;
   box-sizing: border-box;
   font-weight: bold;
@@ -87,7 +88,8 @@ const BaseToolbarButton = styled.button`
   &:hover,
   &:focus,
   &.active {
-    background-color: #C99A36;
+    background-color: var(--nc-gold, #D4A843);
+    color: var(--nc-canvas, #040a14);
   }
 `;
 

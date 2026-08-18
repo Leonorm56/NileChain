@@ -47,7 +47,7 @@ export default function IPStatus() {
       title={ipInfo ? `${ipInfo.city} - ${ipInfo.country}` : "IP Address"}
       className={cn(
         "text-center flex items-center justify-center gap-2",
-        "text-purple-600 dark:text-purple-500"
+        "text-nile-gold-600 dark:text-nile-gold-500"
       )}
     >
       {isProxied ? (

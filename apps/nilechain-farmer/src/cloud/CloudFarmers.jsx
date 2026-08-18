@@ -146,7 +146,7 @@ export default function CloudFarmers() {
             >
               <img src={group.icon} className="w-6 h-6 rounded-full shrink-0" />
               <span className="font-bold grow">{group.title}</span>
-              <span className="px-2 py-px text-xs text-white bg-purple-500 rounded-full shrink-0">
+              <span className="px-2 py-px text-xs text-white bg-nile-gold-600 rounded-full shrink-0">
                 {group.farmers.length}
               </span>
             </Collapsible.Trigger>

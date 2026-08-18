@@ -76,7 +76,7 @@ export default function CloudLoginForm() {
         <CloudServerDisplay />
 
         {/* Display Address */}
-        <p className="p-2 text-center text-orange-800 bg-orange-100 rounded-lg">
+        <p className="p-2 text-center text-nile-gold-800 bg-nile-gold-100 rounded-lg">
           <span className="font-bold">Server</span>: {address}
         </p>
       </div>

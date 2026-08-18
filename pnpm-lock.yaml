@@ -634,6 +634,9 @@ importers:
       telegram:
         specifier: ^2.26.22
         version: 2.26.22
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
       uuid:
         specifier: ^13.0.1
         version: 13.0.2

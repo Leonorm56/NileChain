@@ -22,8 +22,8 @@ export default function Alert({ as: Component = "div", variant, ...props }) {
         "flex items-center gap-4",
 
         {
-          info: ["text-nile-gold-800 dark:text-nile-gold-900", "bg-blue-100"],
-          warning: ["text-orange-800 dark:text-orange-900", "bg-orange-100"],
+          info: ["text-nile-gold-800 dark:text-nile-gold-900", "bg-nile-gold-100"],
+          warning: ["text-nile-gold-800 dark:text-nile-gold-900", "bg-nile-gold-100"],
           danger: ["text-red-800 dark:text-red-900", "bg-red-100"],
           success: ["text-green-800 dark:text-green-900", "bg-green-100"],
         }[variant],

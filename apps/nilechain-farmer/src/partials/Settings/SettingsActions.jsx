@@ -34,8 +34,8 @@ export default memo(function SettingsActions({
         title="Restore Default Settings"
         onClick={() => dispatchAndRestoreSettings()}
         className={cn(
-          "bg-orange-100",
-          "text-orange-900",
+          "bg-nile-gold-100",
+          "text-nile-gold-900",
           "p-2.5 rounded-xl shrink-0 font-bold",
           "flex items-center justify-center gap-2"
         )}

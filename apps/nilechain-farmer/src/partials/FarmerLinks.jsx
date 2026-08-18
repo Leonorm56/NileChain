@@ -72,7 +72,7 @@ const LinkHeaderButton = (props) => (
     className={cn(
       "flex items-center justify-center w-10 h-10",
       "rounded-lg shrink-0",
-      "border-2 bg-blue-100 text-nile-gold-800",
+      "border-2 bg-nile-gold-100 text-nile-gold-800",
       "dark:bg-neutral-800 dark:text-nile-gold-200",
       props.className,
     )}
@@ -389,7 +389,7 @@ export default memo(function FarmerLinks() {
             <Dialog.Title
               className={cn(
                 "inline-flex items-center justify-center gap-2",
-                "text-purple-500 dark:text-purple-400",
+                "text-nile-gold-500 dark:text-nile-gold-400",
                 "font-bold text-center text-sm",
               )}
             >

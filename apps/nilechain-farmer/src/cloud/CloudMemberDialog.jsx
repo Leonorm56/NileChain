@@ -47,7 +47,7 @@ const MemberDialogHeader = ({ account }) => (
       </Dialog.Description>
 
       {/* User ID */}
-      <p className="px-2 font-bold text-purple-500 text-center">
+      <p className="px-2 font-bold text-nile-gold-500 text-center">
         User ID: <span>{account.id}</span>
       </p>
     </div>

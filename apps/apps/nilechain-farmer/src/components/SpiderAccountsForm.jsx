@@ -278,11 +278,11 @@ export default function SpiderAccountsForm({ country, clearSelection }) {
 
       {/* Country Price */}
       <div className="flex flex-col gap-1">
-        <p className="text-center text-sky-500 dark:text-sky-300 font-bold">
+        <p className="text-center text-nile-gold-500 dark:text-nile-gold-400 font-bold">
           ${country.price} (Per Account)
         </p>
 
-        <p className="text-center text-purple-500 dark:text-purple-300 font-bold">
+        <p className="text-center text-nile-gold-600 dark:text-nile-gold-500 font-bold">
           Total: ${totalPrice}
         </p>
       </div>

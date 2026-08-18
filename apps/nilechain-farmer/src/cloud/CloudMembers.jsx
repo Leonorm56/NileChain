@@ -112,7 +112,7 @@ export default function CloudMembers() {
                   {account.subscriptions.length ? (
                     <HiCheckCircle className="size-5 text-green-500" />
                   ) : (
-                    <HiMinusCircle className="size-5 text-yellow-500" />
+                    <HiMinusCircle className="size-5 text-neutral-400" />
                   )}
                 </span>
               </div>

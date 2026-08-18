@@ -93,7 +93,7 @@ const ProxyDetails = ({ proxy, rootClassName, ...props }) => {
         {proxy ? (
           <HiCheckCircle className="size-5 text-green-500 shrink-0" />
         ) : (
-          <HiMinusCircle className="size-5 text-yellow-500 shrink-0" />
+          <HiMinusCircle className="size-5 text-neutral-400 shrink-0" />
         )}
       </Collapsible.Trigger>
 

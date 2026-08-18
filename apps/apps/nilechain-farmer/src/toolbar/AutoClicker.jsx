@@ -43,8 +43,8 @@ const Wrapper = styled.div`
 `;
 
 const Container = styled.div`
-  background-color: black;
-  color: white;
+  background-color: var(--nc-surface-2, #192940);
+  color: var(--nc-text, #f0f4fa);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -54,14 +54,15 @@ const Container = styled.div`
   font-size: 12px;
   border-radius: 999px;
   box-sizing: border-box;
+  border: 1px solid var(--nc-border, #2a3d59);
   position: absolute;
   right: 100%;
 `;
 
 const Button = styled.button`
   box-sizing: border-box;
-  background-color: #192940;
-  color: white;
+  background-color: var(--nc-surface, #0b1526);
+  color: var(--nc-text-muted, #a8bcd4);
   border-radius: 999px;
   display: flex;
   align-items: center;
@@ -74,8 +75,8 @@ const Button = styled.button`
 
   &:hover,
   &.active {
-    background-color: #D4A843;
-    color: black;
+    background-color: var(--nc-gold, #D4A843);
+    color: var(--nc-canvas, #040a14);
   }
 
   &:disabled {

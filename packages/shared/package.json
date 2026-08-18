@@ -29,6 +29,7 @@
     "seedrandom": "^3.0.5",
     "socket.io-client": "^4.8.3",
     "telegram": "^2.26.22",
+    "tweetnacl": "^1.0.3",
     "uuid": "^13.0.1"
   }
 }

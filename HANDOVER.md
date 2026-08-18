@@ -6,7 +6,7 @@
 
 ## 1. What This Project Is
 
-**NileChain** is a farming/botting ecosystem around Telegram mini-app games (HeadCoin, TradingWars, ATF, DreamcoinPro, SpaceJump, ADCLICKER). All code lives in a monorepo. The main deliverables:
+**NileChain** is a farming/botting ecosystem around Telegram mini-app games (HeadCoin, TradingWars, DreamcoinPro, SpaceJump, ADCLICKER). All code lives in a monorepo. The main deliverables:
 
 1. **NileChain Farmer** — a Chrome extension (`apps/nilechain-farmer`) that users install to farm games in their browser AND to sync account "initData" to a cloud server.
 2. **nileflylite** (`apps/nileflylite`) — **the most actively worked-on piece right now**. A lightweight Node.js cloud server that takes synced accounts from the extension and farms them 24/7 in a continuous PM2 loop, sending Telegram summaries.
@@ -227,7 +227,7 @@ Restart the server too if server.ll changed: `pm2 restart nileflylite`.
 - `farmers/` maps each game's logic:
   - `ATDFarmer.js`, `DreamcoinProFarmer.js`, `HeadCoinFarmer.js`, `SpaceJumpFarmer.js`, `ATTFarmer.js`, `WhiskersFarmer.js`, `mouthFarmer.js`… etc. See listing.
   - `TradingWarsFarmer.js` contains the shared extension-side Trading model — **note it also has the two-phase mining logic** (`_upgradeEquipment`, etc.). The nile/flylite server reimplements this rather than reusing the class, because nilefly-lite is dependency-light HTTP-only.
-- `lib/` — base classes and helpers: `BaseFarmer.js`, `BaseDirectFarmer.js`, `BaseTelegramWebClient.js`, `BaseLogger.js`, `ConsoleLogger.js`, `BrowserLogger.js`, `BaseRunner.js`, `CronRunner.js`, `Encrypter.js`, `CaptchaSolver.js`, `atf-auto*.js`.
+- `lib/` — base classes and helpers: `BaseFarmer.js`, `BaseDirectFarmer.js`, `BaseTelegramWebClient.js`, `BaseLogger.js`, `ConsoleLogger.js`, `BrowserLogger.js`, `BaseRunner.js`, `CronRunner.js`, `Encrypter.js`, `CaptchaSolver.js`.
 - The extension imports these; the server does NOT (lite is independent).
 
 ---

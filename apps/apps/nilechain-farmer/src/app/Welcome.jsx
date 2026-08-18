@@ -311,7 +311,7 @@ export default memo(function Welcome() {
 
           {/* Bridge Version */}
           {isExtension() === false ? (
-            <p className="text-center font-bold text-purple-500">
+            <p className="text-center font-bold text-nile-gold-400">
               Bridge v{manifestQuery.data?.version || "0.0.1"}
             </p>
           ) : null}
@@ -370,8 +370,8 @@ export default memo(function Welcome() {
                   className={cn(
                     "border border-transparent",
                     "dark:border-nile-gold-600",
-                    "bg-orange-100 dark:bg-transparent",
-                    "text-orange-900 dark:text-nile-gold-400",
+                    "bg-nile-gold-100 dark:bg-transparent",
+                    "text-nile-gold-900 dark:text-nile-gold-400",
                     "hover:bg-nile-gold-600 dark:hover:bg-nile-gold-600",
                   )}
                   title={`Open ${
@@ -406,10 +406,10 @@ export default memo(function Welcome() {
             triggerClassName={cn(
               "rounded-lg",
               "border-b-0",
-              "data-[state=active]:bg-blue-100",
+              "data-[state=active]:bg-nile-gold-100",
               "data-[state=active]:text-nile-gold-800",
               "dark:data-[state=active]:bg-nile-gold-900",
-              "dark:data-[state=active]:text-blue-100",
+              "dark:data-[state=active]:text-nile-gold-400",
               "uppercase",
             )}
             renderList={(content) => (
@@ -444,7 +444,7 @@ export default memo(function Welcome() {
                   "font-bold",
                   "flex items-center justify-center",
                   "rounded-lg shrink-0",
-                  "bg-blue-100 text-nile-gold-800",
+                  "bg-nile-gold-100 text-nile-gold-800",
                   "p-2",
                 )}
               >

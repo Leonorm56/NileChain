@@ -241,6 +241,130 @@ export default class TonoreumFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
+  /* City                                                                  */
+  /*                                                                       */
+  /* The drop's idler "city" layer: buildings, tech tree, gear and units    */
+  /* all grant torpower, which is the one number that drives mining. All    */
+  /* the endpoints use the same auth payload and are POSTs; the capture     */
+  /* (`tone.har`) only caught the reading side plus a barracks upgrade, so  */
+  /* the calls below mirror the webapp's own handlers.                      */
+  /* --------------------------------------------------------------------- */
+
+  /** The full city: buildings, tech, gear, units, resources, points */
+  getCityState() {
+    return this.post("city/state", this.authPayload());
+  }
+
+  /** Barracks: quarters, army capacity, upgrade/recruitment tasks */
+  getBarracksStatus() {
+    return this.post("city/barracks/status", this.authPayload());
+  }
+
+  /** Miner expedition state + any pending claim */
+  getExpeditionStatus() {
+    return this.post("city/miner_expedition/status", this.authPayload());
+  }
+
+  /** Inbox messages, some of them claimable */
+  getInbox() {
+    return this.post("city/inbox/list", this.authPayload());
+  }
+
+  /** System announcements */
+  getAnnouncements() {
+    return this.post("city/announcements/list", this.authPayload());
+  }
+
+  /** Upgrade a building (mine, steelworks, electricity, academy, miner) */
+  upgradeBuilding(building) {
+    return this.post("city/upgrade_building", this.authPayload({ building }));
+  }
+
+  /** Unlock a tech-tree node */
+  unlockTech(branch, level) {
+    return this.post("city/unlock_tech", this.authPayload({ branch, level }));
+  }
+
+  /** Upgrade a regular gear slot (pickaxe, suit, helm, boots, gloves, goggles) */
+  upgradeGear(slot) {
+    return this.post("city/upgrade_gear", this.authPayload({ slot }));
+  }
+
+  /** Upgrade a combat gear slot */
+  upgradeCombatGear(slot) {
+    return this.post("city/combat_gear/upgrade", this.authPayload({ slot }));
+  }
+
+  /** Upgrade the combat miner */
+  upgradeCombatMiner() {
+    return this.post("city/combat_miner/upgrade", this.authPayload());
+  }
+
+  /** Train the miner */
+  trainMiner() {
+    return this.post("city/train_miner", this.authPayload());
+  }
+
+  /** Upgrade the barracks building with points */
+  upgradeBarracksPoints() {
+    return this.post("city/barracks/upgrade_points", this.authPayload());
+  }
+
+  /** Upgrade the barracks quarters with points */
+  upgradeBarracksQuarters() {
+    return this.post("city/barracks/quarters/upgrade", this.authPayload());
+  }
+
+  /** Upgrade a unit (soldier, archer, knight) */
+  upgradeUnit(unitType) {
+    return this.post(
+      "city/barracks/unit_upgrade/start",
+      this.authPayload({ ["unit_type"]: unitType, ["payment_type"]: "points" }),
+    );
+  }
+
+  /** Recruit a batch of units with points */
+  recruitUnits(unitType, quantity) {
+    return this.post(
+      "city/barracks/recruit/batch",
+      this.authPayload({
+        ["unit_type"]: unitType,
+        quantity,
+        ["payment_type"]: "points",
+      }),
+    );
+  }
+
+  /** Convert one unit type into another */
+  convertUnits(fromUnit, toUnit, quantity) {
+    return this.post(
+      "city/barracks/convert",
+      this.authPayload({ ["from_unit"]: fromUnit, ["to_unit"]: toUnit, quantity }),
+    );
+  }
+
+  /** Start a miner expedition of the given duration in minutes */
+  startExpedition(durationMin) {
+    return this.post(
+      "city/miner_expedition/start",
+      this.authPayload({ ["duration_min"]: durationMin }),
+    );
+  }
+
+  /** Claim an inbox message's rewards */
+  claimInbox(messageId) {
+    return this.post("city/inbox/claim", this.authPayload({ ["message_id"]: messageId }));
+  }
+
+  /** Claim an announcement's rewards */
+  claimAnnouncement(announcementId) {
+    return this.post(
+      "city/announcements/claim",
+      this.authPayload({ ["announcement_id"]: announcementId }),
+    );
+  }
+
+  /* --------------------------------------------------------------------- */
   /* Auth                                                                  */
   /* --------------------------------------------------------------------- */
 
@@ -944,6 +1068,370 @@ export default class TonoreumFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
+  /* City upgrades                                                          */
+  /*                                                                       */
+  /* Every City building, tech, gear and unit grants torpower, which is     */
+  /* the single number that drives mining — so a run spends whatever points */
+  /* it has on the upgrades the server still offers, and lets the server    */
+  /* refuse anything that costs more (the page guards on points first, but  */
+  /* the farmer deliberately does not: a rejection is just a log line).     */
+  /* --------------------------------------------------------------------- */
+
+  /** The building, tech, gear and unit slots the City grid knows. */
+  get CITY_BUILDINGS() {
+    return ["mine", "steelworks", "electricity", "academy", "miner"];
+  }
+
+  /** Regular gear slots, in the order the webapp shows them. */
+  get CITY_GEAR() {
+    return ["pickaxe", "suit", "helm", "boots", "gloves", "goggles"];
+  }
+
+  /** The three unit types, cheapest to upgrade first. */
+  get CITY_UNITS() {
+    return ["soldier", "archer", "knight"];
+  }
+
+  /** Expedition options: duration in minutes. */
+  get CITY_EXPEDITIONS() {
+    return [720, 1440, 2880];
+  }
+
+  /**
+   * Load the city, then spend points on every upgrade it still allows.
+   *
+   * The order is deliberate: buildings first (they lift the tech and gear
+   * ceilings), then tech, then the barracks and quarters, then gear and the
+   * miner, and finally the units.
+   */
+  async upgradeCity() {
+    const state = await this.getCityState().catch((error) => {
+      this.logger.warn("City state failed:", this.readCityError(error));
+      return null;
+    });
+
+    if (!state) return;
+
+    this.city = state;
+    this.debugger.log("City state:", state);
+
+    await this.upgradeBuildings();
+    await this.upgradeTech();
+    await this.upgradeBarracks();
+    await this.upgradeGear();
+    await this.upgradeMiner();
+    await this.upgradeUnits();
+  }
+
+  /** The most useful error message out of an upgrade failure */
+  readCityError(error) {
+    return (
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
+      error?.message ||
+      "Unknown error"
+    );
+  }
+
+  /** A readable label for one resource + amount */
+  formatCityReward(rewards = {}) {
+    const bits = [];
+    if (rewards.wood) bits.push(`${rewards.wood} wood`);
+    if (rewards.stone) bits.push(`${rewards.stone} stone`);
+    if (rewards.steel) bits.push(`${rewards.steel} steel`);
+    if (rewards.food) bits.push(`${rewards.food} food`);
+    if (rewards.points) bits.push(`${rewards.points} points`);
+    return bits.length ? ` (${bits.join(", ")})` : "";
+  }
+
+  /** Upgrade the five economy buildings until the server says stop. */
+  async upgradeBuildings() {
+    const levels = this.city?.buildings || {};
+
+    for (const building of this.CITY_BUILDINGS) {
+      const level = Number(levels[building]) || 1;
+      if (level >= 10) continue;
+      if (this.signal.aborted) break;
+
+      const result = await this.upgradeBuilding(building).catch((error) => {
+        this.debugger.log(`Building ${building} upgrade failed:`, this.readCityError(error));
+        return null;
+      });
+
+      if (!result || result?.error) {
+        this.debugger.log(`Building ${building} not upgraded:`, result);
+        continue;
+      }
+
+      const next = Number(result.buildings?.[building]) || level + 1;
+      this.logger.success(`City building upgraded: ${building} -> Lv.${next}`);
+      this.city = result;
+
+      await this.utils.delayForSeconds(1, { signal: this.signal });
+    }
+  }
+
+  /** Unlock every tech branch level until the server refuses. */
+  async upgradeTech() {
+    const levels = this.city?.tech_levels || {};
+    const branches = this.CITY_BUILDINGS;
+
+    for (const branch of branches) {
+      let level = Number(levels[branch]) || 0;
+
+      while (level < 10 && !this.signal.aborted) {
+        const target = level + 1;
+        const result = await this.unlockTech(branch, target).catch((error) => {
+          this.debugger.log(`Tech ${branch} Lv.${target} failed:`, this.readCityError(error));
+          return null;
+        });
+
+        if (!result || result?.error) break;
+
+        this.logger.success(`Tech unlocked: ${branch} -> Lv.${target}`);
+        this.city = result;
+        level = target;
+
+        await this.utils.delayForSeconds(1, { signal: this.signal });
+      }
+    }
+  }
+
+  /** Upgrade the barracks building and its quarters. */
+  async upgradeBarracks() {
+    const levels = this.city?.buildings || {};
+    const barracksLevel = Number(levels.barracks) || 1;
+
+    if (barracksLevel < 6) {
+      const result = await this.upgradeBarracksPoints().catch((error) => {
+        this.debugger.log("Barracks upgrade failed:", this.readCityError(error));
+        return null;
+      });
+
+      if (result && !result?.error) {
+        const gain = result["barracks_upgrade_result"]?.tp_gain;
+        this.logger.success(
+          `Barracks upgraded${gain ? ` (+${gain} torpower)` : ""}!`,
+        );
+        this.city = result;
+      }
+    }
+
+    const quarters = Number(this.city?.barracks_quarters_level) || 1;
+
+    if (quarters < 10) {
+      const result = await this.upgradeBarracksQuarters().catch((error) => {
+        this.debugger.log("Barracks quarters upgrade failed:", this.readCityError(error));
+        return null;
+      });
+
+      if (result && !result?.error) {
+        this.logger.success("Barracks quarters upgraded!");
+        this.city = result;
+      }
+    }
+
+    await this.utils.delayForSeconds(1, { signal: this.signal });
+  }
+
+  /** Upgrade the six gear slots. */
+  async upgradeGear() {
+    const levels = this.city?.gear_levels || {};
+
+    for (const slot of this.CITY_GEAR) {
+      const level = Number(levels[slot]) || 1;
+      if (level >= 10) continue;
+      if (this.signal.aborted) break;
+
+      const result = await this.upgradeGear(slot).catch((error) => {
+        this.debugger.log(`Gear ${slot} upgrade failed:`, this.readCityError(error));
+        return null;
+      });
+
+      if (!result || result?.error) continue;
+
+      this.logger.success(`Gear upgraded: ${slot}`);
+      this.city = result;
+
+      await this.utils.delayForSeconds(1, { signal: this.signal });
+    }
+  }
+
+  /** Train the miner and upgrade its combat level. */
+  async upgradeMiner() {
+    const result = await this.trainMiner().catch((error) => {
+      this.debugger.log("Miner training failed:", this.readCityError(error));
+      return null;
+    });
+
+    if (result && !result?.error) {
+      this.logger.success("Miner trained!");
+      this.city = result;
+    }
+
+    const combatLevel = Number(this.city?.miner_combat_level) || 1;
+
+    if (combatLevel < 10) {
+      const combat = await this.upgradeCombatMiner().catch((error) => {
+        this.debugger.log("Combat miner upgrade failed:", this.readCityError(error));
+        return null;
+      });
+
+      if (combat && !combat?.error) {
+        this.logger.success("Combat miner upgraded!");
+        this.city = combat;
+      }
+    }
+
+    await this.utils.delayForSeconds(1, { signal: this.signal });
+  }
+
+  /** Upgrade each unit type, then recruit to fill the army. */
+  async upgradeUnits() {
+    const levels = this.city?.unit_levels || {};
+
+    for (const unit of this.CITY_UNITS) {
+      const level = Number(levels[unit]) || 1;
+      if (level >= 10) continue;
+      if (this.signal.aborted) break;
+
+      const result = await this.upgradeUnit(unit).catch((error) => {
+        this.debugger.log(`Unit ${unit} upgrade failed:`, this.readCityError(error));
+        return null;
+      });
+
+      if (result && !result?.error) {
+        this.logger.success(`Unit upgraded: ${unit}`);
+        this.city = result;
+        await this.utils.delayForSeconds(1, { signal: this.signal });
+      }
+    }
+
+    const capacity = Number(this.city?.barracks_army_capacity) || 10;
+    const army = this.city?.army_counts || {};
+    const count = Object.values(army).reduce((sum, n) => sum + Number(n || 0), 0);
+
+    if (count < capacity) {
+      const unit = "soldier";
+      const quantity = Math.max(1, capacity - count);
+
+      const result = await this.recruitUnits(unit, quantity).catch((error) => {
+        this.debugger.log("Unit recruitment failed:", this.readCityError(error));
+        return null;
+      });
+
+      if (result && !result?.error) {
+        this.logger.success(`Recruited ${quantity} ${unit}(s).`);
+        this.city = result;
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* City claims                                                           */
+  /*                                                                       */
+  /* Inbox and announcement messages carry resource rewards that expire     */
+  /* once a new expedition is sent, and the miner expedition itself pays    */
+  /* out on return — both are worth sweeping on every run.                  */
+  /* --------------------------------------------------------------------- */
+
+  /** Claim inbox and announcement rewards, then start a fresh expedition. */
+  async cityClaims() {
+    const claimed = await this.claimCityMessages();
+
+    if (claimed) {
+      await this.utils.delayForSeconds(1, { signal: this.signal });
+    }
+
+    await this.startCityExpedition();
+  }
+
+  /** Claim every claimable inbox + announcement message. */
+  async claimCityMessages() {
+    const [inbox, announcements] = await Promise.all([
+      this.getInbox().catch(() => null),
+      this.getAnnouncements().catch(() => null),
+    ]);
+
+    this.debugger.log("Inbox:", inbox);
+    this.debugger.log("Announcements:", announcements);
+
+    let claimed = 0;
+
+    const messages = [
+      ...((inbox?.messages || []).map((m) => ({ ...m, source: "inbox" }))),
+      ...((announcements?.messages || []).map((m) => ({
+        ...m,
+        source: "announcement",
+      }))),
+    ];
+
+    for (const message of messages) {
+      if (!message.claimable || message.claimed) continue;
+      if (this.signal.aborted) break;
+
+      try {
+        const result =
+          message.source === "announcement"
+            ? await this.claimAnnouncement(message.id)
+            : await this.claimInbox(message.id);
+
+        const rewards = this.formatCityReward(result);
+        this.logger.success(`Claimed: ${message.subject}${rewards}`);
+        claimed++;
+      } catch (error) {
+        this.logger.warn(
+          `Could not claim ${message.source}:`,
+          this.readCityError(error),
+        );
+      }
+    }
+
+    return claimed;
+  }
+
+  /**
+   * Start a miner expedition if none is running and nothing is pending.
+   *
+   * The longest expedition pays the best, but the shortest is picked when
+   * no choice can be made — the server decides which durations it will take.
+   */
+  async startCityExpedition() {
+    const status = await this.getExpeditionStatus().catch((error) => {
+      this.logger.warn("Expedition status failed:", this.readCityError(error));
+      return null;
+    });
+
+    if (!status) return;
+
+    this.debugger.log("Expedition status:", status);
+
+    if (status.active) {
+      this.logger.info("Miner is already on an expedition.");
+      return;
+    }
+
+    if (status.pending_claim) {
+      this.logger.info("Expedition rewards are waiting to be claimed.");
+      return;
+    }
+
+    for (const durationMin of this.CITY_EXPEDITIONS) {
+      if (this.signal.aborted) break;
+
+      const result = await this.startExpedition(durationMin).catch((error) => {
+        this.debugger.log(`Expedition ${durationMin}m failed:`, this.readCityError(error));
+        return null;
+      });
+
+      if (result && !result?.error) {
+        this.logger.success(`Miner sent on a ${durationMin}-minute expedition!`);
+        return;
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
   /* Tools (manual actions)                                                */
   /* --------------------------------------------------------------------- */
 
@@ -969,6 +1457,25 @@ export default class TonoreumFarmer extends BaseFarmer {
             icon: "search",
             title: "Activate Mining",
             action: this.startMining.bind(this),
+            dispatch: false,
+          },
+        ],
+      },
+      {
+        name: "City",
+        list: [
+          {
+            id: "city-upgrades",
+            icon: "search",
+            title: "Upgrade City",
+            action: this.upgradeCity.bind(this),
+            dispatch: false,
+          },
+          {
+            id: "city-claims",
+            icon: "check",
+            title: "City Claims",
+            action: this.cityClaims.bind(this),
             dispatch: false,
           },
         ],
@@ -1078,6 +1585,8 @@ export default class TonoreumFarmer extends BaseFarmer {
     await this.executeTask("Mining", () => this.startMining());
     await this.executeTask("Ads", () => this.watchAds());
     await this.executeTask("Quests", () => this.completeQuests());
+    await this.executeTask("City Upgrades", () => this.upgradeCity());
+    await this.executeTask("City Claims", () => this.cityClaims());
     await this.executeTask("Tap Ore", () => this.breakOre());
     await this.executeTask("Achievements", () => this.claimAchievements());
     await this.executeTask("Friends", () => this.logReferrals());

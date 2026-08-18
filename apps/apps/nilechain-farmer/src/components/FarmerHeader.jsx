@@ -20,7 +20,7 @@ export default function FarmerHeader({ isPrimary, referralLink }) {
       <img src={icon} alt={title} className="w-8 h-8 shrink-0 rounded-full" />
 
       {/* Indicator for primary account */}
-      {isPrimary && <HiCheckBadge className="shrink-0 text-lime-500" />}
+      {isPrimary && <HiCheckBadge className="shrink-0 text-green-500" />}
 
       {/* Title */}
       <h1 className="font-bold min-w-0">{title} Farmer</h1>

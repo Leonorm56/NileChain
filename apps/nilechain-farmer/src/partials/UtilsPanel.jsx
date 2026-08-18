@@ -97,8 +97,8 @@ export default memo(function UtilsPanel() {
             </div>
             <p
               className={cn(
-                "bg-yellow-100",
-                "text-yellow-800 dark:text-yellow-900",
+                "bg-nile-gold-100",
+                "text-nile-gold-800 dark:text-nile-gold-900",
                 "p-4 text-center  rounded-lg",
               )}
             >

@@ -29,7 +29,7 @@ export default function SpiderKeyInput() {
 
         <button
           className={cn(
-            "px-4 bg-nile-gold-600 text-white rounded-lg hover:bg-orange-600",
+            "px-4 bg-nile-gold-600 text-white rounded-lg hover:bg-nile-gold-700",
             "shrink-0 rounded-xl font-bold",
           )}
           onClick={handleSave}

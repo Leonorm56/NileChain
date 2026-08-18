@@ -68,4 +68,51 @@ export default class Encrypter {
 
     return asText ? new TextDecoder().decode(decrypted) : decrypted;
   }
+
+  /**
+   * Encrypt with a pre-derived raw key (skips scrypt).
+   *
+   * Lets a caller derive the key once (via {@link scryptPass}) and reuse it
+   * across many encryptions without paying the scrypt cost each time — used by
+   * the NileWallet vault, which keeps the derived key in service-worker memory.
+   */
+  static async encryptWithKey({ data, key, nonce, encode = true }) {
+    const iv = nonce || randomBytes(this.NONCE_BYTES);
+    const cipher = aes256gcm(key, iv);
+
+    const dataBytes =
+      typeof data === "string"
+        ? new TextEncoder().encode(data)
+        : data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : data;
+
+    const encrypted = await cipher.encrypt(dataBytes);
+
+    const bundle = new Uint8Array(1 + iv.length + encrypted.length);
+    bundle.set([this.VERSION]);
+    bundle.set(iv, 1);
+    bundle.set(encrypted, 1 + iv.length);
+
+    return encode ? base64.encode(bundle) : bundle;
+  }
+
+  /** Decrypt data produced by {@link encryptWithKey} using a raw key. */
+  static async decryptWithKey({ encrypted, key, asText = true }) {
+    const bundle =
+      typeof encrypted === "string" ? base64.decode(encrypted) : encrypted;
+
+    const version = bundle[0];
+    if (version !== this.VERSION) throw new Error("Unsupported cipher version");
+
+    const iv = bundle.slice(1, 1 + this.NONCE_BYTES);
+    const cipherText = bundle.slice(1 + this.NONCE_BYTES);
+
+    const cipher = aes256gcm(key, iv);
+    const decrypted = await cipher.decrypt(cipherText);
+
+    if (!decrypted) throw new Error("Invalid key or corrupted data");
+
+    return asText ? new TextDecoder().decode(decrypted) : decrypted;
+  }
 }

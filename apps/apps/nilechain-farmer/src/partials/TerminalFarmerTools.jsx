@@ -55,7 +55,7 @@ export const TerminalFarmerTools = ({ terminalFarmer }) => {
           onClick={makeAsPrimaryFarmerUser}
           icon={
             isPrimaryFarmerUser ? (
-              <HiCheckBadge className="shrink-0 size-5 text-lime-500" />
+              <HiCheckBadge className="shrink-0 size-5 text-green-500" />
             ) : (
               <HiOutlineCheckBadge className="shrink-0 size-5" />
             )

@@ -84,7 +84,7 @@ export default memo(function FarmerOptionsGroup({
             disabled={mode === "session" && telegramClient.hasSession === false}
             className={cn(
               farmerMode === mode
-                ? ["bg-blue-100 dark:bg-blue-100", "text-nile-gold-800"]
+                ? ["bg-nile-gold-100 dark:bg-nile-gold-100", "text-nile-gold-800"]
                 : null,
             )}
           >
@@ -111,8 +111,8 @@ export default memo(function FarmerOptionsGroup({
             className={cn(
               sharedSettings.telegramClient === client
                 ? [
-                    "bg-orange-100 dark:bg-orange-600",
-                    "text-orange-900 dark:text-white",
+                    "bg-nile-gold-600 dark:bg-nile-gold-600",
+                    "text-white",
                   ]
                 : null,
             )}

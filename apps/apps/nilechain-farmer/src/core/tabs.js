@@ -1,4 +1,3 @@
-import ATFAutoIcon from "@/assets/images/atf-auto.png?format=webp&w=80";
 import AppIcon from "@/assets/images/icon.png?format=webp&w=80";
 import BackupAndRestoreIcon from "@/assets/images/backup-and-restore.png?format=webp&w=80";
 import CloudIcon from "@/assets/images/cloud.png?format=webp&w=80";
@@ -45,7 +44,6 @@ export const ReorderTelegramWeb = safeImport(() =>
 );
 
 export const Spider = safeImport(() => import("@/app/Spider"));
-export const ATFAuto = safeImport(() => import("@/app/ATFAuto"));
 export const MyCloud = safeImport(() => import("@/app/MyCloud"));
 export const CloudManager = lazy(() => import("@/app/CloudManager"));
 export const LocalTelegramSession = lazy(
@@ -82,20 +80,6 @@ export const telegramWeb = [
 ];
 
 export const utils = [
-  /** Extra */
-  {
-    name: "Extra",
-    list: [
-      /** ATF Auto */
-      {
-        id: "atf-auto",
-        title: "ATF Auto",
-        icon: ATFAutoIcon,
-        component: createElement(ATFAuto),
-        singleton: true,
-      },
-    ],
-  },
   /** Account */
   {
     name: "Account",

@@ -19,7 +19,7 @@ export default memo(function TelegramUser({ user, ...props }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-2 rounded-full bg-black",
+        "flex items-center gap-2 px-3 py-2 rounded-full bg-neutral-900",
         props.className
       )}
     >
@@ -31,7 +31,7 @@ export default memo(function TelegramUser({ user, ...props }) {
 
       <div className="flex flex-col min-w-0 min-h-0 grow pr-2 gap-1">
         {/* First and Last Name */}
-        <p className="font-bold text-purple-500 truncate">
+        <p className="font-bold text-nile-gold-400 truncate">
           {user?.["first_name"] || user?.["last_name"]
             ? `${user?.["first_name"] || ""} ${user?.["last_name"] || ""}`
             : " Telegram User"}
@@ -39,13 +39,13 @@ export default memo(function TelegramUser({ user, ...props }) {
 
         {/* Username */}
         {user?.username ? (
-          <p onClick={copyUsername} className="text-yellow-500 truncate">
+          <p onClick={copyUsername} className="text-nile-gold-400 truncate">
             @{user?.username}
           </p>
         ) : null}
 
         {/* User ID */}
-        <p onClick={copyUserId} className="truncate text-lime-500">
+        <p onClick={copyUserId} className="truncate text-neutral-400">
           ID: {user?.id}
         </p>
       </div>

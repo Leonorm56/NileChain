@@ -12,58 +12,11 @@
   --font-noto-sans: "Noto Sans";
   --font-turret-road: "Turret Road";
 
-  --color-birdton-blue-50: #ffffff;
-  --color-birdton-blue-100: #f0faff;
-  --color-birdton-blue-200: #c7edff;
-  --color-birdton-blue-300: #9fe0ff;
-  --color-birdton-blue-400: #76d2ff;
-  --color-birdton-blue-500: #4dc5ff;
-  --color-birdton-blue-600: #15b3ff;
-  --color-birdton-blue-700: #0094dc;
-  --color-birdton-blue-800: #006ea4;
-  --color-birdton-blue-900: #00496c;
-  --color-birdton-blue-950: #003650;
-  --color-birdton-blue: #4dc5ff;
-
-  --color-blum-green-50: #fdfef9;
-  --color-blum-green-100: #f5fde7;
-  --color-blum-green-200: #e6f9c1;
-  --color-blum-green-300: #d8f59c;
-  --color-blum-green-400: #c9f277;
-  --color-blum-green-500: #baee52;
-  --color-blum-green-600: #a6e91f;
-  --color-blum-green-700: #84bd13;
-  --color-blum-green-800: #618a0e;
-  --color-blum-green-900: #3d5709;
-  --color-blum-green-950: #2b3e06;
-  --color-blum-green: #baee52;
-
-  --color-pumpad-green-50: #f6ffb6;
-  --color-pumpad-green-100: #f3ffa1;
-  --color-pumpad-green-200: #eeff78;
-  --color-pumpad-green-300: #e9ff50;
-  --color-pumpad-green-400: #e4ff27;
-  --color-pumpad-green-500: #ddfd00;
-  --color-pumpad-green-600: #acc500;
-  --color-pumpad-green-700: #7b8d00;
-  --color-pumpad-green-800: #4a5500;
-  --color-pumpad-green-900: #191d00;
-  --color-pumpad-green-950: #000100;
-  --color-pumpad-green: #ddfd00;
-
-  --color-wonton-green-50: #c1fe78;
-  --color-wonton-green-100: #b7fe64;
-  --color-wonton-green-200: #a4fe3b;
-  --color-wonton-green-300: #92fe13;
-  --color-wonton-green-400: #7de701;
-  --color-wonton-green-500: #5faf01;
-  --color-wonton-green-600: #417701;
-  --color-wonton-green-700: #223f00;
-  --color-wonton-green-800: #040800;
-  --color-wonton-green-900: #000000;
-  --color-wonton-green-950: #000000;
-  --color-wonton-green: #7de701;
-
+  /*
+    Design system — deep navy canvas, gold accents only.
+    The neutral scale below is the navy family: every shade carries a
+    blue undertone so the UI never falls into plain gray or black.
+  */
   --color-nile-gold-50: #fefcf3;
   --color-nile-gold-100: #fdf6e0;
   --color-nile-gold-200: #fbe9b3;
@@ -100,6 +53,47 @@
   --color-neutral-800: #192940;
   --color-neutral-900: #0b1526;
   --color-neutral-950: #040a14;
+}
+
+/*
+  Semantic design tokens. These are the single source of truth for the
+  navy + gold design system. Toolbar overlays (styled-components outside
+  the Tailwind theme) reference these via var(--token).
+
+  Canvas     -> deep navy (#0b1526) on #040a14
+  Surface    -> slightly lighter navy (#192940) for cards/inputs
+  Accent     -> gold #D4A843, used sparingly for primary actions/active states
+  Text       -> near-white primary, muted blue-gray secondary
+  Status     -> green (success) and red (error) only
+*/
+:root {
+  --nc-canvas: #040a14;
+  --nc-surface: #0b1526;
+  --nc-surface-2: #192940;
+  --nc-border: #2a3d59;
+  --nc-gold: #D4A843;
+  --nc-gold-bright: #E8C454;
+  --nc-gold-dark: #A67A1E;
+  --nc-text: #f0f4fa;
+  --nc-text-muted: #a8bcd4;
+  --nc-text-faint: #8098b8;
+  --nc-success: #16a34a;
+  --nc-danger: #dc2626;
+}
+
+.dark {
+  --nc-canvas: #040a14;
+  --nc-surface: #0b1526;
+  --nc-surface-2: #192940;
+  --nc-border: #2a3d59;
+  --nc-gold: #D4A843;
+  --nc-gold-bright: #E8C454;
+  --nc-gold-dark: #A67A1E;
+  --nc-text: #f0f4fa;
+  --nc-text-muted: #a8bcd4;
+  --nc-text-faint: #8098b8;
+  --nc-success: #16a34a;
+  --nc-danger: #dc2626;
 }
 
 /*
@@ -141,10 +135,10 @@
 
 /* Override injected styles */
 html {
-  @apply bg-nile-gold-50 dark:bg-[#0d0a04];
+  @apply bg-nile-gold-50 dark:bg-neutral-950;
 }
 
 body {
-  @apply font-sans text-xs bg-gradient-to-b from-nile-gold-50 to-nile-gold-100 dark:from-[#181207] dark:to-[#0d0a04];
+  @apply font-sans text-xs bg-gradient-to-b from-nile-gold-50 to-nile-gold-100 dark:from-neutral-900 dark:to-neutral-950;
   background-attachment: fixed;
 }

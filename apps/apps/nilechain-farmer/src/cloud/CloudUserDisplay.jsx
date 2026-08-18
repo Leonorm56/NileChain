@@ -40,10 +40,10 @@ export default function CloudUserDisplay() {
               </p>
 
               {/* User Email */}
-              <p className="truncate text-lime-500">{user.email}</p>
+              <p className="truncate text-nile-gold-400">{user.email}</p>
 
               {/* Username */}
-              <p className="text-yellow-500 truncate ">@{user.username}</p>
+              <p className="text-nile-gold-400 truncate ">@{user.username}</p>
             </div>
           </div>
 
@@ -60,7 +60,7 @@ export default function CloudUserDisplay() {
             </Dialog.Root>
 
             <Dialog.Root open={openBackup} onOpenChange={setOpenBackup}>
-              <Dialog.Trigger className="text-purple-500">
+              <Dialog.Trigger className="text-nile-gold-400">
                 Backup
               </Dialog.Trigger>
 
