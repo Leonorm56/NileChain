@@ -539,6 +539,23 @@ export default class BaseFarmer {
     throw new Error("withdraw method must be implemented in subclass");
   }
 
+  /* --------------------------------------------------------------------- */
+  /* Fleet-wide withdrawal throttle (cloud only)                           */
+  /*                                                                       */
+  /* The extension runs one isolated account per profile, so the default   */
+  /* is a no-op: any account may withdraw whenever it is otherwise         */
+  /* eligible. The cloud Runner overrides these to enforce a shared,       */
+  /* persisted per-farmer budget across the whole fleet.                   */
+  /* --------------------------------------------------------------------- */
+
+  /** Ask permission to place a withdrawal now. Returns true if granted. */
+  async reserveWithdrawalSlot() {
+    return true;
+  }
+
+  /** Return a reserved slot when the send fails, so it isn't wasted. */
+  async releaseWithdrawalSlot() {}
+
   /** Notify the server admin */
   async notifyAdmin(messages) {
     return false;

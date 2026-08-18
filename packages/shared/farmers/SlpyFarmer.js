@@ -1182,6 +1182,22 @@ export default class SlpyFarmer extends BaseFarmer {
     /** Log balance */
     this.logger.info("Available balance:", balance.toString());
 
+    /**
+     * Fleet-wide throttle. Checked only after local eligibility (blockers +
+     * balance) passes, so ineligible accounts never consume the budget. The
+     * cloud Runner limits how many accounts may withdraw per hour and spaces
+     * them apart; in the extension this is a no-op and always grants.
+     */
+    if (!(await this.reserveWithdrawalSlot())) {
+      this.logger.info("Withdrawal deferred - fleet hourly limit reached");
+      return {
+        status: false,
+        skipped: true,
+        message: "Deferred - fleet withdrawal limit",
+        amount: "0",
+      };
+    }
+
     let amount = this.shapeAmount(balance, { max, difference });
     let { status, result } = await this.sendWithdrawal(amount);
 
@@ -1207,6 +1223,8 @@ export default class SlpyFarmer extends BaseFarmer {
     if (!status) {
       const message = this.describeWithdrawalRejection(result);
       this.logger.error("Failed to request withdrawal:", message);
+      /* Hand the reserved slot back so a rejected send doesn't burn the hour. */
+      await this.releaseWithdrawalSlot();
       return { status: false, skipped: false, message, amount: "0" };
     }
 

@@ -14,6 +14,7 @@ import { delay } from "@nile/shared/utils/delay.js";
 import GramClient from "../lib/GramClient.js";
 import axios from "axios";
 import bot from "../lib/bot.js";
+import cache from "../lib/cache.js";
 import captcha from "../lib/captcha.js";
 import db from "../db/models/index.js";
 import logger from "../lib/logger.js";
@@ -52,10 +53,33 @@ export default function createRunner(FarmerClass) {
   /** Primary account ID */
   const primaryAccountId = Number(farmerPrimaryAccountId) || 0;
 
+  /**
+   * Withdrawals this farmer may place per rolling hour, fleet-wide. The
+   * default of 2 leaves other farmers unthrottled unless they opt in via
+   * their own FARMER_<ID>_WITHDRAW_PER_HOUR (and add the reserve gate).
+   */
+  const withdrawPerHour = env(envKey + "_WITHDRAW_PER_HOUR", 2);
+
+  /**
+   * Minimum spacing between two withdrawals. Defaults to an even spread
+   * across the hour (30 min for 2/hour) so they never go out together.
+   */
+  const withdrawMinGapMinutes = env(
+    envKey + "_WITHDRAW_MIN_GAP_MINUTES",
+    withdrawPerHour >= 1 ? Math.floor(60 / withdrawPerHour) : 0,
+  );
+
+  /** Minimum spacing in milliseconds */
+  const withdrawMinGapMs = Math.max(0, withdrawMinGapMinutes) * 60 * 1000;
+
   /** Log */
   logger.success(`${FarmerClass.title} Farmer`);
   logger.keyValue("Enabled", enabled);
   logger.keyValue("Primary account ID", primaryAccountId, {
+    format: false,
+  });
+  logger.keyValue("Withdraw / hour", withdrawPerHour, { format: false });
+  logger.keyValue("Withdraw min gap (min)", withdrawMinGapMinutes, {
     format: false,
   });
   logger.newline();
@@ -74,6 +98,11 @@ export default function createRunner(FarmerClass) {
     static isProcessingQueue = false;
     static feedDone = false;
     static lastResults = new Map();
+
+    /** Fleet-wide withdrawal budget (see reserveWithdrawalSlot) */
+    static withdrawPerHour = withdrawPerHour;
+    static withdrawMinGapMs = withdrawMinGapMs;
+    static withdrawalLedgerKey = `withdrawals:${FarmerClass.id}`;
 
     /** Staggering window (seconds) and jitter (seconds) */
     static staggerWindowSeconds = 600;
@@ -99,6 +128,20 @@ export default function createRunner(FarmerClass) {
         hash = Math.imul(hash, 16777619);
       }
       return (hash >>> 0) % this.staggerWindowSeconds;
+    }
+
+    /**
+     * Pure decision for the withdrawal budget. Prune timestamps older than a
+     * rolling hour, then deny if the hour is already full or the last
+     * withdrawal is too recent. Side-effect free so it can be unit-tested
+     * without the cache. Returns the pruned list so the caller persists it.
+     */
+    static evaluateWithdrawalSlot(recent, now, perHour, minGapMs) {
+      const pruned = (recent || []).filter((ts) => now - ts < 3_600_000);
+      if (pruned.length >= perHour) return { allowed: false, pruned };
+      const last = pruned.length ? Math.max(...pruned) : 0;
+      if (last && now - last < minGapMs) return { allowed: false, pruned };
+      return { allowed: true, pruned };
     }
 
     constructor(account) {
@@ -154,6 +197,57 @@ export default function createRunner(FarmerClass) {
 
       /** Configure Telegram Web app */
       this.configureTelegramWebApp();
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* Withdrawal throttle (fleet-wide, persisted)                           */
+    /*                                                                       */
+    /* Overrides the BaseFarmer no-ops. The queue drains one account at a    */
+    /* time and a farmer never overlaps itself, so this read-modify-write on */
+    /* the shared per-farmer ledger cannot interleave.                       */
+    /* --------------------------------------------------------------------- */
+
+    /** Reserve one of this farmer's hourly withdrawal slots. */
+    async reserveWithdrawalSlot() {
+      const { withdrawPerHour, withdrawMinGapMs, withdrawalLedgerKey } =
+        this.constructor;
+
+      const recent = (await cache.get(withdrawalLedgerKey)) || [];
+      const now = Date.now();
+      const { allowed, pruned } = this.constructor.evaluateWithdrawalSlot(
+        recent,
+        now,
+        withdrawPerHour,
+        withdrawMinGapMs,
+      );
+
+      if (!allowed) {
+        /* Persist the pruned list so stale timestamps don't accumulate. */
+        if (pruned.length !== recent.length) {
+          await cache.set(withdrawalLedgerKey, pruned);
+        }
+        return false;
+      }
+
+      pruned.push(now);
+      await cache.set(withdrawalLedgerKey, pruned);
+      this._withdrawalSlotTs = now;
+      return true;
+    }
+
+    /** Hand back a slot reserved this run when the send ultimately failed. */
+    async releaseWithdrawalSlot() {
+      const ts = this._withdrawalSlotTs;
+      if (!ts) return;
+      this._withdrawalSlotTs = null;
+
+      const { withdrawalLedgerKey } = this.constructor;
+      const recent = (await cache.get(withdrawalLedgerKey)) || [];
+      const index = recent.indexOf(ts);
+      if (index !== -1) {
+        recent.splice(index, 1);
+        await cache.set(withdrawalLedgerKey, recent);
+      }
     }
 
     /** Create Axios Instance */
