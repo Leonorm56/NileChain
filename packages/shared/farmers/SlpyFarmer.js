@@ -211,6 +211,8 @@ export default class SlpyFarmer extends BaseFarmer {
   static path = "/";
   static referrerMode = "random";
   static apiDelay = 500;
+  /* Auth is the live init-data header, not a cacheable token - always refetch. */
+  static cacheAuth = false;
   static singleton = true;
   static rating = 5;
 
@@ -428,13 +430,26 @@ export default class SlpyFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
   /* Auth                                                                  */
   /*                                                                       */
-  /* The API carries no auth of any kind — no token, no initData, no        */
-  /* signature. Every call is keyed purely on the Telegram user id.         */
+  /* Every call must carry the raw Telegram init data in the                */
+  /* `x-telegram-init-data` header — the server answers 401 without it.     */
+  /* Account state is still keyed on the Telegram user id inside that data. */
   /* --------------------------------------------------------------------- */
 
   /** The account key every call is scoped by */
   getUid() {
     return this.getUserId()?.toString();
+  }
+
+  /**
+   * The header the API gates every call on.
+   *
+   * Read from the live init data rather than the value handed to
+   * `configureAuthHeaders`, so a cached auth entry (which restores the account
+   * row, not the init data) still produces the correct header.
+   */
+  getAuthHeaders() {
+    const initData = this.getInitData();
+    return initData ? { "x-telegram-init-data": initData } : {};
   }
 
   /** Referrer id carried by the `?startapp=ref<uid>` deep link */
@@ -453,6 +468,14 @@ export default class SlpyFarmer extends BaseFarmer {
 
   /** Load settings and the account row, registering the account if it is new */
   async login() {
+    /**
+     * Arm the init-data header before the first request. `setAuth` normally
+     * sets it during the auth phase, but `login` also runs standalone — the
+     * process entry point and the Auto adapter both call it — and every
+     * request 401s without the header.
+     */
+    this.configureAuthHeaders();
+
     this.settings = await this.getPublicSettings();
     this.debugger.log("Public settings:", this.settings);
 
