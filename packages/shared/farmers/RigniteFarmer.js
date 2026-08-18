@@ -327,17 +327,24 @@ export default class RigniteFarmer extends BaseFarmer {
   }
 
   /**
-   * Buy upgrades in the app's unlock order until a max of MAX_FARM_SIZE
-   * buildings are owned, then stop purchasing and pour every further coin
-   * into raising the levels of those buildings.
+   * Buy upgrades in the app's unlock order, then keep spending until the coin
+   * balance is exhausted. Two passes:
+   *
+   *   1. Expand — unlock new buildings (in unlock order) up to MAX_FARM_SIZE,
+   *      taking each to level 3 so the next one opens.
+   *   2. Deepen — pour every remaining coin into raising the levels of the
+   *      buildings we already own (up to MAX_ITEM_LEVEL), cycling through them
+   *      until a purchase is refused because coins ran out.
    *
    * A section (tools, energy, ...) only unlocks once every item of the
    * previous section has been bought, and item `cat_N` only unlocks once
    * `cat_(N-1)` has reached level 3 (UNLOCK_LEVEL). The server enforces both
    * with FINISH_PREV_SECTION / "Gereken item seviyesi yok" errors, so we buy
    * deterministically: finish each section left-to-right, taking each item to
-   * level 3 before moving to the next one. Once the owned-building count hits
-   * MAX_FARM_SIZE, new purchases stop and the balance upgrades what's owned.
+   * level 3 before moving to the next. New purchases stop once MAX_FARM_SIZE
+   * buildings are owned, but the deepen pass ALWAYS runs afterwards — even
+   * when fewer than MAX_FARM_SIZE are owned — so leftover coins are never
+   * left sitting idle.
    */
   async upgradeItems() {
     const user = this.user_data;
@@ -398,8 +405,11 @@ export default class RigniteFarmer extends BaseFarmer {
       }
     }
 
-    // --- Phase 2: keep upgrading the owned buildings only -----------------
-    if (ownedCount() >= MAX_FARM_SIZE) {
+    // --- Phase 2: keep leveling every owned building until coins run out --
+    // Runs regardless of how many buildings we own, so leftover coins that
+    // aren't enough to unlock the next (pricey) card still go toward cheaper
+    // level-ups on what we already have.
+    {
       let affordable = true;
       while (affordable && this.signal?.aborted === false) {
         affordable = false;
@@ -634,9 +644,13 @@ export default class RigniteFarmer extends BaseFarmer {
   }
 
   /**
-   * Watch milestone ads until the next unclaimed milestone is ready or the
-   * daily allowance is exhausted. Mirrors the app: POST /ad/intent, then
-   * POST /ad/complete with the metrics the app sends, then re-check /ad/milestone.
+   * Watch the daily milestone ads. The reward plan has five milestones that
+   * unlock at a cumulative 1/2/3/4/5 ads watched (`adsWatched`), so the daily
+   * quota is the highest milestone's `ads` (5). Per the real client each ad is:
+   *   POST /ad/intent {type:"milestone"}  →  wait ~10-12s  →
+   *   POST /ad/complete {network:"adexium", ms, tapGap:-1, adexiumTask, adexiumWid}
+   *   →  POST /ad/milestone {} (refresh adsWatched)
+   * Ready milestones are claimed as they unlock (0-based index).
    */
   async watchMilestoneAds() {
     let data = await this.getAdMilestones().catch((e) => {
@@ -645,85 +659,129 @@ export default class RigniteFarmer extends BaseFarmer {
     });
     if (!data) return 0;
 
-    const milestones = data.milestones || [];
-    const next = milestones.find((m) => m && !m.claimed);
-
-    // All milestones already claimed — nothing to watch.
-    if (!next) {
-      this.logger.info("All ad milestones already claimed.");
+    let milestones = data.milestones || [];
+    if (!milestones.length) {
+      this.logger.info("No ad milestones available.");
       return 0;
     }
 
-    // Watch exactly what the next reward needs (capped at 5/day, the app's
-    // milestone plan) and stop early when the claim opens up.
+    // Grab anything already unlocked from a previous run first.
+    await this.claimReadyMilestones(milestones);
+
+    // Daily quota = the last milestone's ads requirement (5). Only watch what's
+    // still needed to reach it; the server tracks the running `adsWatched`.
+    const quota = milestones.reduce(
+      (max, m) => Math.max(max, Number(m.ads) || 0),
+      0,
+    );
+    let adsWatched = Number(data.adsWatched) || 0;
+    const toWatch = Math.max(0, quota - adsWatched);
+
+    if (toWatch <= 0) {
+      this.logger.info(`Daily ad quota already met (${adsWatched}/${quota}).`);
+      await this.claimAdMilestones();
+      return 0;
+    }
+
     const rng = this.getUserRandomGenerator();
-    const watchTimes = Math.max(0, Math.min(5, (next.ads || 1) - (data.adsWatched || 0)));
     let watched = 0;
 
-    for (let i = 0; i < watchTimes; i++) {
+    for (let i = 0; i < toWatch; i++) {
       if (this.signal?.aborted) break;
 
+      // 1) Declare intent to watch a milestone ad.
       const intent = await this.adIntent("milestone").catch((e) => {
         this.logger.warn("Ad intent failed:", this.readError(e));
         return null;
       });
       if (!intent?.ok) break;
 
-      const ms = 6000 + Math.floor(rng() * 7000);
-      const meta = {
+      // 2) The backend records how long the ad ran, so actually wait ~ms before
+      //    reporting completion (real client: ~10-12s between intent/complete).
+      const ms = 9000 + Math.floor(rng() * 4000);
+      await this.utils
+        .delay(ms, { precised: true, signal: this.signal })
+        .catch(() => {});
+      if (this.signal?.aborted) break;
+
+      // 3) Report completion with the exact payload the app sends.
+      const done = await this.adComplete({
         network: "adexium",
         ms,
-        tapGap: 8000 + Math.floor(rng() * 40000),
+        tapGap: -1,
         adexiumTask: this.utils.uuid(),
         adexiumWid: "banner",
-      };
-
-      const done = await this.adComplete(meta).catch((e) => {
+      }).catch((e) => {
         this.logger.warn("Ad complete failed:", this.readError(e));
         return null;
       });
       if (!done?.ok) break;
 
       watched++;
-      this.logger.success(`Watched ad ${watched}/${watchTimes}.`);
 
-      await this.utils.delayForSeconds(AD_COOLDOWN_SECONDS, { signal: this.signal });
-
-      // Re-fetch — the server now lets the claim open up.
+      // 4) Refresh state and claim whatever the new ad just unlocked.
       const refreshed = await this.getAdMilestones().catch(() => null);
-      if (refreshed?.milestones?.find((m) => m && m.ready && !m.claimed)) break;
+      if (refreshed?.milestones) {
+        milestones = refreshed.milestones;
+        adsWatched = Number(refreshed.adsWatched) || adsWatched + 1;
+        await this.claimReadyMilestones(milestones);
+      } else {
+        adsWatched++;
+      }
+      this.logger.success(
+        `Watched ad ${watched}/${toWatch} (${adsWatched}/${quota} today).`,
+      );
+
+      // Brief human-like gap before the next ad.
+      if (i < toWatch - 1) {
+        await this.utils
+          .delayForSeconds(AD_COOLDOWN_SECONDS, { signal: this.signal })
+          .catch(() => {});
+      }
     }
 
+    // Final sweep for anything still claimable.
     await this.claimAdMilestones();
 
-    if (watched) this.logger.success(`Watched ${watched} ad(s) in total.`);
+    if (watched) this.logger.success(`Watched ${watched} milestone ad(s).`);
     else this.logger.info("No ads watchable right now.");
     return watched;
   }
 
-  /** Claim any ready ad milestone. */
+  /**
+   * Claim every ready-but-unclaimed milestone in a milestones array. The claim
+   * endpoint takes the milestone's ZERO-based array index (HAR: claiming the
+   * first milestone posts {"index":0}).
+   */
+  async claimReadyMilestones(milestones = []) {
+    let claimed = 0;
+    for (let i = 0; i < milestones.length; i++) {
+      if (this.signal?.aborted) break;
+      const m = milestones[i];
+      if (!m?.ready || m?.claimed) continue;
+
+      const result = await this.claimAdMilestone(i).catch((e) => {
+        this.logger.warn(`Milestone ${i + 1} claim failed:`, this.readError(e));
+        return null;
+      });
+      // Success returns the refreshed { coins, milestones } snapshot.
+      if (result?.milestones || result?.coins !== undefined) {
+        claimed++;
+        this.logger.success(`Ad milestone ${i + 1} claimed (+${m.reward}).`);
+      }
+    }
+    return claimed;
+  }
+
+  /** Fetch the latest milestone state and claim anything that's ready. */
   async claimAdMilestones() {
     const data = await this.getAdMilestones().catch((e) => {
       this.logger.warn("Ad milestones failed:", this.readError(e));
       return null;
     });
-    const milestones = data?.milestones || [];
-    let claimed = 0;
-    for (let i = 0; i < milestones.length; i++) {
-      if (this.signal?.aborted) break;
-      const m = milestones[i];
-      if (m?.ready && !m?.claimed) {
-        const result = await this.claimAdMilestone(i + 1).catch((e) => {
-          this.logger.warn(`Milestone ${i + 1} failed:`, this.readError(e));
-          return null;
-        });
-        if (result?.reward || result?.coins !== undefined) {
-          claimed++;
-          this.logger.success(`Ad milestone ${i + 1} claimed (+${result.reward || result.coins}).`);
-        }
-      }
-    }
+    const claimed = await this.claimReadyMilestones(data?.milestones || []);
     if (claimed) this.logger.success(`Claimed ${claimed} ad milestone(s).`);
+    return claimed;
   }
 
   /** Claim gifts and social tasks. */
