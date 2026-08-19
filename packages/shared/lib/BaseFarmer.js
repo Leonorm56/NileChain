@@ -3,6 +3,22 @@ import * as changeKeys from "change-case/keys";
 import seedrandom from "seedrandom";
 import utils from "../utils/bundle.js";
 
+/**
+ * Promo tags some users graft onto their Telegram display name for airdrop
+ * referrals. They must not ride along into the name the farmer hands to a drop
+ * (account registration, profile sync, ...), so the display-name accessors
+ * strip them. Each pattern is anchored tightly enough to leave an ordinary
+ * name alone - e.g. "Pirateson" keeps its "pirate".
+ */
+const PROMO_NAME_PATTERNS = [
+  // "@moneytree_game_bot" referral handle, in any casing.
+  /@moneytree_game_bot/giu,
+  // "PIRATE🏴‍☠💰 💰": the word PIRATE plus its trailing flag/skull/money-bag
+  // emoji cluster (ZWJ / VS16 / space-joined). At least one emoji is required,
+  // so a plain "pirate" inside a real name is not touched.
+  /pirate(?:[\s‍️]*[\u{1F3F4}\u{2620}\u{1F4B0}])+[\s‍️\u{1F3F4}\u{2620}\u{1F4B0}]*/giu,
+];
+
 export default class BaseFarmer {
   static id = "base-farmer";
   static platform = "telegram";
@@ -229,12 +245,27 @@ export default class BaseFarmer {
 
   /** Get User First Name */
   getUserFirstName() {
-    return this.getTelegramUser()?.["first_name"] || "";
+    return this.sanitizeDisplayName(
+      this.getTelegramUser()?.["first_name"] || "",
+    );
   }
 
   /** Get User Last Name */
   getUserLastName() {
-    return this.getTelegramUser()?.["last_name"] || "";
+    return this.sanitizeDisplayName(
+      this.getTelegramUser()?.["last_name"] || "",
+    );
+  }
+
+  /**
+   * Strip referral promo tags (see PROMO_NAME_PATTERNS) out of a Telegram
+   * display name and tidy the leftover whitespace.
+   */
+  sanitizeDisplayName(value) {
+    if (!value) return value ?? "";
+    let out = String(value);
+    for (const pattern of PROMO_NAME_PATTERNS) out = out.replace(pattern, " ");
+    return out.replace(/\s+/g, " ").trim();
   }
 
   /** Get User Full Name */

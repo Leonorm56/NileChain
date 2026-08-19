@@ -500,7 +500,7 @@ export default class DreamcoinProFarmer extends BaseFarmer {
     const payload = {
       tg_user_id: this.getUserId(),
       tg_user_locale: "ru",
-      tg_user_first_name: this.getTelegramUser()?.["first_name"],
+      tg_user_first_name: this.getUserFirstName(),
       tg_user_is_premium: false,
       tg_user_platform: "android",
     };
