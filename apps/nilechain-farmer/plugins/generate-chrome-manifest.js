@@ -60,8 +60,17 @@ export function generateChromeManifest(env, pkg) {
     name: "generate-chrome-manifest",
     async generateBundle() {
       const namePrefix = isWhisker ? "(Whisker) " : isBridge ? "(Bridge) " : "";
+      // VITE_PWA_URL is optional (empty in CI when the secret is unset). Guard the parse
+      // so a missing/invalid value can't crash the build; the PWA-origin entry is only
+      // consumed by the bridge's externally_connectable, and localhost is always allowed.
+      let pwaHostname = null;
+      try {
+        if (env.VITE_PWA_URL) pwaHostname = new URL(env.VITE_PWA_URL).hostname;
+      } catch {
+        pwaHostname = null;
+      }
       const matches = [
-        `*://${new URL(env.VITE_PWA_URL).hostname}/*`,
+        ...(pwaHostname ? [`*://${pwaHostname}/*`] : []),
         "*://localhost/*",
       ];
 
