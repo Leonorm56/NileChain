@@ -562,6 +562,20 @@ export default function createRunner(FarmerClass) {
         /** Log success */
         this.logger.success(`[${instance.account.id}] Farming completed`);
       } catch (error) {
+        /*
+         * A SkipRun (see @nile/shared/lib/SkipRun.js) is a deliberate,
+         * non-error stop - e.g. the drop is in maintenance. Leave the account
+         * untouched (no error notification, no deactivation, no error-count
+         * change) and let the next scheduled run try again. Checked via the
+         * brand rather than instanceof so it holds across module copies.
+         */
+        if (error?.isSkipRun) {
+          this.logger.info(
+            `[${instance.account.id}] Run skipped: ${error.message}`,
+          );
+          return;
+        }
+
         if (this.deactivateOnError) {
           await instance.disconnect();
         }

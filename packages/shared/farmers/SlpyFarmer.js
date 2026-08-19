@@ -1,4 +1,5 @@
 import BaseFarmer from "../lib/BaseFarmer.js";
+import SkipRun from "../lib/SkipRun.js";
 import Decimal from "decimal.js";
 import { Address } from "@ton/core";
 
@@ -267,12 +268,27 @@ export default class SlpyFarmer extends BaseFarmer {
           .post(API_URL, payload)
           .then((res) => res.data);
       } catch (error) {
-        if (error.response?.status === 429 && attempt < retries) {
+        const status = error.response?.status;
+
+        /*
+         * 429 is an explicit rate limit. 403 and 503 are transient here too:
+         * the drop sits behind a WAF fronted by rotating egress IPs, so a
+         * single call can be refused (403) or hit an unavailable edge (503)
+         * while others in the same session succeed. Logical failures come back
+         * as HTTP 200 `{ error }` (unwrapped below), so any non-200 status is
+         * an infra/edge blip worth a short retry - a fresh attempt usually
+         * lands on a clean IP.
+         */
+        const retryable = status === 429 || status === 403 || status === 503;
+
+        if (retryable && attempt < retries) {
           attempt++;
           this.logger.warn(
-            `Rate limited - backing off and retrying (${attempt}/${retries}).`,
+            `Request refused (${status}) - backing off and retrying (${attempt}/${retries}).`,
           );
-          await this.utils.delayForSeconds(30, { signal: this.signal });
+          await this.utils.delayForSeconds(status === 429 ? 30 : 10, {
+            signal: this.signal,
+          });
           continue;
         }
 
@@ -480,7 +496,7 @@ export default class SlpyFarmer extends BaseFarmer {
     this.debugger.log("Public settings:", this.settings);
 
     if (this.settings?.maintenance) {
-      throw new Error("SleepyMine is under maintenance");
+      throw new SkipRun("SleepyMine is under maintenance");
     }
 
     this.user_data = await this.getUserRow();

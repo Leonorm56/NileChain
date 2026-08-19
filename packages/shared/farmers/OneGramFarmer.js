@@ -1,6 +1,7 @@
 import AdsGramClient from "../lib/AdsGramClient.js";
 import BaseFarmer from "../lib/BaseFarmer.js";
 import MonetagClient from "../lib/MonetagClient.js";
+import SkipRun from "../lib/SkipRun.js";
 
 /** Every endpoint hangs off this one host. */
 const API_URL = "https://onegram.nirajdevbots.space/api";
@@ -253,7 +254,7 @@ export default class OneGramFarmer extends BaseFarmer {
     }
 
     if (gating?.maintenanceMode) {
-      throw new Error("The drop is in maintenance mode.");
+      throw new SkipRun("The drop is in maintenance mode.");
     }
   }
 
