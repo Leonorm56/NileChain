@@ -385,27 +385,76 @@ pnpm -F nilecloud db:migrate:refresh
 
 ### Fly CLI Commands
 
-```bash
-# Generate JWT secret
-pnpm -F nilecloud fly generate-jwt-secret
+Run any command with `pnpm -F nilecloud fly <command>`. Use `pnpm -F nilecloud fly --help`
+to list everything, or `pnpm -F nilecloud fly help <command>` for a single command's usage.
 
+**Setup**
+```bash
+# Generate JWT secret (for JWT_SECRET_KEY)
+pnpm -F nilecloud fly generate-jwt-secret
+```
+
+**Accounts & subscriptions**
+```bash
 # List accounts
 pnpm -F nilecloud fly list-accounts
 
 # Update accounts
 pnpm -F nilecloud fly update-accounts
 
+# Adds a subscription (user ID + optional end date; prompts if omitted)
+pnpm -F nilecloud fly add-subscription 12345678 2030-01-01
+```
+
+**Farmers**
+```bash
+# Activate all farmers (clears bans and error counts, sets active)
+pnpm -F nilecloud fly activate-all-farmers
+
+# Run a farmer (optionally scoped to one user)
+pnpm -F nilecloud fly farm <farmer> [--user <userId>]
+```
+
+**Proxies**
+```bash
+# Update the proxy list (fetch from your provider)
+pnpm -F nilecloud fly update-proxies
+
+# Update account proxies (assign proxies to accounts)
+pnpm -F nilecloud fly update-account-proxies
+
+# Manually set the proxy for an account
+pnpm -F nilecloud fly set-proxy 12345678 user:pass@ip:port
+
 # Test proxies
 pnpm -F nilecloud fly test-proxies
+```
 
-# Clean database
-pnpm -F nilecloud fly clean-db
+**Telegram sessions**
+```bash
+# Set session for a user (prompts for the session string)
+pnpm -F nilecloud fly set-session 12345678
 
+# Test a session string
+pnpm -F nilecloud fly test-session <session>
+
+# Reassign Telegram sessions (match orphaned session files to accounts)
+pnpm -F nilecloud fly reassign-sessions
+
+# Clean Telegram sessions (delete session files not linked to any account)
+pnpm -F nilecloud fly clean-sessions
+```
+
+**Backup & maintenance**
+```bash
 # Export backup
 pnpm -F nilecloud fly export-backup
 
 # Import backup
 pnpm -F nilecloud fly import-backup <file>
+
+# Clean database
+pnpm -F nilecloud fly clean-db
 ```
 
 ---
@@ -465,7 +514,7 @@ pm2 restart nilecloud
 │                     │
 │  ┌───────────────┐  │
 │  │ Farmer Bots   │  │
-│  │ - 6 farmers   │  │
+│  │ - 9 farmers   │  │
 │  │ - Auto-farming│  │
 │  │ - 24/7 uptime │  │
 │  └───────────────┘  │
