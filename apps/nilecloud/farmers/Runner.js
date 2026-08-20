@@ -72,6 +72,14 @@ export default function createRunner(FarmerClass) {
   /** Minimum spacing in milliseconds */
   const withdrawMinGapMs = Math.max(0, withdrawMinGapMinutes) * 60 * 1000;
 
+  /**
+   * Skip farming a newly added account on the cycle it is first seen. The
+   * account is still prepared (its farmer row is created), so it farms normally
+   * from the next window on - it just doesn't run the moment it is added.
+   * Revert per farmer with FARMER_<ID>_SKIP_NEW_ACCOUNT=false.
+   */
+  const skipNewAccountExecution = env(envKey + "_SKIP_NEW_ACCOUNT", true);
+
   /** Log */
   logger.success(`${FarmerClass.title} Farmer`);
   logger.keyValue("Enabled", enabled);
@@ -80,6 +88,9 @@ export default function createRunner(FarmerClass) {
   });
   logger.keyValue("Withdraw / hour", withdrawPerHour, { format: false });
   logger.keyValue("Withdraw min gap (min)", withdrawMinGapMinutes, {
+    format: false,
+  });
+  logger.keyValue("Skip new account on add", skipNewAccountExecution, {
     format: false,
   });
   logger.newline();
@@ -91,6 +102,9 @@ export default function createRunner(FarmerClass) {
     static telegramLink = telegramLink;
     static primaryAccountId = primaryAccountId;
     static primaryFarmerLink = null;
+
+    /** Newly added accounts sync on add but don't farm until the next window */
+    static skipExecutionOfNewAccount = skipNewAccountExecution;
     static runners = new Map();
     static referralLinks = new Map();
     static logger = new ConsoleLogger(true);
