@@ -45,6 +45,11 @@ export default class RigniteFarmer extends BaseFarmer {
   static cacheAuth = false;
   static interval = "*/10 * * * *";
 
+  /** Get Referral Link (this account's own invite link). */
+  getReferralLink() {
+    return `https://t.me/RigniteBot?startapp=ref_${this.getUserId()}`;
+  }
+
   /** Auth is the raw Telegram init data echoed in `x-init-data`. */
   fetchAuth() {
     return this.getInitData();

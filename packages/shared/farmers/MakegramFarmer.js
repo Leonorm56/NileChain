@@ -38,6 +38,11 @@ export default class MakegramFarmer extends BaseFarmer {
   static cacheAuth = false;
   static interval = "*/10 * * * *";
 
+  /** Get Referral Link (this account's own invite link). */
+  getReferralLink() {
+    return `https://t.me/MGRMGA_bot?start=ref${this.getUserId()}`;
+  }
+
   /** Auth is the initData echoed in `X-Init-Data` on every request. */
   fetchAuth() {
     return this.getInitData();
