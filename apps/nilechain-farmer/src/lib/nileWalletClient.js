@@ -8,6 +8,10 @@
  *
  * In the PWA/bridge build `window.chrome` is proxied (see lib/bridge-client),
  * so the same call works there too.
+ *
+ * In the Nile (Electron) build, `window.electron` is available and the
+ * extension's service worker runs inside per-profile webview sessions. We
+ * forward messages through Electron IPC → main process → webview context.
  */
 
 /** Error thrown when the vault key isn't cached — UI should prompt to unlock. */
@@ -27,6 +31,14 @@ export class NileWalletBadPassphraseError extends Error {
     this.code = "bad-passphrase";
   }
 }
+
+/**
+ * The Nile Electron app sets this to the active profile's partition string
+ * (e.g. "persist:account-123") before the UI loads. When set, messages are
+ * routed through Electron IPC → main process → webview → extension service
+ * worker instead of chrome.runtime.sendMessage.
+ */
+let nilePartition = null;
 
 function sendMessage(action, payload) {
   return new Promise((resolve, reject) => {
@@ -59,7 +71,51 @@ function sendMessage(action, payload) {
   });
 }
 
+/**
+ * Send via Electron IPC when running inside the Nile desktop app.
+ * The main process finds the profile's webview and executes
+ * chrome.runtime.sendMessage inside it.
+ */
+async function sendViaElectron(action, payload) {
+  const result = await window.electron.ipcRenderer.invoke(
+    "nile-wallet",
+    nilePartition,
+    action,
+    payload,
+  );
+  if (!result) {
+    throw new Error("No response from NileWallet (Electron IPC)");
+  }
+  if (result.ok === false) {
+    if (result.error === "needs-unlock") {
+      throw new NileWalletLockedError();
+    } else if (result.error === "bad-passphrase") {
+      throw new NileWalletBadPassphraseError();
+    } else {
+      throw new Error(result.error || "NileWallet request failed");
+    }
+  }
+  return result;
+}
+
 function send(action, payload = {}) {
+  // In the Nile Electron app, route through IPC to the profile's extension
+  if (nilePartition && window.electron?.ipcRenderer) {
+    return sendViaElectron(action, payload).catch((err) => {
+      // Retry once on connection failure
+      if (
+        err.message?.includes("Could not establish connection") ||
+        err.message?.includes("Receiving end does not exist") ||
+        err.message?.includes("timeout")
+      ) {
+        return new Promise((resolve) => setTimeout(resolve, 500)).then(() =>
+          sendViaElectron(action, payload),
+        );
+      }
+      throw err;
+    });
+  }
+
   return sendMessage(action, payload).catch((err) => {
     /* MV3 service workers go dormant after ~30s. Chrome should auto-wake
      * on the first sendMessage, but there can be a race where the port
@@ -77,6 +133,11 @@ function send(action, payload = {}) {
 }
 
 const nileWalletClient = {
+  /** Set the Electron partition for Nile desktop app routing. */
+  setPartition: (partition) => {
+    nilePartition = partition;
+  },
+
   /* ---- vault ---- */
   vaultStatus: () => send("nile-wallet.vault-status"),
   /** Set (first time) or unlock the vault with the single passphrase. */
