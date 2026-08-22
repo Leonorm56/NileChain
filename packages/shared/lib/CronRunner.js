@@ -71,19 +71,35 @@ class CronRunner {
 
   wrapConcurrent(job) {
     let running = false;
-    return async () => {
+    let tickSkipped = false;
+
+    const wrapper = async () => {
       if (running) {
+        tickSkipped = true;
         console.warn(`⏳ Skipping overlapping job: ${job.name}`);
         return;
       }
 
       running = true;
+      tickSkipped = false;
+
       try {
         await job.callback();
       } finally {
         running = false;
+
+        /* If a cron tick was skipped while this job was running, re-trigger
+         * immediately so we don't wait an extra interval cycle. */
+        if (tickSkipped) {
+          tickSkipped = false;
+          console.log(`🔄 Re-triggering ${job.name} (skipped tick detected)`);
+          // Go through the wrapper so the overlap guard still applies
+          Promise.resolve().then(wrapper);
+        }
       }
     };
+
+    return wrapper;
   }
 }
 

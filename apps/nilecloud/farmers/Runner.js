@@ -118,6 +118,9 @@ export default function createRunner(FarmerClass) {
     static withdrawMinGapMs = withdrawMinGapMs;
     static withdrawalLedgerKey = `withdrawals:${FarmerClass.id}`;
 
+    /** Max accounts to farm concurrently (default: 1 = sequential). */
+    static maxConcurrency = FarmerClass.maxConcurrency || 1;
+
     /** Staggering window (seconds) and jitter (seconds) */
     static staggerWindowSeconds = 600;
     static staggerJitterSeconds = 15;
@@ -414,17 +417,33 @@ export default function createRunner(FarmerClass) {
     async prepare() {
       const needsAuth = !this.constructor.cacheAuth || !this.farmer;
 
-      /** Create Farmer */
+      /** Create Farmer (handle race condition where another cycle created it) */
       if (!this.farmer) {
-        this.farmer = await this.account.createFarmer({
-          errorCount: 0,
-          isBanned: false,
-          active: true,
-          farmer: this.constructor.id,
-          headers: {},
-          cookies: [],
-          initData: "",
-        });
+        try {
+          this.farmer = await this.account.createFarmer({
+            errorCount: 0,
+            isBanned: false,
+            active: true,
+            farmer: this.constructor.id,
+            headers: {},
+            cookies: [],
+            initData: "",
+          });
+        } catch (e) {
+          // Unique constraint violated — another cycle already created this farmer row
+          if (e.name === "SequelizeUniqueConstraintError" || e.parent?.code === "SQLITE_CONSTRAINT") {
+            const existing = await db.Farmer.findOne({
+              where: { accountId: this.account.id, farmer: this.constructor.id },
+            });
+            if (existing) {
+              this.farmer = existing;
+            } else {
+              throw e;
+            }
+          } else {
+            throw e;
+          }
+        }
       }
 
       /** Update WebAppData */
@@ -655,10 +674,44 @@ export default function createRunner(FarmerClass) {
       }
     }
 
-    /** Process queue */
+    /**
+     * Dequeue the next account respecting priority rules.
+     * Returns null when the queue is empty.
+     */
+    static dequeue() {
+      /** Prioritize primary account if the primary link is not set */
+      const primaryIndex = !this.primaryFarmerLink
+        ? this.queue.findIndex(
+            (item) => item.account.id === this.primaryAccountId,
+          )
+        : -1;
+
+      /** Prioritize new accounts */
+      const newAccountIndex =
+        primaryIndex === -1
+          ? this.queue.findIndex((item) => !item.account.farmer)
+          : -1;
+
+      if (primaryIndex !== -1) {
+        this.logger.info(
+          "Prioritizing primary account:",
+          this.primaryAccountId,
+        );
+        return { instance: this.queue.splice(primaryIndex, 1)[0], skipExecution: false };
+      } else if (newAccountIndex !== -1) {
+        this.logger.info("Prioritizing new account:", this.queue[newAccountIndex].account.id);
+        return { instance: this.queue.splice(newAccountIndex, 1)[0], skipExecution: this.skipExecutionOfNewAccount };
+      } else {
+        return { instance: this.queue.shift(), skipExecution: false };
+      }
+    }
+
+    /** Process queue — supports concurrent execution via maxConcurrency. */
     static async processQueue() {
       if (this.isProcessingQueue) return;
       this.isProcessingQueue = true;
+
+      const concurrency = Math.max(1, this.maxConcurrency || 1);
 
       try {
         while (this.queue.length > 0 || !this.feedDone) {
@@ -668,57 +721,64 @@ export default function createRunner(FarmerClass) {
             continue;
           }
 
-          let skipExecution = false;
-          let instance;
-
-          /** Prioritize primary account is the primary link is not set */
-          const primaryIndex = !this.primaryFarmerLink
-            ? this.queue.findIndex(
-                (item) => item.account.id === this.primaryAccountId,
-              )
-            : -1;
-
-          /** Prioritize new accounts */
-          const newAccountIndex =
-            primaryIndex === -1
-              ? this.queue.findIndex((item) => !item.account.farmer)
-              : -1;
-
-          if (primaryIndex !== -1) {
-            instance = this.queue.splice(primaryIndex, 1)[0];
-
-            /** Log */
-            this.logger.info(
-              "Prioritizing primary account:",
-              this.primaryAccountId,
-            );
-          } else if (newAccountIndex !== -1) {
-            instance = this.queue.splice(newAccountIndex, 1)[0];
-
-            /** Configure skipping execution */
-            skipExecution = this.skipExecutionOfNewAccount;
-
-            /** Log */
-            this.logger.info("Prioritizing new account:", instance.account.id);
+          if (concurrency <= 1) {
+            /* ---- Sequential (original behaviour) ---- */
+            const { instance, skipExecution } = this.dequeue();
+            try {
+              await this.execute(instance, skipExecution);
+              this.lastResults.set(
+                instance.account.id,
+                this.getResult(instance.account),
+              );
+            } catch (err) {
+              this.logger.error("Queue processing error:", err);
+              if (instance.account.id === this.primaryAccountId) {
+                this.resetPrimaryFarmerLink(instance);
+              }
+            }
           } else {
-            instance = this.queue.shift();
-          }
+            /* ---- Concurrent pool ---- */
+            const active = new Set();
 
-          try {
-            await this.execute(instance, skipExecution);
+            const runOne = async () => {
+              const { instance, skipExecution } = this.dequeue();
+              const key = instance.account.id;
+              active.add(key);
+              try {
+                await this.execute(instance, skipExecution);
+                this.lastResults.set(
+                  instance.account.id,
+                  this.getResult(instance.account),
+                );
+              } catch (err) {
+                this.logger.error("Queue processing error:", err);
+                if (instance.account.id === this.primaryAccountId) {
+                  this.resetPrimaryFarmerLink(instance);
+                }
+              } finally {
+                active.delete(key);
+              }
+            };
 
-            /** Capture the final result while the instance is still alive */
-            this.lastResults.set(
-              instance.account.id,
-              this.getResult(instance.account),
-            );
-          } catch (err) {
-            /** Log error */
-            this.logger.error("Queue processing error:", err);
+            /* Fill the pool up to concurrency */
+            while (active.size < concurrency && this.queue.length > 0) {
+              runOne(); // fire-and-forget; the pool tracks completion
+            }
 
-            /** Unblock queue */
-            if (instance.account.id === this.primaryAccountId) {
-              this.resetPrimaryFarmerLink(instance);
+            /* Wait for at least one slot to free up, then loop */
+            if (active.size > 0) {
+              await new Promise((resolve) => {
+                const check = () => {
+                  if (active.size < concurrency || (this.queue.length === 0 && !this.feedDone)) {
+                    resolve();
+                  } else {
+                    setTimeout(check, 250);
+                  }
+                };
+                check();
+              });
+            } else {
+              await delay(250, { precised: true });
             }
           }
         }

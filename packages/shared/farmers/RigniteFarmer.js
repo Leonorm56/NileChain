@@ -28,11 +28,12 @@ const MAX_ITEM_LEVEL = 20;
 /** How many buildings to buy before stopping and upgrading those instead. */
 const MAX_FARM_SIZE = 25;
 
-/** Stop upgrading buildings once profit-per-hour reaches this cap. */
-const MAX_PPH = 90_000;
+/** Stop upgrading buildings once profit-per-hour reaches this cap.
+ *  Configurable via FARMER_RIGNITE_MAX_PPH env var (default 100000). */
+const MAX_PPH = Number(process.env.FARMER_RIGNITE_MAX_PPH) || 100_000;
 
 /** Seconds to wait between simulated ad watches. */
-const AD_COOLDOWN_SECONDS = 4;
+const AD_COOLDOWN_SECONDS = 2;
 
 export default class RigniteFarmer extends BaseFarmer {
   static id = "rignite";
@@ -47,6 +48,7 @@ export default class RigniteFarmer extends BaseFarmer {
   static rating = 5;
   static cacheAuth = false;
   static interval = "*/10 * * * *";
+  static maxConcurrency = 10;
 
   /** Get Referral Link (this account's own invite link). */
   getReferralLink() {
@@ -287,36 +289,45 @@ export default class RigniteFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   /**
-   * Collect every owned building's pending output then the shared task bucket.
-   * Only buildings the account actually owns are collected — the server answers
-   * NOTHING_TO_COLLECT for buildings that don't exist yet. Owned buildings are
-   * tracked in `buildingPending` (each owned building gets a key) and in
-   * `items` (item id -> level).
+   * Collect all buildings at once via the batch endpoint, then the shared
+   * task bucket. Falls back to per-building collection if the batch call
+   * fails (some accounts may not have the endpoint available).
    */
   async collectEverything() {
-    const user = this.user_data;
-    const items = user?.items || {};
-    const pending = user?.buildingPending || {};
-
-    // Owned buildings = those that appear in either map with a key.
-    const ownedIds = new Set([
-      ...Object.keys(items || {}),
-      ...Object.keys(pending || {}),
-    ]);
-
     let collected = 0;
-    for (const itemId of ITEM_IDS) {
-      if (this.signal?.aborted) break;
-      if (!ownedIds.has(itemId)) continue;
-      const result = await this.collectBuilding(itemId).catch((e) => {
-        if (e?.response?.data?.error !== "NOTHING_TO_COLLECT") {
-          this.logger.warn(`Collect ${itemId} failed:`, this.readError(e));
-        }
-        return null;
-      });
-      const gained = Number(result?.collected) || 0;
-      collected += gained;
-      this.debugger.log(`Collect ${itemId}:`, gained);
+
+    // Try the batch collect endpoint first (single API call for all buildings).
+    const batch = await this.collectShift().catch((e) => {
+      this.debugger.log("Batch collect failed, falling back to per-building:", this.readError(e));
+      return null;
+    });
+
+    if (batch && (batch.coins !== undefined || batch.collected !== undefined)) {
+      collected += Number(batch.collected) || Number(batch.coins) || 0;
+      this.debugger.log("Batch collect:", collected);
+    } else {
+      // Fallback: collect each owned building individually.
+      const user = this.user_data;
+      const items = user?.items || {};
+      const pending = user?.buildingPending || {};
+      const ownedIds = new Set([
+        ...Object.keys(items || {}),
+        ...Object.keys(pending || {}),
+      ]);
+
+      for (const itemId of ITEM_IDS) {
+        if (this.signal?.aborted) break;
+        if (!ownedIds.has(itemId)) continue;
+        const result = await this.collectBuilding(itemId).catch((e) => {
+          if (e?.response?.data?.error !== "NOTHING_TO_COLLECT") {
+            this.logger.warn(`Collect ${itemId} failed:`, this.readError(e));
+          }
+          return null;
+        });
+        const gained = Number(result?.collected) || 0;
+        collected += gained;
+        this.debugger.log(`Collect ${itemId}:`, gained);
+      }
     }
 
     const taskBucket = await this.collectTasks().catch((e) => {
@@ -830,9 +841,11 @@ export default class RigniteFarmer extends BaseFarmer {
   /* Process                                                               */
   /* --------------------------------------------------------------------- */
 
-  /** Override executeTask to use shorter delays (1s instead of 5s).
-   *  With 40 accounts × 9 tasks, the default 10s overhead per task
-   *  (5s before + 5s after) causes the cycle to exceed the 10-min cron window.
+  /** Override executeTask to remove inter-task delays.
+   *  Accounts are already staggered via Runner.js, so additional delays
+   *  inside a single account's cycle are pure waste. Removing them cuts
+   *  per-account time from ~120s to ~60s, preventing the 40-account cycle
+   *  from exceeding the 10-minute cron window.
    */
   async executeTask(task, callback, allowInQuickRun = true) {
     this.currentTaskStartedAt = new Date();
@@ -853,15 +866,12 @@ export default class RigniteFarmer extends BaseFarmer {
 
     try {
       this.logger.log(`⚙ Executing task: ${task}`);
-      await this.utils.delayForSeconds(1, { signal: this.signal });
       const result = await callback();
       this.logger.log(`✔ Completed task: ${task}`);
       return result;
     } catch (error) {
       this.logger.log(`✖ Error executing task: ${task}\n   ${error.message}`);
       throw error;
-    } finally {
-      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
   }
 
@@ -877,7 +887,6 @@ export default class RigniteFarmer extends BaseFarmer {
     await this.executeTask("Ads", () => this.watchMilestoneAds());
     await this.executeTask("Milestones", () => this.claimAdMilestones());
     await this.executeTask("Gifts", () => this.claimGifts());
-    await this.executeTask("Rank", () => this.showRank());
   }
 
   /** Log the current account state. */

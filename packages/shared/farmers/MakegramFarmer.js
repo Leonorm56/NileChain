@@ -5,14 +5,8 @@ import BaseFarmer from "../lib/BaseFarmer.js";
  *
  * A minimal tap-miner: every request carries the Telegram init data in the
  * `X-Init-Data` header, and the state endpoint also doubles as the "login".
- * A run makes sure the required channel/chat are joined, then sweeps the
- * floor (`/api/game/sweep`) — the coin-earning mechanic that replaced plain
- * tapping (the tap endpoint now credits 0 and only feeds the shift quota).
- *
- * The sweep loop mirrors how a person actually plays: short, irregular
- * batches of taps (a few to ~16), natural second-ish pauses with an
- * occasional longer "stepped away" gap, and easing off when the server
- * starts cutting gestures it can't take.
+ * A run makes sure the required channel/chat are joined, claims the periodic
+ * mining reward and rocket bonus, then taps until the shift quota is spent.
  */
 
 /** Every API call hangs off this one host. */
@@ -92,9 +86,14 @@ export default class MakegramFarmer extends BaseFarmer {
     });
   }
 
-  /** Sweep the floor with a batch of swipes. */
-  sweep(taps) {
-    return this.post("api/game/sweep", { taps });
+  /** Claim the periodic mining reward (available every ~6 hours). */
+  claim() {
+    return this.post("api/game/claim", {});
+  }
+
+  /** Activate the rocket bonus (raketa). */
+  raketa(state) {
+    return this.post("api/game/raketa", {состояние: state});
   }
 
   /** The leaderboard (informational only). */
@@ -243,165 +242,54 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Sweeping                                                              */
-  /*                                                                       */
-  /* The floor accumulates coins over time (черезМин..черезМакс respawn),   */
-  /* and each swipe has a chance to dig one out. Sending a batch earns a    */
-  /* coin every few taps; swipes the server can't take are cut (срезано).   */
-  /*                                                                       */
-  /* The pacing is deliberately human: most batches are a handful of taps   */
-  /* (2-7), occasionally a genuine burst (~14-16), and requests pause a     */
-  /* second or two apart with a rare longer gap, exactly what the capture   */
-  /* shows. After a coin lands we let the floor breathe before sweeping     */
-  /* again, and we ease off whenever the server reports cut swipes.         */
-  /* --------------------------------------------------------------------- */
-
-  /** Run sweep target bounds — fresh per run, so sweeping always happens. */
-  static SWEEP_TARGET_MIN = 50;
-  static SWEEP_TARGET_MAX = 100;
-
-  /** A fresh sweep target within the bounds, humanlike per run. */
-  sweepTarget() {
-    const rng = this.getUserRandomGenerator();
-    return (
-      MakegramFarmer.SWEEP_TARGET_MIN +
-      Math.floor(
-        rng() *
-          (MakegramFarmer.SWEEP_TARGET_MAX -
-            MakegramFarmer.SWEEP_TARGET_MIN +
-            1),
-      )
-    );
-  }
-
-  /** One humanlike sweep batch size, weighted toward short bursts. */
-  randomSweepTaps() {
-    const rng = this.getUserRandomGenerator();
-    const roll = rng();
-    // ~60% short bursts of a handful of swipes
-    if (roll < 0.6) return 2 + Math.floor(rng() * 6);
-    // ~30% mid batches
-    if (roll < 0.9) return 6 + Math.floor(rng() * 4);
-    // ~10% enthusiastic flurry, like the 14-16s in the capture
-    return 12 + Math.floor(rng() * 5);
-  }
-
-  /** Humanlike inter-request pause: a second or two, rarely much longer. */
-  async humanSweepPause() {
-    const rng = this.getUserRandomGenerator();
-    const seconds = rng() < 0.08 ? 8 + rng() * 7 : 1.2 + rng() * 2.5;
-    await this.utils.delayForSeconds(seconds, { signal: this.signal });
-  }
-
-  /**
-   * Sweep the floor until the run target is met or the piles run dry.
-   *
-   * The server reports how many swipes it took (засчитано), how many it cut
-   * (срезано), coins gained this batch (gained) and how full the floor is
-   * (`пусто` when there is nothing left to sweep). Daily progress is reported
-   * in `сегодня`. The run target (50-100 coins) is per run — fresh each time —
-   * so sweeping always happens instead of being gated behind the daily counter.
-   * Once the run haul reaches the target, sweeping stops and the run moves on
-   * to tapping — sweeping is the big earner, so it runs first and tapping after.
-   */
-  async sweepFloor() {
-    const state = this.user_data;
-    const today = Number(state?.dayCoins) || 0;
-    const target = this.sweepTarget();
-
-    this.logger.newline();
-    this.logger.info(
-      `Sweeping the floor (${target} coin(s) this run, ${today} today)...`,
-    );
-
-    let swept = 0;
-    let gained = 0;
-    let empty = 0;
-
-    while (!this.signal?.aborted && gained < target) {
-      const taps = this.randomSweepTaps();
-
-      const result = await this.sweep(taps).catch((error) => {
-        this.logger.warn(
-          "Sweep not credited:",
-          error.response?.data?.error || error.message,
-        );
-        return null;
-      });
-
-      if (!result?.ok) break;
-
-      const counted = Number(result.засчитано) || 0;
-      const cut = Number(result.срезано) || 0;
-      const batchGained = Number(result.gained) || 0;
-      const floorEmpty = result.пусто === true || result.уборка?.пусто === true;
-
-      swept += counted;
-      gained += batchGained;
-
-      this.debugger.log("Sweep result:", result);
-
-      if (batchGained > 0) {
-        empty = 0;
-        this.logger.success(
-          `Sweep: +${batchGained} coin(s) (${counted} swipes, ${cut} cut) — ${gained}/${target} this run.`,
-        );
-      } else {
-        empty++;
-        this.logger.log(`Sweep: no coin yet (${counted} swipes, ${cut} cut).`);
-      }
-
-      // Run target reached — leave the floor, move on to tapping.
-      if (gained >= target) {
-        this.logger.success(
-          `Run sweep target met (${today} today). Moving on to tapping.`,
-        );
-        break;
-      }
-
-      // The floor is clean — respawn takes a few minutes, nothing to do now.
-      if (floorEmpty) {
-        this.logger.info(
-          "Floor is clean; new dirt will spawn in a few minutes.",
-        );
-        break;
-      }
-
-      // The server keeps cutting swipes — take it as a sign to ease off.
-      if (cut >= counted && counted > 0) {
-        this.logger.log("Easing off — the floor can't take that many swipes.");
-        break;
-      }
-
-      // A natural stop after a session of sweeping, like a human moving on.
-      if (empty >= 3) {
-        this.logger.info("No coins dropping — leaving the floor for now.");
-        break;
-      }
-
-      await this.humanSweepPause();
-    }
-
-    if (gained > 0) {
-      this.logger.success(
-        `Swept ${swept} swipe(s) for +${gained} coin(s).`,
-      );
-      this.user_data = await this.getState().catch(() => this.user_data);
-    } else {
-      this.logger.info("No coins from sweeping this round.");
-    }
-  }
-
-  /* --------------------------------------------------------------------- */
   /* Process                                                               */
   /* --------------------------------------------------------------------- */
+
+  /**
+   * Claim the periodic mining reward and try the rocket bonus.
+   * The claim endpoint credits coins every ~6 hours; the raketa endpoint
+   * activates a bonus that rewards coins if the account qualifies.
+   */
+  async claimRewards() {
+    // Claim periodic mining reward
+    const claimResult = await this.claim().catch((e) => {
+      this.logger.warn("Claim failed:", e.response?.data?.error || e.message);
+      return null;
+    });
+
+    if (claimResult?.ok) {
+      const earned = Number(claimResult.начислено) || 0;
+      if (earned > 0) {
+        this.logger.success(`Claimed ${earned} coins from mining reward.`);
+      } else {
+        const reason = claimResult.состояние?.причина || "not ready";
+        this.logger.info(`Mining claim: ${reason}.`);
+      }
+    }
+
+    // Try rocket bonus
+    const rocketResult = await this.raketa(true).catch((e) => {
+      this.logger.warn("Raketa failed:", e.response?.data?.error || e.message);
+      return null;
+    });
+
+    if (rocketResult?.ok) {
+      if (rocketResult.сделано) {
+        this.logger.success(`Raketa claimed! +${rocketResult.награда} coins.`);
+      } else if (rocketResult.получил) {
+        this.logger.info(`Raketa already claimed.`);
+      } else {
+        this.logger.info(`Raketa not claimable (need level ${rocketResult.уровеньЗа}).`);
+      }
+    }
+  }
 
   async process() {
     await this.login();
 
     await this.logUserInfo();
     await this.executeTask("Subscription", () => this.ensureSubscribed());
-    await this.executeTask("Sweeping", () => this.sweepFloor());
+    await this.executeTask("Claim", () => this.claimRewards());
     await this.executeTask("Tapping", () => this.tapUntilShiftDone());
   }
 
@@ -436,13 +324,6 @@ export default class MakegramFarmer extends BaseFarmer {
       {
         name: "Mining",
         list: [
-          {
-            id: "sweep",
-            icon: "goforward",
-            title: "Sweep Floor",
-            action: this.sweepFloor.bind(this),
-            dispatch: false,
-          },
           {
             id: "tap",
             icon: "refresh",

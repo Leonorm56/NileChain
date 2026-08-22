@@ -4,7 +4,6 @@ import path from "path-browserify";
 
 // Import farmers directly — the pnpm symlink breaks import.meta.glob on this system
 import DreamcoinProFarmer from "@nile/shared/farmers/DreamcoinProFarmer.js";
-import OneGramFarmer from "@nile/shared/farmers/OneGramFarmer.js";
 import SlpyFarmer from "@nile/shared/farmers/SlpyFarmer.js";
 import SurfEarnFarmer from "@nile/shared/farmers/SurfEarnFarmer.js";
 import TonoreumFarmer from "@nile/shared/farmers/TonoreumFarmer.js";
@@ -16,7 +15,6 @@ import SoulfarmFarmer from "@nile/shared/farmers/SoulfarmFarmer.js";
 const farmerClasses = [
   DreamcoinProFarmer,
   MakegramFarmer,
-  OneGramFarmer,
   RigniteFarmer,
   SlpyFarmer,
   SurfEarnFarmer,

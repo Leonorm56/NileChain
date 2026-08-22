@@ -28,7 +28,7 @@ export class NileWalletBadPassphraseError extends Error {
   }
 }
 
-function send(action, payload = {}) {
+function sendMessage(action, payload) {
   return new Promise((resolve, reject) => {
     try {
       chrome.runtime.sendMessage({ action, ...payload }, (response) => {
@@ -56,6 +56,23 @@ function send(action, payload = {}) {
     } catch (e) {
       reject(e);
     }
+  });
+}
+
+function send(action, payload = {}) {
+  return sendMessage(action, payload).catch((err) => {
+    /* MV3 service workers go dormant after ~30s. Chrome should auto-wake
+     * on the first sendMessage, but there can be a race where the port
+     * isn't ready yet. Retry once after a short delay. */
+    if (
+      err.message?.includes("Could not establish connection") ||
+      err.message?.includes("Receiving end does not exist")
+    ) {
+      return new Promise((resolve) => setTimeout(resolve, 300)).then(() =>
+        sendMessage(action, payload),
+      );
+    }
+    throw err;
   });
 }
 
