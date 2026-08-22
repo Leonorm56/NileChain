@@ -28,6 +28,9 @@ const MAX_ITEM_LEVEL = 20;
 /** How many buildings to buy before stopping and upgrading those instead. */
 const MAX_FARM_SIZE = 25;
 
+/** Stop upgrading buildings once profit-per-hour reaches this cap. */
+const MAX_PPH = 90_000;
+
 /** Seconds to wait between simulated ad watches. */
 const AD_COOLDOWN_SECONDS = 4;
 
@@ -406,6 +409,10 @@ export default class RigniteFarmer extends BaseFarmer {
           items[itemId] = level;
           upgrades++;
           this.logger.success(`Upgraded ${itemId} to level ${level} (${ownedCount()}/${MAX_FARM_SIZE} buildings).`);
+          if (Number(result.profitPerHour) >= MAX_PPH) {
+            this.logger.success(`PPH cap reached (${result.profitPerHour}). Stopping upgrades.`);
+            return;
+          }
         }
       }
     }
@@ -437,6 +444,10 @@ export default class RigniteFarmer extends BaseFarmer {
           upgrades++;
           affordable = true;
           this.logger.success(`Upgraded ${itemId} to level ${level}.`);
+          if (Number(result.profitPerHour) >= MAX_PPH) {
+            this.logger.success(`PPH cap reached (${result.profitPerHour}). Stopping upgrades.`);
+            return;
+          }
         }
       }
     }
@@ -818,6 +829,41 @@ export default class RigniteFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
   /* Process                                                               */
   /* --------------------------------------------------------------------- */
+
+  /** Override executeTask to use shorter delays (1s instead of 5s).
+   *  With 40 accounts × 9 tasks, the default 10s overhead per task
+   *  (5s before + 5s after) causes the cycle to exceed the 10-min cron window.
+   */
+  async executeTask(task, callback, allowInQuickRun = true) {
+    this.currentTaskStartedAt = new Date();
+    this.currentTask = task;
+
+    this.logger.newline();
+
+    if (this.signal?.aborted) {
+      this.logger.warn(`✖ Task aborted: ${task}`);
+      return;
+    }
+
+    const skipInQuickRun = this.quickRun && !allowInQuickRun;
+    if (skipInQuickRun) {
+      this.logger.log(`⚡ Skipping in quick run: ${task}`);
+      return;
+    }
+
+    try {
+      this.logger.log(`⚙ Executing task: ${task}`);
+      await this.utils.delayForSeconds(1, { signal: this.signal });
+      const result = await callback();
+      this.logger.log(`✔ Completed task: ${task}`);
+      return result;
+    } catch (error) {
+      this.logger.log(`✖ Error executing task: ${task}\n   ${error.message}`);
+      throw error;
+    } finally {
+      await this.utils.delayForSeconds(1, { signal: this.signal });
+    }
+  }
 
   async process() {
     await this.login();
