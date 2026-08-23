@@ -12,7 +12,7 @@ import BaseFarmer from "../lib/BaseFarmer.js";
 const API_URL = "https://api.rignite.app";
 
 /** Building/upgrade categories in unlock order (each has 8 tiers). */
-const CATEGORIES = ["tools", "energy", "workers", "land", "special", "cosmic"];
+const CATEGORIES = ["energy", "workers", "land", "special", "cosmic"];
 
 /** Item tiers per category (tools_1 .. tools_8, etc). */
 const ITEM_IDS = CATEGORIES.flatMap((category) =>
@@ -367,6 +367,13 @@ export default class RigniteFarmer extends BaseFarmer {
    */
   async upgradeItems() {
     const user = this.user_data;
+
+    // Skip all upgrades if PPH is already at or above the cap.
+    if (Number(user?.profitPerHour) >= MAX_PPH) {
+      this.logger.success(`PPH cap reached (${user.profitPerHour}). Skipping upgrades.`);
+      return;
+    }
+
     let coins = Number(user?.coins) || 0;
     const items = JSON.parse(JSON.stringify(user?.items || {}));
 
