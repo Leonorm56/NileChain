@@ -6,12 +6,9 @@
  * action with `{ ok: true, ... }` or `{ ok: false, error }`; this unwraps that
  * into a resolved value or a thrown Error.
  *
- * In the PWA/bridge build `window.chrome` is proxied (see lib/bridge-client),
- * so the same call works there too.
- *
- * In the Nile (Electron) build, `window.electron` is available and the
- * extension's service worker runs inside per-profile webview sessions. We
- * forward messages through Electron IPC → main process → webview context.
+ * In Electron desktop apps (THE NILE), MV3 service workers go dormant after
+ * ~30s. We use a long-lived port connection to keep the SW alive so that
+ * chrome.runtime.sendMessage always has a receiving end.
  */
 
 /** Error thrown when the vault key isn't cached — UI should prompt to unlock. */
@@ -33,21 +30,52 @@ export class NileWalletBadPassphraseError extends Error {
 }
 
 /**
- * The Nile Electron app sets this to the active profile's partition string
- * (e.g. "persist:account-123") before the UI loads. When set, messages are
- * routed through Electron IPC → main process → webview → extension service
- * worker instead of chrome.runtime.sendMessage.
+ * Long-lived port to keep the MV3 service worker alive.
+ * Without this, the SW goes dormant after ~30s and
+ * chrome.runtime.sendMessage fails with "Receiving end does not exist".
  */
-let nilePartition = null;
+let keepAlivePort = null;
+let keepAliveInterval = null;
+
+function ensureServiceWorkerAlive() {
+  if (keepAlivePort) return;
+
+  try {
+    keepAlivePort = chrome.runtime.connect({ name: "nile-wallet-keepalive" });
+    keepAlivePort.onDisconnect.addListener(() => {
+      keepAlivePort = null;
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
+      keepAliveInterval = null;
+      // Try to reconnect after a short delay
+      setTimeout(ensureServiceWorkerAlive, 1000);
+    });
+
+    // Send periodic pings to keep the port alive
+    keepAliveInterval = setInterval(() => {
+      try {
+        if (keepAlivePort) {
+          keepAlivePort.postMessage({ type: "ping" });
+        }
+      } catch {
+        keepAlivePort = null;
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
+      }
+    }, 15000); // every 15 seconds
+  } catch {
+    // Extension context might be invalidated
+  }
+}
 
 function sendMessage(action, payload) {
-  console.debug(`[NileWallet] sendMessage: ${action}`);
+  // Ensure the service worker is alive before sending
+  ensureServiceWorkerAlive();
+
   return new Promise((resolve, reject) => {
     try {
       chrome.runtime.sendMessage({ action, ...payload }, (response) => {
         const runtimeError = chrome.runtime?.lastError;
         if (runtimeError) {
-          console.warn(`[NileWallet] chrome.runtime.lastError for ${action}:`, runtimeError.message);
           reject(new Error(runtimeError.message));
           return;
         }
@@ -73,135 +101,89 @@ function sendMessage(action, payload) {
   });
 }
 
-/**
- * Send via Electron IPC when running inside the Nile desktop app.
- * The main process finds the profile's webview and executes
- * chrome.runtime.sendMessage inside it.
- */
-async function sendViaElectron(action, payload) {
-  console.debug(`[NileWallet] sendViaElectron: ${action}, partition=${nilePartition}`);
-  const result = await window.electron.ipcRenderer.invoke(
-    "nile-wallet",
-    nilePartition,
-    action,
-    payload,
-  );
-  if (!result) {
-    throw new Error("No response from NileWallet (Electron IPC)");
-  }
-  if (result.ok === false) {
-    if (result.error === "needs-unlock") {
-      throw new NileWalletLockedError();
-    } else if (result.error === "bad-passphrase") {
-      throw new NileWalletBadPassphraseError();
-    } else {
-      throw new Error(result.error || "NileWallet request failed");
-    }
-  }
-  return result;
-}
-
-function send(action, payload = {}) {
-  // In the Nile Electron app, route through IPC to the profile's extension
-  if (nilePartition && window.electron?.ipcRenderer) {
-    return sendViaElectron(action, payload).catch((err) => {
-      console.warn(`[NileWallet] Electron IPC failed for ${action}:`, err.message);
-      // Retry once on connection failure
-      if (
-        err.message?.includes("Could not establish connection") ||
-        err.message?.includes("Receiving end does not exist") ||
-        err.message?.includes("timeout")
-      ) {
-        return new Promise((resolve) => setTimeout(resolve, 500)).then(() => {
-          console.log(`[NileWallet] Retrying ${action} via Electron IPC...`);
-          return sendViaElectron(action, payload);
-        });
-      }
-      throw err;
-    });
-  }
-
+function sendWithRetry(action, payload, retries = 2) {
   return sendMessage(action, payload).catch((err) => {
-    console.warn(`[NileWallet] sendMessage failed for ${action}:`, err.message);
-    /* MV3 service workers go dormant after ~30s. Chrome should auto-wake
-     * on the first sendMessage, but there can be a race where the port
-     * isn't ready yet. Retry once after a short delay. */
     if (
-      err.message?.includes("Could not establish connection") ||
-      err.message?.includes("Receiving end does not exist")
+      retries > 0 &&
+      (err.message?.includes("Could not establish connection") ||
+        err.message?.includes("Receiving end does not exist"))
     ) {
-      return new Promise((resolve) => setTimeout(resolve, 300)).then(() => {
-        console.log(`[NileWallet] Retrying ${action} via sendMessage...`);
-        return sendMessage(action, payload);
+      // Force reconnect the keepalive port
+      keepAlivePort = null;
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
+      keepAliveInterval = null;
+
+      return new Promise((resolve) => setTimeout(resolve, 500)).then(() => {
+        ensureServiceWorkerAlive();
+        return sendWithRetry(action, payload, retries - 1);
       });
     }
     throw err;
   });
 }
 
-const nileWalletClient = {
-  /** Set the Electron partition for Nile desktop app routing. */
-  setPartition: (partition) => {
-    nilePartition = partition;
-  },
+// Start keeping the service worker alive immediately
+ensureServiceWorkerAlive();
 
+const nileWalletClient = {
   /* ---- vault ---- */
-  vaultStatus: () => send("nile-wallet.vault-status"),
+  vaultStatus: () => sendWithRetry("nile-wallet.vault-status"),
   /** Set (first time) or unlock the vault with the single passphrase. */
-  unlock: (password) => send("nile-wallet.unlock", { password }),
-  lock: () => send("nile-wallet.lock"),
+  unlock: (password) => sendWithRetry("nile-wallet.unlock", { password }),
+  lock: () => sendWithRetry("nile-wallet.lock"),
 
   /* ---- wallet ---- */
-  get: (accountId) => send("nile-wallet.get", { accountId }),
-  generate: (accountId) => send("nile-wallet.generate", { accountId }),
+  get: (accountId) => sendWithRetry("nile-wallet.get", { accountId }),
+  generate: (accountId) => sendWithRetry("nile-wallet.generate", { accountId }),
   /** Import an existing wallet from a 24-word recovery phrase (validated in SW). */
   importWallet: (accountId, phrase) =>
-    send("nile-wallet.import", { accountId, phrase }),
-  revealSeed: (accountId) => send("nile-wallet.reveal-seed", { accountId }),
-  clear: (accountId) => send("nile-wallet.clear", { accountId }),
-  balance: (accountId) => send("nile-wallet.balance", { accountId }),
+    sendWithRetry("nile-wallet.import", { accountId, phrase }),
+  revealSeed: (accountId) =>
+    sendWithRetry("nile-wallet.reveal-seed", { accountId }),
+  clear: (accountId) => sendWithRetry("nile-wallet.clear", { accountId }),
+  balance: (accountId) => sendWithRetry("nile-wallet.balance", { accountId }),
 
   /* ---- custom tokens (Jettons) ---- */
-  listTokens: (accountId) => send("nile-wallet.tokens.list", { accountId }),
+  listTokens: (accountId) =>
+    sendWithRetry("nile-wallet.tokens.list", { accountId }),
   addToken: (accountId, address) =>
-    send("nile-wallet.token.add", { accountId, address }),
+    sendWithRetry("nile-wallet.token.add", { accountId, address }),
   removeToken: (accountId, address) =>
-    send("nile-wallet.token.remove", { accountId, address }),
+    sendWithRetry("nile-wallet.token.remove", { accountId, address }),
   tokenBalance: (accountId, token) =>
-    send("nile-wallet.token.balance", { accountId, token }),
+    sendWithRetry("nile-wallet.token.balance", { accountId, token }),
 
   /* ---- transfers ---- */
-  /** Build + sign + estimate network fee. Returns { feeNano, insufficient, ... }. */
   estimateTransfer: (accountId, params) =>
-    send("nile-wallet.transfer.estimate", { accountId, ...params }),
-  /** Broadcast a signed transfer. Returns { hash, txStatus }. */
+    sendWithRetry("nile-wallet.transfer.estimate", { accountId, ...params }),
   sendTransfer: (accountId, params) =>
-    send("nile-wallet.transfer.send", { accountId, ...params }),
+    sendWithRetry("nile-wallet.transfer.send", { accountId, ...params }),
 
   /* ---- backup / restore ---- */
-  /** Export ALL wallets (every account) as an encrypted JSON download. */
-  backup: (password) => send("nile-wallet.backup", { password }),
-  /** Decrypt + validate a backup without writing. Returns preview entries. */
+  backup: (password) => sendWithRetry("nile-wallet.backup", { password }),
   restorePreview: (password, json) =>
-    send("nile-wallet.restore.preview", { password, json }),
-  /** Write a validated backup, honoring per-account overwrite consent. */
+    sendWithRetry("nile-wallet.restore.preview", { password, json }),
   restoreApply: (password, json, overwrite) =>
-    send("nile-wallet.restore.apply", { password, json, overwrite }),
+    sendWithRetry("nile-wallet.restore.apply", { password, json, overwrite }),
 
   /* ---- TON Connect ---- */
   parseLink: (accountId, link) =>
-    send("nile-wallet.connect.parse-link", { accountId, link }),
+    sendWithRetry("nile-wallet.connect.parse-link", { accountId, link }),
   approve: (accountId, prepared) =>
-    send("nile-wallet.connect.approve", { accountId, prepared }),
+    sendWithRetry("nile-wallet.connect.approve", { accountId, prepared }),
   reject: (accountId, prepared) =>
-    send("nile-wallet.connect.reject", { accountId, prepared }),
+    sendWithRetry("nile-wallet.connect.reject", { accountId, prepared }),
   disconnect: (accountId, dAppPubKey) =>
-    send("nile-wallet.connect.disconnect", { accountId, dAppPubKey }),
+    sendWithRetry("nile-wallet.connect.disconnect", {
+      accountId,
+      dAppPubKey,
+    }),
   subscribe: (accountId) =>
-    send("nile-wallet.connect.subscribe", { accountId }),
-  restore: (accountId) => send("nile-wallet.connect.restore", { accountId }),
+    sendWithRetry("nile-wallet.connect.subscribe", { accountId }),
+  restore: (accountId) =>
+    sendWithRetry("nile-wallet.connect.restore", { accountId }),
   sessions: (accountId) =>
-    send("nile-wallet.connect.sessions", { accountId }),
+    sendWithRetry("nile-wallet.connect.sessions", { accountId }),
 };
 
 export default nileWalletClient;

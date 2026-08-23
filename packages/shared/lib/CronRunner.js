@@ -6,6 +6,7 @@ class CronRunner {
     this.jobs = [];
     this.running = false;
     this.schedulers = [];
+    this._stopped = false;
   }
 
   register(interval, callback, name = "") {
@@ -28,32 +29,39 @@ class CronRunner {
     };
   }
 
-  async runner() {
-    if (this.running) {
-      console.warn(
-        "⏳ Previous sequential job still running. Skipping this run."
+  /** Sequential mode: run all jobs back-to-back, no fixed interval. */
+  async sequentialLoop() {
+    while (!this._stopped) {
+      this.running = true;
+      console.log(
+        "🔁 Sequential cycle started at",
+        new Date().toLocaleTimeString()
       );
-      return;
+
+      for (const job of this.jobs) {
+        if (this._stopped) break;
+        await job.callback();
+      }
+
+      this.running = false;
+      console.log("🏁 Sequential cycle completed");
+
+      // Small delay between cycles to avoid hammering APIs
+      if (!this._stopped) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
-
-    this.running = true;
-    console.log(
-      "🔁 Sequential run triggered at",
-      new Date().toLocaleTimeString()
-    );
-
-    for (const job of this.jobs) {
-      await job.callback();
-    }
-
-    console.log("🏁 Sequential run completed");
-    this.running = false;
   }
 
   start() {
+    this._stopped = false;
+
     if (this.mode === "sequential") {
-      console.log("⏱ Running in sequential mode");
-      this.schedulers.push(new Cron("*/10 * * * *", this.runner.bind(this)));
+      console.log("⏱ Running in sequential mode (back-to-back)");
+      // Fire and forget — the loop runs continuously
+      this.sequentialLoop().catch((err) =>
+        console.error("❌ Sequential loop crashed:", err)
+      );
     } else {
       console.log("⏱ Running in concurrent mode");
       this.jobs.forEach((job) => {
@@ -63,6 +71,7 @@ class CronRunner {
   }
 
   stop() {
+    this._stopped = true;
     this.schedulers.forEach((scheduler) => scheduler.stop());
     this.schedulers = [];
     this.running = false;
@@ -71,31 +80,24 @@ class CronRunner {
 
   wrapConcurrent(job) {
     let running = false;
-    let tickSkipped = false;
+    let pendingReTrigger = false;
 
     const wrapper = async () => {
       if (running) {
-        tickSkipped = true;
+        pendingReTrigger = true;
         console.warn(`⏳ Skipping overlapping job: ${job.name}`);
         return;
       }
 
       running = true;
-      tickSkipped = false;
 
       try {
-        await job.callback();
+        do {
+          pendingReTrigger = false;
+          await job.callback();
+        } while (pendingReTrigger);
       } finally {
         running = false;
-
-        /* If a cron tick was skipped while this job was running, re-trigger
-         * immediately so we don't wait an extra interval cycle. */
-        if (tickSkipped) {
-          tickSkipped = false;
-          console.log(`🔄 Re-triggering ${job.name} (skipped tick detected)`);
-          // Go through the wrapper so the overlap guard still applies
-          Promise.resolve().then(wrapper);
-        }
       }
     };
 

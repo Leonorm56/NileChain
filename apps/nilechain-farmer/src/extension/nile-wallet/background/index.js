@@ -559,7 +559,7 @@ async function handleRestoreApply(message) {
 /* Message handling                                                            */
 /* -------------------------------------------------------------------------- */
 
-async function handleWalletMessage(message) {
+export async function handleWalletMessage(message) {
   const accountId = message.accountId;
 
   switch (message.action) {

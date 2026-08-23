@@ -180,5 +180,65 @@ if (!TELEGRAM_WEB_HOSTS.includes(location.host)) {
   watchTelegramMiniApp(initialize);
 }
 
+/**
+ * NileWallet bridge for THE NILE (Electron) desktop app.
+ *
+ * The main process runs `executeJavaScript` which executes in the MAIN world.
+ * `chrome.runtime.sendMessage` is only available in the ISOLATED world.
+ * This bridge listens for `window.postMessage` from the main world and
+ * forwards wallet messages to the service worker via chrome.runtime.sendMessage.
+ */
+/*
+ * Keep the service worker alive with a persistent port.
+ * Without this, MV3 SW goes dormant and sendMessage has no listener.
+ */
+let _nwPort = null;
+try {
+  _nwPort = chrome.runtime.connect({ name: "nile-wallet-bridge-keepalive" });
+  _nwPort.onDisconnect.addListener(() => {
+    _nwPort = null;
+    try { _nwPort = chrome.runtime.connect({ name: "nile-wallet-bridge-keepalive" }); } catch {}
+  });
+  setInterval(() => { try { _nwPort?.postMessage({ type: "ping" }); } catch {} }, 15000);
+} catch {}
+
+/**
+ * NileWallet bridge for THE NILE (Electron) desktop app.
+ * Listens for window.postMessage from MAIN world and forwards
+ * to the service worker via a port (not sendMessage).
+ */
+window.addEventListener("message", (ev) => {
+  if (ev.source !== window) return;
+  if (ev.data?.type !== "nile-wallet-request") return;
+
+  const { id, action, payload } = ev.data;
+
+  /* Use a fresh port per-request to guarantee the SW is awake.
+   * sendMessage alone fails because the SW may be dormant. */
+  try {
+    const port = chrome.runtime.connect({ name: `nile-wallet-req:${id}` });
+    const timer = setTimeout(() => {
+      try { port.disconnect(); } catch {}
+      window.postMessage({ type: "nile-wallet-response", id, result: { ok: false, error: "bridge-timeout" } }, "*");
+    }, 15000);
+
+    port.onMessage.addListener((response) => {
+      clearTimeout(timer);
+      try { port.disconnect(); } catch {}
+      window.postMessage({ type: "nile-wallet-response", id, result: response || { ok: false, error: "No response" } }, "*");
+    });
+
+    port.onDisconnect.addListener(() => {
+      clearTimeout(timer);
+      const err = chrome.runtime?.lastError?.message || "port-disconnected";
+      window.postMessage({ type: "nile-wallet-response", id, result: { ok: false, error: err } }, "*");
+    });
+
+    port.postMessage({ action, ...(payload || {}) });
+  } catch (e) {
+    window.postMessage({ type: "nile-wallet-response", id, result: { ok: false, error: e.message } }, "*");
+  }
+});
+
 
 

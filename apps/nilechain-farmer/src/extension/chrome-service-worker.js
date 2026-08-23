@@ -7,7 +7,7 @@ import {
   getSharedSettings,
   getWindowCoords,
 } from "@/utils";
-import { setupNileWalletBackground } from "@/extension/nile-wallet/background";
+import { setupNileWalletBackground, handleWalletMessage } from "@/extension/nile-wallet/background";
 
 /** NileWallet — per-account local TON wallet (all builds). */
 setupNileWalletBackground();
@@ -255,6 +255,30 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "nile-wallet-keepalive") {
     // Touch storage to signal activity and keep the SW warm.
     chrome.storage.local.get("nile-wallet-keepalive").catch(() => {});
+  }
+});
+
+/**
+ * Accept keepalive port connections from the NileWallet client.
+ * The port keeps the service worker alive in Electron desktop apps
+ * where MV3 SW dormancy is aggressive.
+ */
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "nile-wallet-keepalive") {
+    port.onMessage.addListener(() => {}); // keep alive
+    port.onDisconnect.addListener(() => {});
+  } else if (port.name.startsWith("nile-wallet-req:")) {
+    // Content script bridge forwarding wallet requests via port
+    port.onMessage.addListener((message) => {
+      if (!message?.action?.startsWith("nile-wallet.")) return;
+      handleWalletMessage(message)
+        .then((result) => {
+          try { port.postMessage({ ok: true, ...result }); } catch {}
+        })
+        .catch((error) => {
+          try { port.postMessage({ ok: false, error: error?.message || String(error) }); } catch {}
+        });
+    });
   }
 });
 
