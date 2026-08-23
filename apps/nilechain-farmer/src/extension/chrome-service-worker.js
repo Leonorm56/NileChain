@@ -243,5 +243,20 @@ if (!isWhisker) {
   setupExtension();
 }
 
+/**
+ * Keep the service worker alive so chrome.runtime.sendMessage (used by
+ * NileWallet and other features) always has a receiving end.
+ *
+ * MV3 service workers are terminated after ~30 seconds of inactivity.
+ * A periodic alarm wakes the SW back up before Chrome kills it.
+ */
+chrome.alarms.create("nile-wallet-keepalive", { periodInMinutes: 0.4 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "nile-wallet-keepalive") {
+    // Touch storage to signal activity and keep the SW warm.
+    chrome.storage.local.get("nile-wallet-keepalive").catch(() => {});
+  }
+});
+
 
 

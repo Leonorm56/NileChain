@@ -2,6 +2,7 @@ import { sendWebviewMessage } from "@/utils";
 import useBackupAndRestore from "./useBackupAndRestore";
 import { useEffect } from "react";
 import useMemoizedCallback from "./useMemoizedCallback";
+import nileWalletClient from "@/lib/nileWalletClient";
 
 export default function useWhiskerData(app) {
   const [backup, restore] = useBackupAndRestore(app);
@@ -54,6 +55,9 @@ export default function useWhiskerData(app) {
 
             /** Expose Partition */
             window.WHISKER_PARTITION = account.partition;
+
+            /** Route NileWallet through Electron IPC when in desktop app */
+            nileWalletClient.setPartition(account.partition);
 
             /** Update Account */
             updateActiveAccount(account);

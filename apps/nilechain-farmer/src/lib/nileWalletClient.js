@@ -41,11 +41,13 @@ export class NileWalletBadPassphraseError extends Error {
 let nilePartition = null;
 
 function sendMessage(action, payload) {
+  console.debug(`[NileWallet] sendMessage: ${action}`);
   return new Promise((resolve, reject) => {
     try {
       chrome.runtime.sendMessage({ action, ...payload }, (response) => {
         const runtimeError = chrome.runtime?.lastError;
         if (runtimeError) {
+          console.warn(`[NileWallet] chrome.runtime.lastError for ${action}:`, runtimeError.message);
           reject(new Error(runtimeError.message));
           return;
         }
@@ -77,6 +79,7 @@ function sendMessage(action, payload) {
  * chrome.runtime.sendMessage inside it.
  */
 async function sendViaElectron(action, payload) {
+  console.debug(`[NileWallet] sendViaElectron: ${action}, partition=${nilePartition}`);
   const result = await window.electron.ipcRenderer.invoke(
     "nile-wallet",
     nilePartition,
@@ -102,21 +105,24 @@ function send(action, payload = {}) {
   // In the Nile Electron app, route through IPC to the profile's extension
   if (nilePartition && window.electron?.ipcRenderer) {
     return sendViaElectron(action, payload).catch((err) => {
+      console.warn(`[NileWallet] Electron IPC failed for ${action}:`, err.message);
       // Retry once on connection failure
       if (
         err.message?.includes("Could not establish connection") ||
         err.message?.includes("Receiving end does not exist") ||
         err.message?.includes("timeout")
       ) {
-        return new Promise((resolve) => setTimeout(resolve, 500)).then(() =>
-          sendViaElectron(action, payload),
-        );
+        return new Promise((resolve) => setTimeout(resolve, 500)).then(() => {
+          console.log(`[NileWallet] Retrying ${action} via Electron IPC...`);
+          return sendViaElectron(action, payload);
+        });
       }
       throw err;
     });
   }
 
   return sendMessage(action, payload).catch((err) => {
+    console.warn(`[NileWallet] sendMessage failed for ${action}:`, err.message);
     /* MV3 service workers go dormant after ~30s. Chrome should auto-wake
      * on the first sendMessage, but there can be a race where the port
      * isn't ready yet. Retry once after a short delay. */
@@ -124,9 +130,10 @@ function send(action, payload = {}) {
       err.message?.includes("Could not establish connection") ||
       err.message?.includes("Receiving end does not exist")
     ) {
-      return new Promise((resolve) => setTimeout(resolve, 300)).then(() =>
-        sendMessage(action, payload),
-      );
+      return new Promise((resolve) => setTimeout(resolve, 300)).then(() => {
+        console.log(`[NileWallet] Retrying ${action} via sendMessage...`);
+        return sendMessage(action, payload);
+      });
     }
     throw err;
   });

@@ -12,7 +12,7 @@ import BaseFarmer from "../lib/BaseFarmer.js";
 const API_URL = "https://api.rignite.app";
 
 /** Building/upgrade categories in unlock order (each has 8 tiers). */
-const CATEGORIES = ["energy", "workers", "land", "special", "cosmic"];
+const CATEGORIES = ["tools", "energy", "workers", "land", "special", "cosmic"];
 
 /** Item tiers per category (tools_1 .. tools_8, etc). */
 const ITEM_IDS = CATEGORIES.flatMap((category) =>
