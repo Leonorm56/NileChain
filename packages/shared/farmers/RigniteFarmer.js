@@ -29,8 +29,8 @@ const MAX_ITEM_LEVEL = 20;
 const MAX_FARM_SIZE = 25;
 
 /** Stop upgrading buildings once profit-per-hour reaches this cap.
- *  Configurable via FARMER_RIGNITE_MAX_PPH env var (default 100000). */
-const MAX_PPH = Number(process.env.FARMER_RIGNITE_MAX_PPH) || 100_000;
+ *  Configurable via FARMER_RIGNITE_MAX_PPH env var (default 120000). */
+const MAX_PPH = Number(process.env.FARMER_RIGNITE_MAX_PPH) || 120_000;
 
 /** Seconds to wait between simulated ad watches. */
 const AD_COOLDOWN_SECONDS = 2;
