@@ -9,6 +9,31 @@ const __dirname = path.dirname(__filename);
  * @returns {chrome.declarativeNetRequest.Rule[]}
  */
 function getCoreNetRules() {
+  const BRIDGE = "https://bridge.tonapi.io";
+  const deadBridges = [
+    "bridge.stower.money",
+    "bridge.mirai.app",
+    "go-bridge.tomo.inc",
+  ];
+
+  const redirectRules = deadBridges.map((host, i) => ({
+    id: 100 + i,
+    priority: 2,
+    action: {
+      type: "redirect",
+      redirect: { regexSubstitution: `${BRIDGE}/\\1` },
+    },
+    condition: {
+      regexFilter: `^https://${host.replace(/\./g, "\\.")}/(.*)$`,
+      resourceTypes: [
+        "xmlhttprequest",
+        "fetch",
+        "eventsource",
+        "other",
+      ],
+    },
+  }));
+
   return [
     {
       id: 1,
@@ -42,6 +67,7 @@ function getCoreNetRules() {
         urlFilter: "*",
       },
     },
+    ...redirectRules,
   ];
 }
 
@@ -52,14 +78,14 @@ function getCoreNetRules() {
 export function generateChromeManifest(env, pkg) {
   const isPWA = typeof process.env.VITE_PWA !== "undefined";
   const isBridge = typeof process.env.VITE_BRIDGE !== "undefined";
-  const isWhisker = typeof process.env.VITE_WHISKER !== "undefined";
+  const isThenile = typeof process.env.VITE_THENILE !== "undefined";
   const isIndex = process.env.VITE_ENTRY === "index";
   const enabled = isPWA === false && isIndex;
 
   return {
     name: "generate-chrome-manifest",
     async generateBundle() {
-      const namePrefix = isWhisker ? "(Whisker) " : isBridge ? "(Bridge) " : "";
+      const namePrefix = isThenile ? "(TheNile) " : isBridge ? "(Bridge) " : "";
       // VITE_PWA_URL is optional (empty in CI when the secret is unset). Guard the parse
       // so a missing/invalid value can't crash the build; the PWA-origin entry is only
       // consumed by the bridge's externally_connectable, and localhost is always allowed.
@@ -93,8 +119,9 @@ export function generateChromeManifest(env, pkg) {
           "webRequest",
           "declarativeNetRequest",
           "downloads",
+          "alarms",
         ].concat(
-          !isWhisker
+          !isThenile
             ? [
                 "proxy",
                 "cookies",
@@ -108,7 +135,7 @@ export function generateChromeManifest(env, pkg) {
               ]
             : []
         ),
-        ...(!isWhisker
+        ...(!isThenile
           ? {
               background: {
                 service_worker: "extension/chrome-service-worker.js",
@@ -146,6 +173,7 @@ export function generateChromeManifest(env, pkg) {
               "assets/*.woff",
               "assets/*.woff2",
               "browser-sandbox.html",
+              "tonconnect-provider.js",
             ],
             matches: ["*://*/*"],
           },

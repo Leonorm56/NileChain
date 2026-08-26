@@ -92,8 +92,8 @@ function formatUsers(collection) {
     let username = (data.username || data.id)
       .toString()
       .toLowerCase()
-      .slice(0, 12);
-    username = username.padEnd(15, "  ");
+      .slice(0, 5);
+    username = username.padEnd(8, "  ");
 
     /** Account Title */
     const title = app.displayAccountTitle

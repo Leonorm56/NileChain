@@ -268,9 +268,26 @@ chrome.runtime.onConnect.addListener((port) => {
     port.onMessage.addListener(() => {}); // keep alive
     port.onDisconnect.addListener(() => {});
   } else if (port.name.startsWith("nile-wallet-req:")) {
-    // Content script bridge forwarding wallet requests via port
+    // Content script bridge forwarding wallet requests via port.
+    // Handles both nile-wallet.* (NileWallet ops) and tonconnect.*
+    // (injected window.tonconnect provider forwarding from the dApp).
     port.onMessage.addListener((message) => {
-      if (!message?.action?.startsWith("nile-wallet.")) return;
+      if (!message?.action) return;
+
+      // tonconnect.* actions from the injected window.tonconnect provider.
+      // Map them to nile-wallet.connect.* actions the background handler knows.
+      const tcMap = {
+        "tonconnect.connect": "nile-wallet.connect.injected-connect",
+        "tonconnect.send": "nile-wallet.connect.injected-send",
+        "tonconnect.disconnect": "nile-wallet.connect.injected-disconnect",
+        "tonconnect.restoreConnection": "nile-wallet.connect.injected-restore",
+      };
+      if (tcMap[message.action]) {
+        message = { ...message, action: tcMap[message.action] };
+      }
+
+      if (!message.action.startsWith("nile-wallet.")) return;
+
       handleWalletMessage(message)
         .then((result) => {
           try { port.postMessage({ ok: true, ...result }); } catch {}
@@ -282,5 +299,16 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 });
 
+/**
+ * Accept direct chrome.runtime.sendMessage calls (used by nileWalletClient.js
+ * for TON Connect actions). Returns a promise-style response.
+ */
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message?.action?.startsWith("nile-wallet.")) return false;
+  handleWalletMessage(message)
+    .then((result) => sendResponse({ ok: true, ...result }))
+    .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
+  return true; // keep sendResponse channel open for async
+});
 
 

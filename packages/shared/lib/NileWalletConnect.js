@@ -6,6 +6,10 @@ import nacl from "tweetnacl";
 
 /** Default TON Connect HTTP bridge (the bridge NileWallet advertises). */
 const DEFAULT_BRIDGE = "https://bridge.tonapi.io/bridge";
+const FALLBACK_BRIDGES = [
+  "https://bridge.tonapi.io/bridge",
+  "https://bridgeconnect.ton.org/bridge",
+];
 const WALLET_APP_NAME = "NileChain";
 const WALLET_VERSION = "1.0.0";
 /** TON mainnet CHAIN id used in ton_addr items. */
@@ -422,7 +426,8 @@ export default class NileWalletConnect {
   /**
    * (Re)subscribe to the bridge for every persisted session so follow-up
    * requests (sendTransaction, disconnect) arrive. Called on approve and on
-   * service-worker startup (restore).
+   * service-worker startup (restore). Tries multiple bridges and falls back
+   * to HTTP polling if EventSource is blocked by a proxy.
    */
   async subscribe() {
     const sessions = await this.loadSessions();
@@ -432,22 +437,104 @@ export default class NileWalletConnect {
       this.source.close();
       this.source = null;
     }
+    if (this._pollTimer) {
+      clearTimeout(this._pollTimer);
+      this._pollTimer = null;
+    }
     if (!clientIds.length) return null;
 
-    const url = `${this.bridgeUrl}/events?client_id=${clientIds.join(",")}`;
-    const source = new EventSource(url);
+    const bridges = [
+      this.bridgeUrl,
+      ...FALLBACK_BRIDGES.filter((b) => b !== this.bridgeUrl),
+    ];
 
-    source.onmessage = (ev) => {
-      this.handleBridgeMessage(ev).catch((e) =>
-        console.error("NileWallet bridge message error:", e),
-      );
-    };
-    source.onerror = (e) => {
-      console.error("NileWallet bridge SSE error:", e);
-    };
+    for (const bridge of bridges) {
+      try {
+        const ok = await this._trySubscribeSSE(bridge, clientIds);
+        if (ok) return clientIds;
+      } catch { /* try next bridge */ }
+    }
 
-    this.source = source;
+    this._startPolling(bridges, clientIds);
     return clientIds;
+  }
+
+  _trySubscribeSSE(bridge, clientIds) {
+    return new Promise((resolve, reject) => {
+      const url = `${bridge}/events?client_id=${clientIds.join(",")}`;
+      const source = new EventSource(url);
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          source.close();
+          reject(new Error("bridge connect timeout"));
+        }
+      }, 5000);
+
+      source.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+
+        if (this.source) this.source.close();
+        this.source = source;
+        this._activeBridge = bridge;
+
+        source.onmessage = (ev) => {
+          this.handleBridgeMessage(ev).catch((e) =>
+            console.error("NileWallet bridge message error:", e),
+          );
+        };
+        source.onerror = (e) => {
+          console.error("NileWallet bridge SSE error:", e);
+          source.close();
+          this.source = null;
+          setTimeout(() => this.subscribe().catch(() => {}), 3000);
+        };
+
+        resolve(true);
+      };
+
+      source.onerror = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          source.close();
+          reject(new Error("SSE connection failed"));
+        }
+      };
+    });
+  }
+
+  _startPolling(bridges, clientIds) {
+    const poll = async () => {
+      for (const bridge of bridges) {
+        try {
+          const since = this._lastEventId || "";
+          const url = `${bridge}/events?client_id=${clientIds.join(",")}${since ? `&last_event_id=${since}` : ""}`;
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text.trim()) continue;
+
+          const lines = text.split("\n\n").filter(Boolean);
+          for (const block of lines) {
+            const ev = { data: "", lastEventId: "" };
+            for (const line of block.split("\n")) {
+              if (line.startsWith("data:")) ev.data = line.slice(5).trim();
+              if (line.startsWith("id:")) ev.lastEventId = line.slice(3).trim();
+            }
+            if (ev.data) await this.handleBridgeMessage(ev);
+          }
+          this._activeBridge = bridge;
+          break;
+        } catch { /* try next bridge */ }
+      }
+      this._pollTimer = setTimeout(poll, 2000);
+    };
+    poll();
   }
 
   /** Handle one inbound (encrypted) SSE bridge message. */
@@ -490,6 +577,10 @@ export default class NileWalletConnect {
     if (this.source) {
       this.source.close();
       this.source = null;
+    }
+    if (this._pollTimer) {
+      clearTimeout(this._pollTimer);
+      this._pollTimer = null;
     }
   }
 }

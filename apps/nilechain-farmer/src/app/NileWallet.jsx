@@ -1445,11 +1445,17 @@ export default function NileWallet() {
       if (
         message?.action === "nile-wallet.connect.request" &&
         message.accountId === accountId &&
-        message.request?.transport === "bridge" &&
         message.request?.dAppPubKey
       ) {
-        // Initial connect request surfaced from discovery — show the modal.
-        if (message.request.items || message.request.manifest) {
+        // Bridge-originated connect request (HTTP SSE bridge).
+        if (
+          message.request.transport === "bridge" &&
+          (message.request.items || message.request.manifest)
+        ) {
+          setPendingConnect(message.request);
+        }
+        // Injected provider request (window.tonconnect → sendTransaction).
+        if (message.request.transport === "injected" && message.request.request) {
           setPendingConnect(message.request);
         }
       }
@@ -1460,10 +1466,13 @@ export default function NileWallet() {
 
   const approve = useCallback(() => {
     if (!pendingConnect) return;
-    approveMutation
-      .mutateAsync(pendingConnect)
+    const isInjected = pendingConnect.transport === "injected";
+    const action = isInjected
+      ? nileWalletClient.injectedApprove(accountId, pendingConnect.request?.id)
+      : approveMutation.mutateAsync(pendingConnect);
+    Promise.resolve(action)
       .then(() => {
-        toast.success("Wallet connected");
+        toast.success(isInjected ? "Transaction approved" : "Wallet connected");
         setPendingConnect(null);
         queryClient.invalidateQueries({
           queryKey: ["nile-wallet-sessions", accountId],
@@ -1476,13 +1485,18 @@ export default function NileWallet() {
           toast.error(error?.message || "Failed to connect");
         }
       });
-  }, [pendingConnect, approveMutation, queryClient, accountId]);
+  }, [pendingConnect, accountId, approveMutation, queryClient]);
 
   const reject = useCallback(() => {
     const prepared = pendingConnect;
     setPendingConnect(null);
-    if (prepared) rejectMutation.mutate(prepared);
-  }, [pendingConnect, rejectMutation]);
+    if (!prepared) return;
+    if (prepared.transport === "injected") {
+      nileWalletClient.injectedReject(accountId, prepared.request?.id).catch(() => {});
+    } else {
+      rejectMutation.mutate(prepared);
+    }
+  }, [pendingConnect, accountId, rejectMutation]);
 
   if (!accountId) {
     return (
@@ -1535,8 +1549,6 @@ export default function NileWallet() {
               busy={vaultQuery.isLoading}
               onUnlocked={() => {
                 refreshVault();
-                // Auto-create right after the very first passphrase setup.
-                if (!configured) generate();
               }}
             />
           )}

@@ -1,5 +1,5 @@
 import { Address } from "@ton/core";
-import { WalletContractV4 } from "@ton/ton";
+import { WalletContractV4, beginCell, storeStateInit } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 
 import Encrypter from "@nile/shared/lib/Encrypter";
@@ -739,6 +739,209 @@ export async function handleWalletMessage(message) {
           connectedAt: s.connectedAt,
         })),
       };
+    }
+
+    /* ---- Injected window.tonconnect provider (JS bridge) --------------- */
+
+    /**
+     * tonconnect.connect → handle connect from the injected provider.
+     * Unlike the HTTP bridge flow, no `prepareConnectRequest` is needed — the
+     * dApp calls connect() directly.  We build the connect items, return them
+     * to the provider, and persist a minimal session so follow-up send calls
+     * work.
+     */
+    case "nile-wallet.connect.injected-connect": {
+      const connect = getConnect(accountId);
+      await ensureKeys(connect, accountId);
+
+      const protocol = message.protocol || "tonconnect";
+      const messageObj = message.message || {};
+      const requestedItems = messageObj.items || [{ name: "ton_addr" }];
+      const manifest = messageObj.manifest || {};
+      const domain = (() => {
+        try { return new URL(manifest.url || "").host; } catch { return manifest.name || ""; }
+      })();
+
+      const items = await connect.buildConnectItems(requestedItems, domain);
+      const device = connect.getDeviceInfo();
+
+      // The address for the connect response
+      const addressItem = items.find((i) => i.name === "ton_addr");
+      const address = addressItem?.address || connect.wallet.address.toRawString();
+      const publicKey = addressItem?.publicKey || connect.keyPair.publicKey.toString("hex");
+      const walletStateInit = addressItem?.walletStateInit || connect.getStateInit();
+
+      return {
+        status: true,
+        address,
+        publicKey,
+        walletStateInit,
+        items,
+        device,
+      };
+    }
+
+    /**
+     * tonconnect.send → forward a sendTransaction request from the dApp to the
+     * NileChain window for user approval.  Returns a promise that resolves
+     * when the user approves/rejects via the UI confirmation dialog.
+     */
+    case "nile-wallet.connect.injected-send": {
+      const dAppRequest = message.message;
+
+      if (!dAppRequest) throw new Error("Missing transaction message");
+
+      const requestId = dAppRequest.id || String(Date.now());
+
+      // Build a request object matching what the bridge flow sends
+      const requestPayload = {
+        method: "sendTransaction",
+        id: requestId,
+        params: Array.isArray(dAppRequest.params) ? dAppRequest.params : [dAppRequest],
+      };
+
+      // Forward to the NileChain window(s) for approval — this is a long-
+      // lived promise that resolves when the user clicks approve/reject.
+      const result = await new Promise((resolve, reject) => {
+        // Store pending request so the UI can resolve it
+        if (!globalThis._pendingInjectedRequests) globalThis._pendingInjectedRequests = new Map();
+        globalThis._pendingInjectedRequests.set(requestId, {
+          resolve,
+          reject,
+          accountId,
+          requestPayload,
+        });
+
+        // Forward to all NileChain windows
+        forwardRequest(accountId, {
+          transport: "injected",
+          request: requestPayload,
+        });
+
+        // Timeout after 5 minutes
+        setTimeout(() => {
+          if (globalThis._pendingInjectedRequests?.has(requestId)) {
+            globalThis._pendingInjectedRequests.delete(requestId);
+            reject(new Error("User approval timed out"));
+          }
+        }, 300000);
+      });
+
+      return { status: true, ...result };
+    }
+
+    /**
+     * tonconnect.disconnect → clean up any active session for this account.
+     */
+    case "nile-wallet.connect.injected-disconnect": {
+      // For injected provider, there's no bridge session to tear down.
+      // Just acknowledge.
+      return { status: true };
+    }
+
+    /**
+     * tonconnect.restoreConnection → check if we have a wallet and return
+     * its address so the dApp can re-establish state.
+     */
+    case "nile-wallet.connect.injected-restore": {
+      const wallet = getWallet(accountId);
+      const stored = await wallet.load();
+      if (!stored?.address) {
+        return { status: false, error: "no-wallet" };
+      }
+
+      // Try to get keypair for publicKey
+      let publicKey = stored.publicKey || null;
+      let walletStateInit = null;
+      try {
+        const kp = await getKeyPair(accountId);
+        const contract = kp.contract;
+        walletStateInit = beginCell()
+          .store(storeStateInit(contract.init))
+          .endCell()
+          .toBoc()
+          .toString("base64");
+        publicKey = kp.keyPair.publicKey.toString("hex");
+      } catch {
+        // vault locked — return what we have
+      }
+
+      return {
+        status: true,
+        address: stored.rawAddress || stored.address,
+        publicKey,
+        walletStateInit,
+      };
+    }
+
+    /**
+     * Resolve an injected sendTransaction approval/rejection from the UI.
+     * Called by NileWalletConnectModal when the user clicks approve/reject.
+     */
+    case "nile-wallet.connect.injected-approve": {
+      const pending = globalThis._pendingInjectedRequests?.get(message.requestId);
+      if (!pending) throw new Error("No pending request for " + message.requestId);
+
+      globalThis._pendingInjectedRequests.delete(message.requestId);
+
+      if (message.rejected) {
+        pending.reject(new Error("User rejected the transaction"));
+        return { status: true };
+      }
+
+      // The user approved — build, sign, and broadcast the transaction.
+      try {
+        const wallet = getWallet(pending.accountId);
+        const { contract, keyPair } = await getKeyPair(pending.accountId);
+        const txParams = pending.requestPayload?.params?.[0] || {};
+        const messages = txParams.messages || [];
+
+        if (!messages.length) throw new Error("No messages in transaction");
+
+        // Build output messages for WalletContractV4.createTransfer
+        const outMessages = [];
+        for (const msg of messages) {
+          const addr = Address.parse(msg.address);
+          const amount = BigInt(msg.amount || "0");
+
+          // Decode the payload cell if provided (hex or base64 BOC)
+          let body = beginCell().endCell();
+          if (msg.payload) {
+            try {
+              const { Cell } = await import("@ton/core");
+              body = Cell.fromHex(msg.payload);
+            } catch {
+              try {
+                const { Cell } = await import("@ton/core");
+                body = Cell.fromBase64(msg.payload);
+              } catch { /* empty body */ }
+            }
+          }
+
+          outMessages.push({
+            to: addr,
+            value: { coins: amount },
+            body,
+          });
+        }
+
+        const seqno = await wallet.getSeqno(contract.address.toString());
+        const transfer = contract.createTransfer({
+          seqno,
+          messages: outMessages,
+          sendMode: 0,
+        });
+
+        const signed = transfer.sign(keyPair.secretKey);
+        const boc = signed.toBoc().toString("base64");
+        const { hash } = await wallet.broadcastTransfer(signed);
+
+        pending.resolve({ status: "ok", result: { boc, hash } });
+      } catch (signError) {
+        pending.reject(signError);
+      }
+
+      return { status: true };
     }
 
     default:

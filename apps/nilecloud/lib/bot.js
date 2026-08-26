@@ -51,45 +51,67 @@ class GroupBot extends Bot {
     executedCount,
   }) {
     try {
-      const users = utils.formatUsers(
-        results.map(({ account, result }) => {
-          return {
-            id: account.id,
-            status:
-              result.status === "started"
-                ? "✅"
-                : result.status === "running"
-                  ? "☑️"
-                  : "❌",
-            session: telegramLink ? (account.session ? "🟨" : "🟪") : "",
-            count: account?.farmer?.errorCount || 0,
-            username: account.user?.username || "",
-            title: account.title,
-            info:
-              result.status === "running"
-                ? [
-                    `<b>TSK:</b> <code>${result.currentTask}</code>`,
-                    `<b>ELP:</b> <code>${result.elapsed}</code>`,
-                  ].join("\n")
-                : null,
-          };
-        }),
-      );
+      const formattedResults = results.map(({ account, result }) => {
+        return {
+          id: account.id,
+          status:
+            result.status === "started"
+              ? "✅"
+              : result.status === "running"
+                ? "☑️"
+                : "❌",
+          session: telegramLink ? (account.session ? "🟨" : "🟪") : "",
+          count: account?.farmer?.errorCount || 0,
+          username: account.user?.username || "",
+          title: account.title,
+          info:
+            result.status === "running"
+              ? [
+                  `<b>TSK:</b> <code>${result.currentTask}</code>`,
+                  `<b>ELP:</b> <code>${result.elapsed}</code>`,
+                ].join("\n")
+              : null,
+        };
+      });
 
-      const statusDate = utils.dateFns.format(
-        new Date(),
-        "yyyy-MM-dd HH:mm:ss",
-      );
+      /* Telegram limit is 4096 chars. Build full message first, then truncate. */
+      const MAX_MSG_LEN = 4000;
+      const header = `<b>${title}</b>`;
+      const statusLine = `<i>✅ Status: Initiated (${executedCount}/${totalCount})</i>\n`;
+      const linkBlock = `<blockquote><a href="${link || telegramLink}">Open ${link ? "Link" : "Telegram Bot"}</a></blockquote>`;
+      const dateLine = `<b>🗓️ Date</b>: ${utils.dateFns.format(new Date(), "yyyy-MM-dd HH:mm:ss")}`;
+      const fixedParts = [header, statusLine, linkBlock, dateLine].join("\n");
+      const userBudget = MAX_MSG_LEN - fixedParts.length - 10;
+
+      let users = utils.formatUsers(formattedResults);
+      if (users.length > userBudget) {
+        const trimmed = formattedResults.filter(
+          (r) => r.status !== "❌"
+        );
+        users = utils.formatUsers(trimmed);
+      }
+      if (users.length > userBudget) {
+        /* Keep only running + started */
+        const running = formattedResults.filter(
+          (r) => r.status === "☑️" || r.status === "✅"
+        );
+        users = utils.formatUsers(running);
+      }
+      if (users.length > userBudget) {
+        /* Truncate at last newline before budget to avoid splitting HTML tags */
+        users = users.slice(0, userBudget);
+        const lastNewline = users.lastIndexOf("\n");
+        if (lastNewline > 0) users = users.slice(0, lastNewline);
+        users += "\n…</blockquote>";
+      }
 
       return await this.sendGroupMessage(
         `messages.farming-initiated.${id}`,
         [
-          `<b>${title}</b>`,
-          `<i>✅ Status: Initiated (${executedCount}/${totalCount})</i>\n`,
-          `<blockquote><a href="${link || telegramLink}">Open ${
-            link ? "Link" : "Telegram Bot"
-          }</a></blockquote>${users}`,
-          `<b>🗓️ Date</b>: ${statusDate}`,
+          header,
+          statusLine,
+          `${linkBlock}${users}`,
+          dateLine,
         ],
         { ["message_thread_id"]: threadId },
       );

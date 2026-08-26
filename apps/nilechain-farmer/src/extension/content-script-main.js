@@ -1,3 +1,4 @@
+import "./tonconnect-provider";
 import "./bridge/bridge-main";
 import "./content-script-farmers";
 
@@ -11,6 +12,42 @@ import { decryptData, encryptData } from "./content-script-utils";
 import { extractInitDataUnsafe } from "@/utils";
 import { injectTelegramWebviewProxy } from "./webview-proxy/webview-proxy-main";
 import { retrieveRawLaunchParams } from "@telegram-apps/bridge";
+
+(() => {
+  const WORKING_BRIDGE = "https://bridge.tonapi.io";
+  const DEAD_HOSTS = [
+    "bridge.stower.money",
+    "bridge.mirai.app",
+    "go-bridge.tomo.inc",
+  ];
+  const WORKING_HOST = "bridge.tonapi.io";
+
+  const NativeEventSource = window.EventSource;
+
+  class PatchedEventSource extends NativeEventSource {
+    constructor(url, config) {
+      if (typeof url === "string") {
+        try {
+          const parsed = new URL(url);
+          if (DEAD_HOSTS.includes(parsed.hostname)) {
+            parsed.hostname = WORKING_HOST;
+            parsed.protocol = "https:";
+            url = parsed.toString();
+          }
+        } catch {}
+      }
+      super(url, config);
+    }
+  }
+
+  try {
+    window.EventSource = PatchedEventSource;
+    window.EventSource.prototype = NativeEventSource.prototype;
+    Object.defineProperty(PatchedEventSource, "CONNECTING", { value: 0 });
+    Object.defineProperty(PatchedEventSource, "OPEN", { value: 1 });
+    Object.defineProperty(PatchedEventSource, "CLOSED", { value: 2 });
+  } catch {}
+})();
 
 const IS_ALLOWED_HOST = !WEB_PLATFORM_EXCLUDED_HOSTS.includes(location.host);
 

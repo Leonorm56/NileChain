@@ -12,10 +12,10 @@ const __dirname = path.dirname(__filename);
 const pkg = await getPackageJson();
 
 const isBridge = Boolean(process.env.VITE_BRIDGE);
-const isWhisker = Boolean(process.env.VITE_WHISKER);
+const isThenile = Boolean(process.env.VITE_THENILE);
 
-const baseDir = isWhisker
-  ? "../dist-whisker"
+const baseDir = isThenile
+  ? "../dist-thenile"
   : isBridge
   ? "../dist-bridge"
   : "../dist-extension";
@@ -23,7 +23,7 @@ const baseDir = isWhisker
 const outDir = "../dist-bundle";
 
 const file = `${
-  pkg.name + (isWhisker ? "-whisker" : isBridge ? "-bridge" : "")
+  pkg.name + (isThenile ? "-thenile" : isBridge ? "-bridge" : "")
 }-v${pkg.version}`;
 
 /** Create Directory */

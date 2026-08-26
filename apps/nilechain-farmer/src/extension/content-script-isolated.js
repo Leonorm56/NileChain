@@ -240,5 +240,61 @@ window.addEventListener("message", (ev) => {
   }
 });
 
+/**
+ * TON Connect injected bridge — forward tonconnect-request messages
+ * from the injected window.tonconnect provider to the service worker.
+ */
+window.addEventListener("message", (ev) => {
+  if (ev.source !== window) return;
+  if (ev.data?.type !== "tonconnect-request") return;
+
+  const { id, method, params } = ev.data;
+
+  try {
+    const port = chrome.runtime.connect({ name: `nile-wallet-req:${id}` });
+    const timer = setTimeout(() => {
+      try { port.disconnect(); } catch {}
+      window.postMessage({ type: "tonconnect-response", id, result: { ok: false, error: "bridge-timeout" } }, "*");
+    }, 300000);
+
+    port.onMessage.addListener((response) => {
+      clearTimeout(timer);
+      try { port.disconnect(); } catch {}
+      window.postMessage({ type: "tonconnect-response", id, result: response || { ok: false, error: "No response" } }, "*");
+    });
+
+    port.onDisconnect.addListener(() => {
+      clearTimeout(timer);
+      const err = chrome.runtime?.lastError?.message || "port-disconnected";
+      window.postMessage({ type: "tonconnect-response", id, result: { ok: false, error: err } }, "*");
+    });
+
+    port.postMessage({ action: method, ...(params || {}) });
+  } catch (e) {
+    window.postMessage({ type: "tonconnect-response", id, result: { ok: false, error: e.message } }, "*");
+  }
+});
+
+/**
+ * Inject window.tonconnect provider into the page's MAIN world.
+ * The @tonconnect/sdk library checks for this on init and uses it
+ * instead of the HTTP SSE bridge.
+ *
+ * Uses <script src> via a web-accessible resource. The page's CSP
+ * allows chrome-extension:// URLs, so this bypasses the inline-block.
+ */
+(function () {
+  try {
+    if (document.getElementById("nile-tonconnect-inject")) return;
+    const s = document.createElement("script");
+    s.id = "nile-tonconnect-inject";
+    s.src = chrome.runtime.getURL("tonconnect-provider.js");
+    (document.head || document.documentElement).appendChild(s);
+    s.onload = function () { s.remove(); };
+  } catch (e) {
+    console.error("[NileChain] tonconnect inject failed:", e);
+  }
+})();
+
 
 

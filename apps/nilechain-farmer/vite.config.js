@@ -11,6 +11,7 @@ import path from "path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { transformCssBundle } from "./plugins/transform-css-bundle";
+import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +25,7 @@ export default defineConfig(async ({ mode }) => {
   const isBridge = Boolean(process.env.VITE_BRIDGE);
   const isStylesEntry = process.env.VITE_ENTRY?.endsWith("styles");
 
-  const outDir = process.env.VITE_WHISKER ? "dist-whisker" : process.env.VITE_BRIDGE ? "dist-bridge" : process.env.VITE_EXTENSION ? "dist-extension" : "dist";
+  const outDir = process.env.VITE_THENILE ? "dist-thenile" : process.env.VITE_BRIDGE ? "dist-bridge" : process.env.VITE_EXTENSION ? "dist-extension" : "dist";
 
   let input, output;
 
@@ -81,6 +82,20 @@ export default defineConfig(async ({ mode }) => {
       rollupOptions: { input, output },
     },
     plugins: [
+      {
+        name: "copy-tonconnect-provider",
+        apply: "build",
+        generateBundle() {
+          const src = path.resolve(__dirname, "src/extension/tonconnect-provider.js");
+          if (fs.existsSync(src)) {
+            this.emitFile({
+              type: "asset",
+              fileName: "tonconnect-provider.js",
+              source: fs.readFileSync(src, "utf8"),
+            });
+          }
+        },
+      },
       generateChromeManifest(env, pkg),
       transformCssBundle({ enable: process.env.VITE_ENTRY?.endsWith("styles") }),
       VitePWA({

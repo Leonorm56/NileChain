@@ -1,6 +1,31 @@
 import farmers from "@/core/farmers";
 import { isExtension } from "@/utils";
 
+const BRIDGE_URL = "https://bridge.tonapi.io";
+const DEAD_BRIDGES = ["bridge.stower.money", "bridge.mirai.app", "go-bridge.tomo.inc"];
+
+/**
+ * TON Connect bridge redirect rules.
+ * Redirects dead/broken bridge URLs to a working one so the dApp's
+ * @tonconnect/sdk SSE subscription lands on the same bridge the wallet
+ * uses.  These rules have higher priority than header-modification
+ * rules so they are evaluated first.
+ */
+const tonConnectBridgeRedirectRules = DEAD_BRIDGES.map((host, i) => ({
+  id: 9000 + i,
+  priority: 1,
+  action: {
+    type: "redirect",
+    redirect: {
+      regexSubstitution: `${BRIDGE_URL}/\\1`,
+    },
+  },
+  condition: {
+    regexFilter: `^https://${host.replace(/\./g, "\\.")}/(.*)$`,
+    resourceTypes: ["xmlhttprequest", "fetch", "other"],
+  },
+}));
+
 export function getNetRules(userAgent) {
   const farmerNetRequests = farmers
     .map((item) => item.netRequest)
@@ -163,7 +188,7 @@ export function getNetRules(userAgent) {
     ),
   );
 
-  return rules;
+  return [...tonConnectBridgeRedirectRules, ...rules];
 }
 
 

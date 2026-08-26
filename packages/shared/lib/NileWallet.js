@@ -323,18 +323,91 @@ export default class NileWallet {
   }
 
   /**
-   * Live balance (in raw token units) for a Jetton wallet address,
-   * via tonapi.io's account balance endpoint.
+   * Live balance (in raw token units) for a Jetton wallet address.
+   * Uses tonapi.io's jetton balances endpoint keyed by the owner address,
+   * which returns the real token balance (not the contract's TON balance).
    * @param {string} jettonWalletAddress
+   * @param {string} [ownerAddress] the wallet owner — if omitted, derived from storage
    * @returns {Promise<string>} raw balance as decimal string
    */
-  async getJettonBalance(jettonWalletAddress) {
+  async getJettonBalance(jettonWalletAddress, ownerAddress, masterAddress) {
+    if (!ownerAddress) {
+      const wallet = await this.load();
+      ownerAddress = wallet?.address;
+    }
+    if (!ownerAddress) throw new Error("Owner address required for jetton balance");
+
+    const parsed = Address.parse(ownerAddress);
     const res = await fetch(
-      `https://tonapi.io/v2/accounts/${jettonWalletAddress}`,
+      `https://tonapi.io/v2/accounts/${parsed.toString()}/jettons`,
     );
     if (!res.ok) throw new Error(`Jetton balance failed ${res.status}`);
     const data = await res.json();
-    return String(data.balance || 0);
+    const jettons = data?.balances || data?.jettons || [];
+
+    let targetHash;
+    try {
+      targetHash = Address.parse(jettonWalletAddress).hash.toString("hex");
+    } catch {
+      targetHash = null;
+    }
+    let masterHash;
+    if (masterAddress) {
+      try {
+        masterHash = Address.parse(masterAddress).hash.toString("hex");
+      } catch {
+        masterHash = null;
+      }
+    }
+
+    for (const j of jettons) {
+      if (masterHash) {
+        const jMaster = j.jetton?.address || j.jetton_address || j.master_address;
+        if (jMaster) {
+          try {
+            if (Address.parse(jMaster).hash.toString("hex") === masterHash) {
+              return String(j.balance ?? j.amount ?? 0);
+            }
+          } catch { /* skip */ }
+        }
+      }
+      if (targetHash) {
+        const jWallet = j.wallet_address;
+        if (jWallet) {
+          try {
+            if (Address.parse(jWallet).hash.toString("hex") === targetHash) {
+              return String(j.balance ?? j.amount ?? 0);
+            }
+          } catch { /* skip */ }
+        }
+      }
+    }
+
+    if (targetHash) {
+      try {
+        const res2 = await fetch("https://toncenter.com/api/v3/runGetMethod", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            address: jettonWalletAddress,
+            method: "get_wallet_data",
+            stack: [],
+          }),
+        });
+        if (res2.ok) {
+          const d2 = await res2.json();
+          if (d2.exit_code === 0 && d2.stack) {
+            for (const item of d2.stack) {
+              if (item.type === "int" && item.value != null) {
+                return String(item.value);
+              }
+            }
+          }
+        }
+      } catch { /* fall through */ }
+    }
+
+    throw new Error("Jetton not found in account balances");
   }
 
   /** Format a raw token amount using the token's decimals. */
@@ -542,6 +615,8 @@ export default class NileWallet {
     if (jetton) {
       const jettonBalanceRaw = await this.getJettonBalance(
         jetton.jetton_wallet_address,
+        owner,
+        jetton.jetton_master_address,
       );
       const jettonBalance = BigInt(jettonBalanceRaw);
       if (jettonBalance < amountRaw) {
