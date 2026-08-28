@@ -11,8 +11,20 @@ export default function useBaseSettings(key, defaultValue, shared = false) {
     shared,
   );
 
-  /** Transform Value */
-  const settings = useMemo(() => ({ ...defaultValue, ...value }), [value]);
+  /** Transform Value — migrate old cloud/seeker IP to new server */
+  const settings = useMemo(() => {
+    const merged = { ...defaultValue, ...value };
+    if (merged.cloudServer === "http://51.20.74.111") {
+      merged.cloudServer = "http://16.16.57.87";
+      // Persist migration async
+      setTimeout(() => storeSettings(merged), 0);
+    }
+    if (merged.seekerServer === "http://51.20.74.111") {
+      merged.seekerServer = "http://16.16.57.87";
+      setTimeout(() => storeSettings(merged), 0);
+    }
+    return merged;
+  }, [value]);
 
   /** Update Settings */
   const updateSettings = useRefCallback(

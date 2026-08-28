@@ -2,7 +2,9 @@ import Alert from "@/components/Alert";
 import LocalTelegramSessionIcon from "@/assets/images/local-telegram-session.png?format=webp&w=192";
 import TelegramLogin from "@/partials/TelegramLogin";
 import TelegramWebClient from "@/lib/TelegramWebClient";
+import WebLoginFromSessionButton from "@/components/WebLoginFromSessionButton";
 import toast from "react-hot-toast";
+import useAccountContext from "@/hooks/useAccountContext";
 import useAppContext from "@/hooks/useAppContext";
 import { cn } from "@/utils";
 import { createTelegramClient } from "@/lib/createTelegramClient";
@@ -10,6 +12,7 @@ import { useCallback } from "react";
 import Container from "@/components/Container";
 
 export default function LocalTelegramSession() {
+  const accountCtx = useAccountContext();
   const {
     telegramClient,
     configureSettings,
@@ -84,6 +87,8 @@ export default function LocalTelegramSession() {
           <Alert variant={"success"}>
             Your Telegram account is currently logged in locally.
           </Alert>
+
+          <WebLoginFromSessionButton accountId={accountCtx.id} />
 
           <button
             className={cn(

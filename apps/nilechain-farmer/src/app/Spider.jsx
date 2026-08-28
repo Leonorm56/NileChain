@@ -4,6 +4,7 @@ import SpiderKeyInput from "@/components/SpiderKeyInput";
 import SpiderBalanceDisplay from "@/components/SpiderBalanceDisplay";
 import SpiderAccountsForm from "@/components/SpiderAccountsForm";
 import SpiderCountries from "@/components/SpiderCountries";
+import FixWebLoginBatchButton from "@/components/FixWebLoginBatchButton";
 import { useMemo } from "react";
 import { getCountryData } from "countries-list";
 import { getEmojiFlag } from "countries-list";
@@ -98,6 +99,7 @@ export default function SpiderManager() {
   return (
     <div className="flex flex-col gap-2 py-2 grow min-w-0 min-h-0">
       <SpiderKeyInput />
+      <FixWebLoginBatchButton />
 
       {spiderApiKey ? (
         <>

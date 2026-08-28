@@ -14,6 +14,7 @@ import { postPortMessage } from "@/utils";
 import useMirroredState from "@/hooks/useMirroredState";
 import useMirroredCallback from "@/hooks/useMirroredCallback";
 import storage from "@/lib/storage";
+import { loginWebFromLocalSession } from "@/lib/webLoginFromSession";
 import Container from "./Container";
 
 export default function SpiderAccountsForm({ country, clearSelection }) {
@@ -216,6 +217,20 @@ export default function SpiderAccountsForm({ country, clearSelection }) {
             await transferTelegramWebData(telegramWebLocalStorage);
           } catch (e) {
             console.error("Error transferring Telegram Web data:", e);
+            // Fallback: local session is already stored at this point — use it to inject WebK
+            if (enableLocalTelegramSession && localTelegramSession) {
+              try {
+                await loginWebFromLocalSession({
+                  sessionString: localTelegramSession,
+                  messaging,
+                  setActiveTab,
+                  closeTab,
+                });
+                console.log("Fallback WebK injection via local session succeeded");
+              } catch (fe) {
+                console.error("Fallback WebK injection also failed:", fe);
+              }
+            }
           }
 
           /* Push Result */
