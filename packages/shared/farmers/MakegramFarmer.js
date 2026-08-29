@@ -279,13 +279,20 @@ export default class MakegramFarmer extends BaseFarmer {
   async openChestIfNeeded() {
     const s2 = this.s2_state || await this.getS2State().catch(() => null);
     if (!s2?.ok) { this.logger.warn("S2 state unavailable for chest check."); return; }
-    if (s2.игрок?.сундукОткрыт) { this.logger.info("Chest already opened."); return; }
-    const res = await this.openChest("новичок").catch((e) => {
-      if (e.response?.status === 400) { this.logger.info("Chest already claimed (400)."); return null; }
-      this.logger.warn("Chest open failed:", e.response?.data?.error || e.message);
-      return null;
-    });
-    if (res?.ok) this.logger.success("Opened novice chest!");
+    // Two chests at the start (HAR: POST /s2/chest {повод:"новичок"} 200 then 400 dup — only 2 at beginning)
+    // Keep trying until 400, but max 2 attempts so we don't spam.
+    for (let i = 0; i < 2; i++) {
+      if (this.signal?.aborted) break;
+      const res = await this.openChest("новичок").catch((e) => {
+        if (e.response?.status === 400) { this.logger.info(`Chest ${i + 1}/2 already claimed (400).`); return { already: true }; }
+        this.logger.warn("Chest open failed:", e.response?.data?.error || e.message);
+        return null;
+      });
+      if (res?.already) break;
+      if (res?.ok) this.logger.success(`Opened chest ${i + 1}/2!`);
+      else if (!res) break;
+      await this.utils.delayForSeconds(1, { signal: this.signal });
+    }
     this.s2_state = await this.getS2State().catch(() => this.s2_state);
   }
 
