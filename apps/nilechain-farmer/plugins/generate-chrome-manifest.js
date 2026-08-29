@@ -25,12 +25,7 @@ function getCoreNetRules() {
     },
     condition: {
       regexFilter: `^https://${host.replace(/\./g, "\\.")}/(.*)$`,
-      resourceTypes: [
-        "xmlhttprequest",
-        "fetch",
-        "eventsource",
-        "other",
-      ],
+      resourceTypes: ["xmlhttprequest", "other"],
     },
   }));
 

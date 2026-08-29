@@ -195,13 +195,30 @@ export default class MakegramFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   async login() {
-    this.user_data = await this.getState();
-    if (!this.user_data?.ok) throw new Error(this.user_data?.msg || "Failed to load account");
-    // Also warm s2 state for season-2 fields (balance, склад, инструменты)
-    this.s2_state = await this.getS2State().catch(() => null);
+    // S2 is current season (HAR: GET /s2/state base64, POST /s2/flag etc). api/game/* is legacy and now 502.
+    this.s2_state = await this.getS2State().catch((e) => {
+      this.logger.warn("S2 state failed:", e.response?.status, e.response?.data || e.message);
+      return null;
+    });
     if (this.s2_state?.ok) {
       this.logger.info(`S2 balance: ${this.s2_state.баланс} | склад руда:${this.s2_state.склад?.руда} брёвна:${this.s2_state.склад?.брёвна} еда:${this.s2_state.склад?.еда}`);
+      // Keep legacy user_data for tap/claim (if still needed) but don't fail if 502
+      this.user_data = { ok: true, coins: this.s2_state.баланс, ...this.s2_state };
+    } else {
+      this.logger.warn("S2 state unavailable, trying legacy api/game/state...");
     }
+    // Legacy state (for tap/claim) — soft-fail, don't block s2 farming
+    try {
+      const legacy = await this.getState();
+      if (legacy?.ok) {
+        this.user_data = { ...this.user_data, ...legacy };
+        this.logger.info(`Legacy state ok: coins ${legacy.coins}`);
+      }
+    } catch (e) {
+      this.logger.warn(`Legacy api/game/state 502 (expected, using S2):`, e.response?.status || e.message);
+      if (!this.user_data?.ok) throw new Error("Both S2 and legacy state failed — check X-Init-Data");
+    }
+    if (!this.user_data?.ok && !this.s2_state?.ok) throw new Error("Failed to load account");
     return this.user_data;
   }
 
