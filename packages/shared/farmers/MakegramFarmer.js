@@ -633,6 +633,29 @@ export default class MakegramFarmer extends BaseFarmer {
       );
     }
 
+    // Complete active contracts that have enough warehouse
+    for (const c of active) {
+      if (this.signal?.aborted) break;
+      const склад = this.s2_state?.склад || this.s2_state?.состояние?.склад || {};
+      const have = Number(склад[c.товар] || 0);
+      if (have >= c.кол) {
+        this.logger.info(`Completing contract: ${c.товар}×${c.кол}...`);
+        const res = await this.post("s2/contracts/hand", {
+          контракт: c.номер,
+        }).catch((e) => {
+          this.logger.warn(`Contract complete failed:`, e.message);
+          return null;
+        });
+        if (res?.ok) {
+          this.logger.success(`Completed contract ${c.номер}: +${c.награда} reward`);
+          this.s2_state = await this.getState().catch(() => this.s2_state);
+          await this.flag().catch(() => {});
+          this.s2_contracts = await this.getContracts().catch(() => null);
+        }
+        await this.utils.delayForSeconds(2, { signal: this.signal });
+      }
+    }
+
     if (takenToday >= dailyLimit) {
       this.logger.info("Contracts: daily limit reached, skip.");
       return;
@@ -667,7 +690,7 @@ export default class MakegramFarmer extends BaseFarmer {
       this.logger.info(
         `Accepting contract ${contract.номер}: ${contract.товар}×${contract.кол} for ${contract.награда} (${contract.ступень}, ${contract.valuePerHour.toFixed(0)}/h)...`,
       );
-      const res = await this.post("s2/contracts/accept", {
+      const res = await this.post("s2/contracts/take", {
         номер: contract.номер,
       }).catch((e) => {
         if (e.response?.status === 400)
