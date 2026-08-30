@@ -1,17 +1,29 @@
 import BaseFarmer from "../lib/BaseFarmer.js";
 
 /**
- * Makegram — mgrmga.org (season 2)
+ * Makegram Season 2 — mgrmga.org/s2-2026
  *
  * Full farmer for https://api.mgrmga.org/s2/*
- * HAR: update.har (372, manual) + update2.har (212, NileCloud auto)
- * Auth: X-Init-Data (query_id + user + auth_date + signature + hash) + origin https://mgrmga.org
- * s2/state + s2/collect are base64-encoded JSON (Russian keys: баланс, склад, инструменты, вылазки, мойЛот, сезон)
+ * HAR: update.har (372), update2.har (212), ldjoeafklccnbigohkogkcelpkgaoaii.har (9)
+ * Auth: X-Init-Data header (query_id + user + auth_date + signature + hash) + Origin https://mgrmga.org
+ * State endpoint returns base64 or plain JSON (handled with tryDecode).
+ *
+ * API flow per cycle (HAR-verified):
+ *   state → flag → contracts → [collect → repair → start → market] → flag → contracts → ...
+ *
+ * Key findings from HAR:
+ *   - Webview: https://mgrmga.org/s2-2026/index.html
+ *   - Start expedition costs 8 food (топливо: 8)
+ *   - Contracts: 2/day limit, витрина (available) + мои (active)
+ *   - Market corridors: ore (медиана:1400, мин:840, макс:1960), logs (медиана:4088, мин:2452, макс:5724)
+ *   - flag = heartbeat ping (returns {ok, флаг, сетка: 16})
+ *   - repair returns empty 200 (no body)
+ *   - collect returns {ok, ресурс, добыто, состояние}
+ *   - sell 400 = corridor/dump protection
  */
 
 const API_URL = "https://api.mgrmga.org";
-const HITS_PER_SHIFT = 300;
-const HITS_TASK_GOAL = 300;
+const START_FOOD_COST = 8;
 
 export default class MakegramFarmer extends BaseFarmer {
   static id = "makegram";
@@ -20,12 +32,16 @@ export default class MakegramFarmer extends BaseFarmer {
   static host = "mgrmga.org";
   static domains = ["mgrmga.org", "api.mgrmga.org"];
   static telegramLink = "https://t.me/MGRMGA_bot?start=ref6627962056";
-  static path = "/";
+  static path = "/s2-2026/index.html";
   static referrerMode = "random";
   static singleton = true;
   static rating = 5;
   static cacheAuth = false;
   static interval = "*/10 * * * *";
+
+  /* --------------------------------------------------------------------- */
+  /* Auth                                                                  */
+  /* --------------------------------------------------------------------- */
 
   getReferralLink() {
     return `https://t.me/MGRMGA_bot?start=ref${this.getUserId()}`;
@@ -44,106 +60,89 @@ export default class MakegramFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   post(path, payload = {}) {
-    return this.api.post(`${API_URL}/${path}`, payload).then((res) => res.data);
+    return this.api.post(`${API_URL}/${path}`, payload).then((r) => r.data);
   }
 
   get(path, params = {}, config = {}) {
-    return this.api.get(`${API_URL}/${path}`, { params, ...config }).then((res) => res.data);
+    return this.api
+      .get(`${API_URL}/${path}`, { params, ...config })
+      .then((r) => r.data);
   }
 
-  getRef() {
-    const startParam = String(this.getStartParam() || "");
-    const digits = startParam.replace(/[^0-9]/g, "");
-    return digits || "";
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* API wrappers — legacy api/game/*                                      */
-  /* --------------------------------------------------------------------- */
-
-  getState() {
-    return this.post("api/game/state", { ref: this.getRef() });
-  }
-
-  tap(times, batch) {
-    return this.post("api/game/tap", {
-      times,
-      offsets: times.map(() => 0),
-      batch,
-      dev: this.getDeviceId(),
-    });
-  }
-
-  claim() {
-    return this.post("api/game/claim", {});
-  }
-
-  raketa(state) {
-    return this.post("api/game/raketa", { состояние: state });
-  }
-
-  getTop() {
-    return this.post("api/game/top", {});
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* API wrappers — s2/* (mgrmga season 2, HAR-verified)                    */
-  /* --------------------------------------------------------------------- */
-
-  // Base64 decode for s2/state + s2/collect
-  decodeS2Response(data) {
-    // Some s2 endpoints return base64 string as `data` or `text`
-    // If data is already an object with ok, return as-is. If it's a base64 string, decode.
-    if (typeof data === "string") {
+  /**
+   * Try to decode base64-encoded JSON responses (common in s2 endpoints).
+   */
+  tryDecode(data) {
+    if (!data) return data;
+    if (typeof data === "object" && data.ok !== undefined) return data;
+    if (typeof data === "string" && data.length > 50) {
       try {
-        const json = Buffer.from(data, "base64").toString("utf8");
-        return JSON.parse(json);
-      } catch (_) {
-        return data;
-      }
-    }
-    if (data && typeof data === "object" && typeof data.text === "string" && data.encoding === "base64") {
+        const decoded = JSON.parse(
+          Buffer.from(data, "base64").toString("utf8"),
+        );
+        if (decoded && typeof decoded === "object") return decoded;
+      } catch (_) {}
       try {
-        return JSON.parse(Buffer.from(data.text, "base64").toString("utf8"));
-      } catch (_) {
-        return data;
-      }
+        return JSON.parse(data);
+      } catch (_) {}
     }
     return data;
   }
 
-  async getS2State() {
+  /** GET with automatic base64 decode for s2 endpoints */
+  async apiGet(path, params = {}) {
     try {
-      const res = await this.api.get(`${API_URL}/s2/state`, { responseType: "text" }).then((r) => r.data);
-      // Try base64 decode if response is base64 string
-      if (typeof res === "string" && res.length > 100) {
-        try {
-          const decoded = JSON.parse(Buffer.from(res, "base64").toString("utf8"));
-          if (decoded && decoded.ok !== undefined) return decoded;
-        } catch (_) {}
-      }
-      if (res && res.ok !== undefined) return res;
-      return res;
+      const res = await this.api
+        .get(`${API_URL}/${path}`, { params, responseType: "text" })
+        .then((r) => r.data);
+      return this.tryDecode(res);
     } catch (e) {
-      // Fallback to JSON parsing via post-like handling
-      const data = e.response?.data;
-      if (typeof data === "string") {
-        try { return JSON.parse(Buffer.from(data, "base64").toString("utf8")); } catch (_) {}
-      }
+      const body = e.response?.data
+        ? JSON.stringify(e.response.data).slice(0, 400)
+        : e.message;
+      this.logger.warn(
+        `${path} failed [${e.response?.status || "no-status"}]: ${body}`,
+      );
       throw e;
     }
   }
 
-  async getS2Flag() {
+  /** POST with automatic base64 decode for s2 endpoints */
+  async apiPost(path, payload = {}) {
+    try {
+      const res = await this.api
+        .post(`${API_URL}/${path}`, payload, { responseType: "text" })
+        .then((r) => r.data);
+      return this.tryDecode(res);
+    } catch (e) {
+      const body = e.response?.data
+        ? JSON.stringify(e.response.data).slice(0, 300)
+        : e.message;
+      this.logger.warn(
+        `${path} failed [${e.response?.status || "no-status"}]: ${body}`,
+      );
+      throw e;
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* S2 API — HAR-verified endpoints                                        */
+  /* --------------------------------------------------------------------- */
+
+  async getState() {
+    return this.apiGet("s2/state");
+  }
+
+  async flag() {
     return this.post("s2/flag", {});
   }
 
-  async getS2Contracts() {
+  async getContracts() {
     return this.post("s2/contracts", {});
   }
 
-  async getS2Market(товар) {
-    return this.api.get(`${API_URL}/s2/market`, { params: { товар } }).then((res) => res.data);
+  async getMarket(товар) {
+    return this.get("s2/market", { товар });
   }
 
   async sellMarket(товар, кол, цена) {
@@ -159,23 +158,29 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   async startExpedition(инструмент, часов, точка = "ближняя") {
-    return this.post("s2/start", { инструмент: String(инструмент), часов, точка });
+    return this.post("s2/start", {
+      инструмент: String(инструмент),
+      часов,
+      точка,
+    });
   }
 
   async collectExpedition(вылазка) {
-    const res = await this.api.post(`${API_URL}/s2/collect`, { вылазка }, { responseType: "text" }).then((r) => r.data).catch((e) => { throw e; });
-    if (typeof res === "string" && res.length > 50) {
-      try { return JSON.parse(Buffer.from(res, "base64").toString("utf8")); } catch (_) { return res; }
-    }
-    return res;
+    const res = await this.api
+      .post(`${API_URL}/s2/collect`, { вылазка }, { responseType: "text" })
+      .then((r) => r.data)
+      .catch((e) => {
+        throw e;
+      });
+    return this.tryDecode(res);
   }
 
   async repairTool(предмет, hp) {
     return this.post("s2/repair", { предмет: String(предмет), hp });
   }
 
-  async getS2Tasks() {
-    return this.api.get(`${API_URL}/s2/tasks`).then((res) => res.data);
+  async getTasks() {
+    return this.apiGet("s2/tasks");
   }
 
   async openTask(код) {
@@ -190,119 +195,57 @@ export default class MakegramFarmer extends BaseFarmer {
     return this.post("s2/chest", { повод });
   }
 
+  async getVillageGifts() {
+    return this.get("s2/village/gifts");
+  }
+
   /* --------------------------------------------------------------------- */
-  /* Auth                                                                  */
+  /* Login — fetch state, flag, contracts                                  */
   /* --------------------------------------------------------------------- */
 
   async login() {
-    // S2 is current season (HAR: GET /s2/state base64, POST /s2/flag etc). api/game/* is legacy and now 502.
-    this.s2_state = await this.getS2State().catch((e) => {
-      this.logger.warn("S2 state failed:", e.response?.status, e.response?.data || e.message);
+    // 1. Get state
+    this.s2_state = await this.getState().catch((e) => {
+      const status = e.response?.status || "no-status";
+      this.logger.warn(`S2 state failed [${status}]`);
+      if (status === 401 || status === 403)
+        this.logger.warn("X-Init-Data expired — will refresh next run");
       return null;
     });
-    if (this.s2_state?.ok) {
-      this.logger.info(`S2 balance: ${this.s2_state.баланс} | склад руда:${this.s2_state.склад?.руда} брёвна:${this.s2_state.склад?.брёвна} еда:${this.s2_state.склад?.еда}`);
-      // Keep legacy user_data for tap/claim (if still needed) but don't fail if 502
-      this.user_data = { ok: true, coins: this.s2_state.баланс, ...this.s2_state };
-    } else {
-      this.logger.warn("S2 state unavailable, trying legacy api/game/state...");
-    }
-    // Legacy state (for tap/claim) — soft-fail, don't block s2 farming
-    try {
-      const legacy = await this.getState();
-      if (legacy?.ok) {
-        this.user_data = { ...this.user_data, ...legacy };
-        this.logger.info(`Legacy state ok: coins ${legacy.coins}`);
-      }
-    } catch (e) {
-      this.logger.warn(`Legacy api/game/state 502 (expected, using S2):`, e.response?.status || e.message);
-      if (!this.user_data?.ok) throw new Error("Both S2 and legacy state failed — check X-Init-Data");
-    }
-    if (!this.user_data?.ok && !this.s2_state?.ok) throw new Error("Failed to load account");
+    if (!this.s2_state?.ok)
+      throw new Error("S2 state failed — check X-Init-Data / proxy");
+
+    // 2. Flag heartbeat (always called after state in HAR)
+    await this.flag().catch(() => {});
+
+    // 3. Contracts (always called after flag in HAR)
+    this.s2_contracts = await this.getContracts().catch(() => null);
+
+    this.user_data = { ok: true, coins: this.s2_state.баланс, ...this.s2_state };
     return this.user_data;
   }
 
   /* --------------------------------------------------------------------- */
-  /* Subscription                                                          */
-  /* --------------------------------------------------------------------- */
-
-  async ensureSubscribed() {
-    const sub = this.user_data?.sub;
-    const links = this.user_data?.subLinks || {};
-    if (sub?.ok) { this.logger.info("Subscription satisfied."); return; }
-    const candidates = [
-      { link: links.channel, label: "channel" },
-      { link: links.chat, label: "chat" },
-    ];
-    for (const { link, label } of candidates) {
-      if (!link) continue;
-      const tme = link.startsWith("@") ? `https://t.me/${link.slice(1)}` : link;
-      if (this.validateTelegramTask(tme)) {
-        const joined = await this.tryToJoinTelegramLink(tme);
-        if (joined) this.logger.success(`Joined ${label}: ${link}`);
-        else this.logger.warn(`Could not join ${label}: ${link}`);
-      } else this.logger.warn(`No client to join ${label}: ${link}`);
-    }
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* Tapping                                                               */
-  /* --------------------------------------------------------------------- */
-
-  getDeviceId() {
-    if (!this.deviceId) {
-      const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-      let id = "";
-      const rng = this.getUserRandomGenerator();
-      for (let i = 0; i < 12; i++) id += alphabet[Math.floor(rng() * alphabet.length)];
-      this.deviceId = id;
-    }
-    return this.deviceId;
-  }
-
-  async tapUntilShiftDone() {
-    const state = this.user_data;
-    const perHit = Number(state?.perHit) || 20;
-    const shiftQuota = Number(state?.hitsPerShift) || HITS_PER_SHIFT;
-    const hits = Number(state?.hits) || 0;
-    let batchIndex = 1;
-    let shiftHits = hits;
-    while (shiftHits < shiftQuota && !this.signal?.aborted) {
-      const remaining = shiftQuota - shiftHits;
-      const count = Math.min(3, remaining);
-      const now = Date.now();
-      const times = Array.from({ length: count }, (_, i) => now + i * 60);
-      const result = await this.tap(times, `b${batchIndex}`).catch((error) => {
-        this.logger.warn("Tap not credited:", error.response?.data?.error || error.message);
-        return null;
-      });
-      if (!result?.ok) break;
-      const credited = Number(result.credited) || 0;
-      shiftHits += credited;
-      this.debugger.log("Tap result:", result);
-      if (result?.shift) { this.logger.success("Shift completed!"); break; }
-      await this.utils.delayForSeconds(2 + Math.floor(this.getUserRandomGenerator()() * 3), { signal: this.signal });
-      batchIndex++;
-    }
-    const gained = shiftHits - hits;
-    this.logger.success(`Tapped ${gained} hit(s) (+${gained * perHit} coins) - ${shiftHits}/${shiftQuota} this shift.`);
-    this.user_data = await this.getState().catch(() => this.user_data);
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* S2: Chest, Tasks, Collect, Repair, Start                            */
+  /* Chest                                                                 */
   /* --------------------------------------------------------------------- */
 
   async openChestIfNeeded() {
-    const s2 = this.s2_state || await this.getS2State().catch(() => null);
-    if (!s2?.ok) { this.logger.warn("S2 state unavailable for chest check."); return; }
-    // Two chests at the start (HAR: POST /s2/chest {повод:"новичок"} 200 then 400 dup — only 2 at beginning)
-    // Keep trying until 400, but max 2 attempts so we don't spam.
+    const s2 = this.s2_state;
+    if (!s2?.ok || s2.игрок?.сундукОткрыт) {
+      this.logger.info("Chest: already opened or no state.");
+      return;
+    }
     for (let i = 0; i < 2; i++) {
       if (this.signal?.aborted) break;
       const res = await this.openChest("новичок").catch((e) => {
-        if (e.response?.status === 400) { this.logger.info(`Chest ${i + 1}/2 already claimed (400).`); return { already: true }; }
-        this.logger.warn("Chest open failed:", e.response?.data?.error || e.message);
+        if (e.response?.status === 400) {
+          this.logger.info(`Chest ${i + 1}/2 already claimed (400).`);
+          return { already: true };
+        }
+        this.logger.warn(
+          "Chest open failed:",
+          e.response?.data?.error || e.message,
+        );
         return null;
       });
       if (res?.already) break;
@@ -310,12 +253,20 @@ export default class MakegramFarmer extends BaseFarmer {
       else if (!res) break;
       await this.utils.delayForSeconds(1, { signal: this.signal });
     }
-    this.s2_state = await this.getS2State().catch(() => this.s2_state);
+    this.s2_state = await this.getState().catch(() => this.s2_state);
+    await this.flag().catch(() => {});
   }
 
+  /* --------------------------------------------------------------------- */
+  /* Tasks — open then claim with delay (HAR-verified flow)                */
+  /* --------------------------------------------------------------------- */
+
   async handleTasks() {
-    const tasksRes = await this.getS2Tasks().catch((e) => {
-      this.logger.warn("Get tasks failed:", e.response?.data?.error || e.message);
+    const tasksRes = await this.getTasks().catch((e) => {
+      this.logger.warn(
+        "Get tasks failed:",
+        e.response?.data?.error || e.message,
+      );
       return null;
     });
     if (!tasksRes?.ok || !Array.isArray(tasksRes.задачи)) {
@@ -324,231 +275,535 @@ export default class MakegramFarmer extends BaseFarmer {
     }
     for (const task of tasksRes.задачи) {
       if (this.signal?.aborted) break;
-      // tasks have fields like код, done, claimed etc. (HAR: danjo-youtube, cryptogames_uz)
       const code = task.код || task.id || task.code;
       if (!code) continue;
       if (task.claimed || task.получен) continue;
-      // Try to open if not open
+
+      // Open first if not opened
       if (!task.opened && !task.открыт) {
         await this.openTask(code).catch(() => null);
         await this.utils.delayForSeconds(2, { signal: this.signal });
       }
+
+      // Claim — if 400, wait and retry once (HAR: toxic_x got 400 then 200)
       const claim = await this.claimTask(code).catch((e) => {
-        // 400 = not ready or already claimed — soft fail
-        this.logger.info(`Task ${code} claim: ${e.response?.status === 400 ? "not ready" : e.message}`);
+        if (e.response?.status === 400) return { notReady: true };
+        this.logger.warn(`Task ${code} claim error:`, e.message);
         return null;
       });
-      if (claim?.ok) this.logger.success(`Claimed task ${code}: +${claim.награда || "?"} reward`);
+      if (claim?.notReady) {
+        // Wait and retry once (some tasks need time after open)
+        await this.utils.delayForSeconds(5, { signal: this.signal });
+        const retry = await this.claimTask(code).catch(() => null);
+        if (retry?.ok)
+          this.logger.success(
+            `Claimed task ${code}: +${retry.награда || "?"} reward`,
+          );
+      } else if (claim?.ok) {
+        this.logger.success(
+          `Claimed task ${code}: +${claim.награда || "?"} reward`,
+        );
+      }
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
   }
 
+  /* --------------------------------------------------------------------- */
+  /* Village Gifts                                                         */
+  /* --------------------------------------------------------------------- */
+
+  async handleVillageGifts() {
+    const res = await this.getVillageGifts().catch((e) => {
+      this.logger.warn(
+        "Village gifts failed:",
+        e.response?.data?.error || e.message,
+      );
+      return null;
+    });
+    if (!res?.ok) {
+      this.logger.info("Village gifts: no data.");
+      return;
+    }
+    const gifts = Array.isArray(res.подарки) ? res.подарки : [];
+    if (gifts.length === 0) {
+      this.logger.info("Village gifts: none pending.");
+      return;
+    }
+    this.logger.info(
+      `Village gifts: ${gifts.length} pending (min ${res.минимум}, limit ${res.лимитСуток})`,
+    );
+    for (const gift of gifts) {
+      this.logger.info(`  Gift: ${JSON.stringify(gift).slice(0, 150)}`);
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Collect — gather finished expeditions                                 */
+  /* --------------------------------------------------------------------- */
+
   async collectExpeditions() {
-    const s2 = this.s2_state || await this.getS2State().catch(() => null);
+    const s2 = this.s2_state;
     if (!s2?.ok || !Array.isArray(s2.вылазки)) return;
     const ready = s2.вылазки.filter((v) => v.готово);
-    if (ready.length === 0) { this.logger.info("No expeditions ready to collect."); return; }
+    if (ready.length === 0) {
+      this.logger.info("No expeditions ready to collect.");
+      return;
+    }
     for (const exp of ready) {
       if (this.signal?.aborted) break;
       const res = await this.collectExpedition(exp.id).catch((e) => {
-        this.logger.warn(`Collect ${exp.id} failed:`, e.response?.data?.error || e.message);
+        this.logger.warn(
+          `Collect ${exp.id} failed:`,
+          e.response?.data?.error || e.message,
+        );
         return null;
       });
       if (res?.ok) {
-        this.logger.success(`Collected ${exp.id}: ${res.ресурс} +${res.добыто} (еда bonus)`);
-        this.s2_state = res.состояние || await this.getS2State().catch(() => this.s2_state);
+        this.logger.success(
+          `Collected ${exp.id}: ${res.ресурс} +${res.добыто}`,
+        );
+        if (res.состояние?.ok) {
+          this.s2_state = res.состояние;
+          await this.flag().catch(() => {});
+        } else {
+          this.s2_state = await this.getState().catch(() => this.s2_state);
+          await this.flag().catch(() => {});
+        }
       }
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
   }
 
+  /* --------------------------------------------------------------------- */
+  /* Repair — fix tools below 40 hp (HAR: repair uses hp_макс - hp)       */
+  /* --------------------------------------------------------------------- */
+
   async repairTools() {
-    const s2 = this.s2_state || await this.getS2State().catch(() => null);
+    const s2 = this.s2_state;
     if (!s2?.ok || !Array.isArray(s2.инструменты)) return;
     for (const tool of s2.инструменты) {
       if (this.signal?.aborted) break;
-      if (tool.hp >= 40) continue;
-      // HAR: repair with hp = hp_макс - hp (e.g., 17 for 23→40, 4 for 36→40) update2.har:1668
       const need = (tool.hp_макс || 40) - tool.hp;
       if (need <= 0) continue;
-      this.logger.info(`Repairing ${tool.тип} ${tool.id} hp ${tool.hp}→${tool.hp_макс} (need ${need})`);
-      const res = await this.repairTool(tool.id, need).catch((e) => {
-        this.logger.warn(`Repair ${tool.id} failed:`, e.response?.data?.error || e.message);
+      this.logger.info(
+        `Repairing ${tool.тип} ${tool.id} hp ${tool.hp}→${tool.hp_макс} (need ${need})`,
+      );
+      await this.repairTool(tool.id, need).catch((e) => {
+        this.logger.warn(
+          `Repair ${tool.id} failed:`,
+          e.response?.data?.error || e.message,
+        );
+      });
+      // Refresh state after repair (resources consumed)
+      this.s2_state = await this.getState().catch(() => this.s2_state);
+      await this.flag().catch(() => {});
+      const sklad = this.s2_state?.склад;
+      if (sklad)
+        this.logger.info(
+          `After repair: руда:${sklad.руда} брёвна:${sklad.брёвна} еда:${sklad.еда}`,
+        );
+      await this.utils.delayForSeconds(2, { signal: this.signal });
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Start — send idle tools on expeditions (8 food each, 4h near)        */
+  /* --------------------------------------------------------------------- */
+
+  async startExpeditions() {
+    const s2 = this.s2_state;
+    if (!s2?.ok || !Array.isArray(s2.инструменты)) {
+      this.logger.warn("Start: no state or tools, skip.");
+      return;
+    }
+
+    const idle = s2.инструменты.filter(
+      (t) =>
+        !t.занят_до || t.занят_до === 0 || t.занят_до < Date.now(),
+    );
+    if (idle.length === 0) {
+      this.logger.info("All tools busy, skip start.");
+      return;
+    }
+
+    const food = Number(s2.склад?.еда || 0);
+    this.logger.info(
+      `Start check: ${idle.length} idle tools, food: ${food} (need ${START_FOOD_COST} each)`,
+    );
+    if (food < START_FOOD_COST) {
+      this.logger.info(
+        `Not enough food (${food}) to start (need ${START_FOOD_COST}), skip.`,
+      );
+      return;
+    }
+
+    for (const tool of idle) {
+      if (this.signal?.aborted) break;
+      if (tool.hp <= 2) {
+        this.logger.info(`Skip start ${tool.id}: hp too low (${tool.hp})`);
+        continue;
+      }
+
+      // Re-check food before each start
+      const curFood = Number(this.s2_state?.склад?.еда ?? 0);
+      if (curFood < START_FOOD_COST) {
+        this.logger.info(
+          `Not enough food (${curFood}) for next tool, stop.`,
+        );
+        break;
+      }
+
+      this.logger.info(
+        `Starting ${tool.тип} ${tool.id} (hp ${tool.hp}/${tool.hp_макс}, food ${curFood})...`,
+      );
+      const res = await this.startExpedition(tool.id, 4, "ближняя").catch(
+        (e) => {
+          if (e.response?.status === 400) {
+            this.logger.info(`Start ${tool.id} busy (400)`);
+            return null;
+          }
+          this.logger.warn(`Start ${tool.id} failed:`, e.message);
+          return null;
+        },
+      );
+
+      if (res?.ok !== false && res !== null) {
+        const fuel = res?.топливо || START_FOOD_COST;
+        this.logger.success(
+          `Started ${tool.тип} ${tool.id} 4h (fuel: ${fuel})`,
+        );
+        // Update state
+        if (res.состояние?.ok) {
+          this.s2_state = res.состояние;
+        } else {
+          this.s2_state = await this.getState().catch(() => this.s2_state);
+        }
+        await this.flag().catch(() => {});
+      }
+      await this.utils.delayForSeconds(3, { signal: this.signal });
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Market — sell ore and logs using corridor pricing                     */
+  /* --------------------------------------------------------------------- */
+
+  async handleMarket() {
+    const s2 = this.s2_state;
+    if (!s2?.ok) {
+      this.logger.warn("Market: no state, skip.");
+      return;
+    }
+
+    const склад = s2.склад || {};
+    let pending = Array.isArray(s2.мойЛот) ? s2.мойЛот.length : 0;
+    this.logger.info(
+      `Market: руда:${склад.руда || 0} брёвна:${склад.брёвна || 0} еда:${склад.еда || 0} | lots ${pending}/10`,
+    );
+    if (pending >= 10) {
+      this.logger.info("Market: 10 pending lots (max), skip.");
+      return;
+    }
+
+    // --- ORE ---
+    const ore = Number(склад.руда || 0);
+    if (ore > 0 && pending < 10) {
+      const oreMarket = await this.getMarket("руда").catch(() => null);
+      const corridor = oreMarket?.коридор;
+      const lots = oreMarket?.лоты || [];
+
+      const median = Number(corridor?.медиана || 1400);
+      const мин = Number(corridor?.мин || 840);
+      const макс = Number(corridor?.макс || 1960);
+
+      // Price: slightly below median, but above lowest ask
+      let price = Math.floor(median * 0.9);
+      price = Math.max(мин, Math.min(макс, price));
+
+      if (lots.length > 0) {
+        const lowestAsk = Math.min(
+          ...lots.map((l) => Number(l.цена) || Infinity),
+        );
+        if (lowestAsk !== Infinity && price <= lowestAsk) {
+          price = lowestAsk + 1;
+        }
+      }
+
+      // Sell 5 ore per session
+      const sellQty = Math.min(5, ore);
+      this.logger.info(
+        `Selling ore ${sellQty}×${price} (have ${ore}, median ${median})`,
+      );
+
+      const res = await this.sellMarket("руда", sellQty, price).catch((e) => {
+        if (e.response?.status === 400)
+          this.logger.info(`Sell ore rejected (400 corridor).`);
+        else this.logger.warn("Sell ore failed:", e.message);
         return null;
       });
-      if (res?.ok || res === null || res === undefined) {
-        // 200 empty is success — refresh state to see new hp and склад扣除
-        this.s2_state = await this.getS2State().catch(() => this.s2_state);
-        // руда/брёвна consumed — log new склад
-        if (this.s2_state?.склад) this.logger.info(`After repair склад руда:${this.s2_state.склад.руда} брёвна:${this.s2_state.склад.брёвна}`);
+
+      if (res?.ok) {
+        this.logger.success(`Listed ore ${sellQty}×${price}`);
+        pending++;
+        this.s2_state = await this.getState().catch(() => this.s2_state);
+        await this.flag().catch(() => {});
+        pending = Array.isArray(this.s2_state?.мойЛот)
+          ? this.s2_state.мойЛот.length
+          : pending;
+      }
+      await this.utils.delayForSeconds(2, { signal: this.signal });
+    } else if (ore === 0) {
+      this.logger.info("Market: no ore to sell.");
+    }
+
+    // --- LOGS ---
+    const logs = Number(склад.брёвна || 0);
+    if (logs > 0 && pending < 10) {
+      const logsMarket = await this.getMarket("брёвна").catch(() => null);
+      const corridor = logsMarket?.коридор;
+      const lots = logsMarket?.лоты || [];
+
+      const median = Number(corridor?.медиана || 4088);
+      const мин = Number(corridor?.мин || 2452);
+      const макс = Number(corridor?.макс || 5724);
+
+      let price = Math.floor(median * 0.9);
+      price = Math.max(мин, Math.min(макс, price));
+
+      if (lots.length > 0) {
+        const lowestAsk = Math.min(
+          ...lots.map((l) => Number(l.цена) || Infinity),
+        );
+        if (lowestAsk !== Infinity && price <= lowestAsk) {
+          price = lowestAsk + 1;
+        }
+      }
+
+      // Sell 5 logs per session
+      const sellQty = Math.min(5, logs);
+      this.logger.info(`Selling logs ${sellQty}×${price} (have ${logs})`);
+
+      const res = await this
+        .sellMarket("брёвна", sellQty, price)
+        .catch((e) => {
+          if (e.response?.status === 400)
+            this.logger.info(`Sell logs rejected (400 corridor).`);
+          else this.logger.warn("Sell logs failed:", e.message);
+          return null;
+        });
+
+      if (res?.ok) {
+        this.logger.success(`Listed logs ${sellQty}×${price}`);
+        pending++;
+        this.s2_state = await this.getState().catch(() => this.s2_state);
+        await this.flag().catch(() => {});
+        pending = Array.isArray(this.s2_state?.мойЛот)
+          ? this.s2_state.мойЛот.length
+          : pending;
+      }
+      await this.utils.delayForSeconds(2, { signal: this.signal });
+    } else if (logs === 0) {
+      this.logger.info("Market: no logs to sell.");
+    }
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Contracts — accept available ones (2/day limit)                       */
+  /* --------------------------------------------------------------------- */
+
+  async handleContracts() {
+    const contracts = this.s2_contracts;
+    if (!contracts?.ok) {
+      this.logger.info("Contracts: no data.");
+      return;
+    }
+
+    const available = contracts.витрина || [];
+    const active = contracts.мои || [];
+    const takenToday = contracts.взятоЗаСутки || 0;
+    const dailyLimit = contracts.вСутки || 2;
+
+    this.logger.info(
+      `Contracts: ${active.length} active, ${takenToday}/${dailyLimit} taken today, ${available.length} available`,
+    );
+
+    if (active.length > 0) {
+      this.logger.info(
+        `Active contracts: ${active.map((c) => `${c.товар}×${c.кол} (${c.ступень})`).join(", ")}`,
+      );
+    }
+
+    if (takenToday >= dailyLimit) {
+      this.logger.info("Contracts: daily limit reached, skip.");
+      return;
+    }
+
+    if (available.length === 0) {
+      this.logger.info("Contracts: none available.");
+      return;
+    }
+
+    // Accept best value contract (highest reward per hour, if we have resources)
+    const склад = this.s2_state?.склад || {};
+    const sorted = available
+      .map((c) => ({
+        ...c,
+        valuePerHour: c.награда / c.часов,
+      }))
+      .sort((a, b) => b.valuePerHour - a.valuePerHour);
+
+    for (const contract of sorted) {
+      if (this.signal?.aborted) break;
+      if (takenToday >= dailyLimit) break;
+
+      const have = Number(склад[contract.товар] || 0);
+      if (have < contract.кол) {
+        this.logger.info(
+          `Contract ${contract.номер}: ${contract.товар}×${contract.кол} — need ${contract.кол - have} more (have ${have}), skip.`,
+        );
+        continue;
+      }
+
+      this.logger.info(
+        `Accepting contract ${contract.номер}: ${contract.товар}×${contract.кол} for ${contract.награда} (${contract.ступень}, ${contract.valuePerHour.toFixed(0)}/h)...`,
+      );
+      const res = await this.post("s2/contracts/accept", {
+        номер: contract.номер,
+      }).catch((e) => {
+        if (e.response?.status === 400)
+          this.logger.info(`Contract ${contract.номер} accept rejected (400).`);
+        else
+          this.logger.warn(
+            `Contract accept failed:`,
+            e.response?.data?.error || e.message,
+          );
+        return null;
+      });
+
+      if (res?.ok) {
+        this.logger.success(
+          `Accepted contract ${contract.номер}: ${contract.товар}×${contract.кол} → ${contract.награда}`,
+        );
+        this.s2_state = await this.getState().catch(() => this.s2_state);
+        await this.flag().catch(() => {});
+        this.s2_contracts = await this.getContracts().catch(() => null);
       }
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
   }
 
-  async startExpeditions() {
-    const s2 = this.s2_state || await this.getS2State().catch(() => null);
-    if (!s2?.ok || !Array.isArray(s2.инструменты)) return;
-    const idle = s2.инструменты.filter((t) => !t.занят_до || t.занят_до === 0 || t.занят_до < Date.now());
-    if (idle.length === 0) { this.logger.info("All tools busy, skip start."); return; }
-    // Check food for cost (еда 15→6 after start in update2.har) — ensure enough еда
-    const food = Number(s2.склад?.еда || 0);
-    if (food < 6) { this.logger.info(`Not enough food (${food}) to start expedition, skip.`); return; }
-    for (const tool of idle) {
+  /* --------------------------------------------------------------------- */
+  /* Cancel old/stale market lots                                          */
+  /* --------------------------------------------------------------------- */
+
+  async cancelStaleLots() {
+    const s2 = this.s2_state;
+    if (!s2?.ok || !Array.isArray(s2.мойЛот)) return;
+    const staleThreshold = Date.now() - 3600_000; // older than 1 hour
+    const stale = s2.мойЛот.filter((lot) => lot.created < staleThreshold);
+    if (stale.length === 0) return;
+
+    this.logger.info(`Cancelling ${stale.length} stale market lots...`);
+    for (const lot of stale) {
       if (this.signal?.aborted) break;
-      if (tool.hp <= 5) { this.logger.info(`Skip start ${tool.id} low hp ${tool.hp}`); continue; }
-      const res = await this.startExpedition(tool.id, 4, "ближняя").catch((e) => {
-        if (e.response?.status === 400) { this.logger.info(`Start ${tool.id} busy (400), skip.`); return null; }
-        this.logger.warn(`Start ${tool.id} failed:`, e.response?.data?.error || e.message);
-        return null;
-      });
-      if (res?.ok !== false) {
-        this.logger.success(`Started expedition with ${tool.тип} ${tool.id} 4ч ближняя`);
-        this.s2_state = await this.getS2State().catch(() => this.s2_state);
-      }
-      await this.utils.delayForSeconds(3, { signal: this.signal });
-      // Only start one per cycle to avoid duplicate 400 (HAR shows duplicate start 400)
-      break;
+      await this.cancelMarket(lot.id).catch(() => {});
+      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
+    this.s2_state = await this.getState().catch(() => this.s2_state);
+    await this.flag().catch(() => {});
   }
 
   /* --------------------------------------------------------------------- */
-  /* S2: Market — sell after repair, ore quarter 10% less, logs 3215 1-5, food skip, ≤10 pending */
+  /* Process — main farming loop                                          */
   /* --------------------------------------------------------------------- */
-
-  async handleMarket() {
-    const s2 = this.s2_state || await this.getS2State().catch(() => null);
-    if (!s2?.ok) return;
-    const склад = s2.склад || {};
-    let pending = Array.isArray(s2.мойЛот) ? s2.мойЛот.length : 0;
-    if (pending >= 10) { this.logger.info(`Market: ${pending} pending sales (max 10), skip sell.`); return; }
-
-    // Food never sold
-    // Logs fixed 3215, 1-5 per order — HAR logs 3215 near lowestAsk 3214
-    const logs = Number(склад.брёвна || 0);
-    if (logs > 0 && pending < 10) {
-      let remaining = logs;
-      while (remaining > 0 && pending < 10 && !this.signal?.aborted) {
-        const кол = Math.min(1 + Math.floor(Math.random() * 5), remaining); // 1-5
-        const res = await this.sellMarket("брёвна", кол, 3215).catch((e) => {
-          if (e.response?.status === 400) this.logger.info(`Sell logs ${кол}×3215 rejected (400 corridor).`);
-          else this.logger.warn(`Sell logs failed:`, e.message);
-          return null;
-        });
-        if (res?.ok) {
-          this.logger.success(`Listed logs ${кол}×3215 (pending ${pending + 1}/10)`);
-          pending++;
-          this.s2_state = await this.getS2State().catch(() => this.s2_state);
-          pending = Array.isArray(this.s2_state?.мойЛот) ? this.s2_state.мойЛот.length : pending;
-        } else break; // stop on 400
-        remaining -= кол;
-        if (remaining <= 0) break;
-        await this.utils.delayForSeconds(2, { signal: this.signal });
-        // Only one batch of logs per cycle (avoid spamming 10 lots at once) — match HAR single sell per cycle
-        break;
-      }
-    }
-
-    // Ore: quarter of what we own at 10% less than median, batches of 5
-    // Need market median to compute 10% less. Fetch market for руда to get коридор.
-    const oreTotal = Number(склад.руда || 0);
-    if (oreTotal > 0 && pending < 10) {
-      let oreMarket = null;
-      try { oreMarket = await this.getS2Market("руда"); } catch (_) {}
-      const median = Number(oreMarket?.коридор?.медиана || 1400);
-      const мин = Number(oreMarket?.коридор?.мин || 840);
-      const макс = Number(oreMarket?.коридор?.макс || 1960);
-      let price = Math.floor(median * 0.9); // 10% less
-      price = Math.max(мин, Math.min(макс, price));
-      // Ensure ≥ lowestAsk+4 if lots exist
-      if (Array.isArray(oreMarket?.лоты) && oreMarket.лоты.length > 0) {
-        const lowestAsk = Math.min(...oreMarket.лоты.map((l) => Number(l.цена) || Infinity));
-        if (lowestAsk !== Infinity && price < lowestAsk + 4) price = lowestAsk + 4;
-      }
-      const quarter = Math.floor(oreTotal / 4);
-      if (quarter > 0) {
-        let remaining = quarter;
-        while (remaining > 0 && pending < 10 && !this.signal?.aborted) {
-          const кол = Math.min(5, remaining);
-          const res = await this.sellMarket("руда", кол, price).catch((e) => {
-            if (e.response?.status === 400) this.logger.info(`Sell ore ${кол}×${price} rejected (400).`);
-            else this.logger.warn(`Sell ore failed:`, e.message);
-            return null;
-          });
-          if (res?.ok) {
-            this.logger.success(`Listed ore ${кол}×${price} (quarter ${quarter}/${oreTotal}, pending ${pending + 1}/10)`);
-            pending++;
-            this.s2_state = await this.getS2State().catch(() => this.s2_state);
-            pending = Array.isArray(this.s2_state?.мойЛот) ? this.s2_state.мойЛот.length : pending;
-          } else break;
-          remaining -= кол;
-          await this.utils.delayForSeconds(2, { signal: this.signal });
-          break; // one batch per cycle
-        }
-      }
-    }
-
-    // Other goods (слитки, доски, пайки) — not specified, skip unless surplus
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* Process                                                               */
-  /* --------------------------------------------------------------------- */
-
-  async claimRewards() {
-    const claimResult = await this.claim().catch((e) => {
-      this.logger.warn("Claim failed:", e.response?.data?.error || e.message);
-      return null;
-    });
-    if (claimResult?.ok) {
-      const earned = Number(claimResult.начислено) || 0;
-      if (earned > 0) this.logger.success(`Claimed ${earned} coins from mining reward.`);
-      else this.logger.info(`Mining claim: ${claimResult.состояние?.причина || "not ready"}.`);
-    }
-    const rocketResult = await this.raketa(true).catch((e) => {
-      this.logger.warn("Raketa failed:", e.response?.data?.error || e.message);
-      return null;
-    });
-    if (rocketResult?.ok) {
-      if (rocketResult.сделано) this.logger.success(`Raketa claimed! +${rocketResult.награда} coins.`);
-      else if (rocketResult.получил) this.logger.info(`Raketa already claimed.`);
-      else this.logger.info(`Raketa not claimable (need level ${rocketResult.уровеньЗа}).`);
-    }
-  }
 
   async process() {
+    // 1. Login (state + flag + contracts)
     await this.login();
     await this.logUserInfo();
-    await this.executeTask("Subscription", () => this.ensureSubscribed());
+
+    // 2. Chest
     await this.executeTask("Chest", () => this.openChestIfNeeded());
+
+    // 3. Tasks
     await this.executeTask("Tasks", () => this.handleTasks());
+
+    // 4. Village Gifts
+    await this.executeTask("Village Gifts", () => this.handleVillageGifts());
+
+    // 5. Contracts
+    await this.executeTask("Contracts", () => this.handleContracts());
+
+    // 6. Collect finished expeditions
     await this.executeTask("Collect", () => this.collectExpeditions());
+
+    // 7. Repair damaged tools
     await this.executeTask("Repair", () => this.repairTools());
+
+    // 8. Market — sell resources
     await this.executeTask("Market", () => this.handleMarket());
-    await this.executeTask("Expedition", () => this.startExpeditions());
-    await this.executeTask("Claim", () => this.claimRewards());
-    await this.executeTask("Tapping", () => this.tapUntilShiftDone());
+
+    // 9. Cancel stale lots
+    await this.executeTask("Cancel Lots", () => this.cancelStaleLots());
+
+    // 10. Start new expeditions (must be last — needs food/resources)
+    await this.executeTask("Start Expedition", () => this.startExpeditions());
+
+    // 11. Final flag + contracts refresh
+    await this.flag().catch(() => {});
+    this.s2_contracts = await this.getContracts().catch(() => null);
   }
 
+  /* --------------------------------------------------------------------- */
+  /* Logging                                                               */
+  /* --------------------------------------------------------------------- */
+
   async logUserInfo() {
-    const user = this.user_data;
     this.logger.newline();
     this.logCurrentUser();
-    this.logger.keyValue("Balance", user.coins);
-    this.logger.keyValue("Mined", user.mined);
-    this.logger.keyValue("Per Hit", user.perHit);
-    this.logger.keyValue("Pick", user.pick);
-    this.logger.keyValue("Hits", `${user.hits}/${user.hitsPerShift ?? HITS_PER_SHIFT}`);
-    this.logger.keyValue("Today", `${user.dayCoins ?? 0} coin(s)`);
-    const task = (user.tasks || []).find((t) => t.id === "hits");
-    if (task && task.ready && !task.claimed) this.logger.info("Hit task ready to claim (300 hits).");
-    // S2 info if available
     if (this.s2_state?.ok) {
-      this.logger.keyValue("S2 Balance", this.s2_state.баланс);
-      this.logger.keyValue("S2 Cold", this.s2_state.холодные);
-      this.logger.keyValue("Warehouse", `руда:${this.s2_state.склад?.руда} брёвна:${this.s2_state.склад?.брёвна} еда:${this.s2_state.склад?.еда}`);
-      this.logger.keyValue("Tools", (this.s2_state.инструменты || []).map((t) => `${t.тип} ${t.hp}/${t.hp_макс}${t.занят_до ? " busy" : ""}`).join(", "));
-      this.logger.keyValue("Pending Lots", `${(this.s2_state.мойЛот || []).length}/10`);
+      const s = this.s2_state;
+      this.logger.keyValue("Balance", `${s.баланс} (cold: ${s.холодные})`);
+      this.logger.keyValue(
+        "Warehouse",
+        `ore:${s.склад?.руда || 0} logs:${s.склад?.брёвна || 0} food:${s.склад?.еда || 0}`,
+      );
+      this.logger.keyValue(
+        "Tools",
+        (s.инструменты || [])
+          .map(
+            (t) =>
+              `${t.тип} ${t.id} hp:${t.hp}/${t.hp_макс}${t.занят_до ? ` busy→${new Date(t.занят_до).toLocaleTimeString()}` : " idle"}`,
+          )
+          .join(", "),
+      );
+      this.logger.keyValue(
+        "Expeditions",
+        (s.вылазки || []).length > 0
+          ? (s.вылазки || [])
+              .map(
+                (v) =>
+                  `${v.зона}/${v.точка} tool:${v.инструмент} ${v.часов}h ${v.готово ? "READY" : `${Math.ceil((v.осталось || 0) / 3600000)}h left`}`,
+              )
+              .join(", ")
+          : "none",
+      );
+      this.logger.keyValue(
+        "Market Lots",
+        `${(s.мойЛот || []).length}/10`,
+      );
+      this.logger.keyValue(
+        "Season",
+        `${s.сезон?.эмодзи || ""} ${s.сезон?.имя || "?"} day ${s.сезон?.деньСезона || "?"}/${s.сезон?.дней || "?"}`,
+      );
+      if (this.s2_contracts?.ok) {
+        this.logger.keyValue(
+          "Contracts",
+          `${(this.s2_contracts.мои || []).length} active, ${(this.s2_contracts.взятоЗаСутки || 0)}/${this.s2_contracts.вСутки || 2} today`,
+        );
+      }
+    } else {
+      this.logger.keyValue("Balance", this.user_data?.coins ?? "—");
     }
     this.logger.newline();
   }
@@ -558,24 +813,98 @@ export default class MakegramFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   createTools() {
-    return [
+    const baseList = [
       {
-        name: "Mining",
-        list: [
-          { id: "tap", icon: "refresh", title: "Tap Now", action: this.tapUntilShiftDone.bind(this), dispatch: false },
-        ],
+        id: "chest",
+        icon: "gift",
+        title: "Open Chest",
+        action: this.openChestIfNeeded.bind(this),
+        dispatch: false,
       },
       {
-        name: "Season 2",
-        list: [
-          { id: "chest", icon: "gift", title: "Open Chest", action: this.openChestIfNeeded.bind(this), dispatch: false },
-          { id: "tasks", icon: "tasks", title: "Complete Tasks", action: this.handleTasks.bind(this), dispatch: false },
-          { id: "collect", icon: "download", title: "Collect Expeditions", action: this.collectExpeditions.bind(this), dispatch: false },
-          { id: "repair", icon: "wrench", title: "Repair Tools", action: this.repairTools.bind(this), dispatch: false },
-          { id: "market", icon: "shop", title: "Market Sell", action: this.handleMarket.bind(this), dispatch: false },
-          { id: "start", icon: "play", title: "Start Expedition", action: this.startExpeditions.bind(this), dispatch: false },
-        ],
+        id: "tasks",
+        icon: "tasks",
+        title: "Complete Tasks",
+        action: this.handleTasks.bind(this),
+        dispatch: false,
+      },
+      {
+        id: "village",
+        icon: "village",
+        title: "Village Gifts",
+        action: this.handleVillageGifts.bind(this),
+        dispatch: false,
+      },
+      {
+        id: "contracts",
+        icon: "tasks",
+        title: "Accept Contracts",
+        action: this.handleContracts.bind(this),
+        dispatch: false,
+      },
+      {
+        id: "collect",
+        icon: "download",
+        title: "Collect Expeditions",
+        action: this.collectExpeditions.bind(this),
+        dispatch: false,
+      },
+      {
+        id: "repair",
+        icon: "wrench",
+        title: "Repair Tools",
+        action: this.repairTools.bind(this),
+        dispatch: false,
+      },
+      {
+        id: "market",
+        icon: "shop",
+        title: "Market Sell",
+        action: this.handleMarket.bind(this),
+        dispatch: false,
+      },
+      {
+        id: "start",
+        icon: "play",
+        title: "Start Expedition",
+        action: this.startExpeditions.bind(this),
+        dispatch: false,
       },
     ];
+
+    // Per-tool start buttons for idle tools
+    const tools = this.s2_state?.инструменты || [];
+    const perTool = tools
+      .filter(
+        (t) =>
+          !t.занят_до || t.занят_до === 0 || t.занят_до < Date.now(),
+      )
+      .slice(0, 4)
+      .map((tool) => ({
+        id: `start-${tool.id}`,
+        icon: "play",
+        title: `Start ${tool.тип} ${tool.id} (hp ${tool.hp}/${tool.hp_макс})`,
+        action: async () => {
+          const res = await this.startExpedition(tool.id, 4, "ближняя").catch(
+            (e) => {
+              if (e.response?.status === 400)
+                this.logger.info(`Start ${tool.id} busy (400)`);
+              else this.logger.warn(`Start ${tool.id} failed:`, e.message);
+              return null;
+            },
+          );
+          if (res?.ok !== false && res !== null)
+            this.logger.success(`Started ${tool.тип} ${tool.id}`);
+        },
+        dispatch: false,
+      }));
+
+    if (perTool.length > 0) {
+      return [
+        { name: "Season 2", list: baseList },
+        { name: "Tools — Start & Claim", list: perTool },
+      ];
+    }
+    return [{ name: "Season 2", list: baseList }];
   }
 }

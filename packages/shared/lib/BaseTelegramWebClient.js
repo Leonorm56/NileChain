@@ -24,6 +24,9 @@ export default class BaseTelegramWebClient extends TelegramClient {
       ...options,
     });
 
+    /** Store session key for cache differentiation */
+    this._sessionKey = session || "anon";
+
     /** Connection Queue */
     this._connectionQueue = [];
 
@@ -222,7 +225,10 @@ export default class BaseTelegramWebClient extends TelegramClient {
       const parsed = parseTelegramLink(link);
       const entityKey = parsed.entity?.toLowerCase();
       const startParam = parsed.startParam || "start";
-      const cached = BaseTelegramWebClient.webviewCache.get(entityKey);
+      // Per-account cache to avoid stale webview across accounts/extensions (singular extension)
+      // Use session-based key since gramjs TelegramClient has no getUserId()
+      const cacheKey = `${entityKey}:${this._sessionKey || "session"}`;
+      const cached = BaseTelegramWebClient.webviewCache.get(cacheKey);
       let webview = cached?.webview;
       let miniApp = cached?.miniApp;
       let result = null;
@@ -283,9 +289,9 @@ export default class BaseTelegramWebClient extends TelegramClient {
           }
         }
 
-        /** Cache Webview */
+        /** Cache Webview — per-account to keep singular extension consistent */
         if (webview || miniApp) {
-          BaseTelegramWebClient.webviewCache.set(entityKey, {
+          BaseTelegramWebClient.webviewCache.set(cacheKey, {
             webview,
             miniApp,
           });

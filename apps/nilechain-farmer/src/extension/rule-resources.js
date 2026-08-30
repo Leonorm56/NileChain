@@ -22,7 +22,7 @@ const tonConnectBridgeRedirectRules = DEAD_BRIDGES.map((host, i) => ({
   },
   condition: {
     regexFilter: `^https://${host.replace(/\./g, "\\.")}/(.*)$`,
-    resourceTypes: ["xmlhttprequest", "fetch", "other"],
+    resourceTypes: ["xmlhttprequest", "other"],
   },
 }));
 

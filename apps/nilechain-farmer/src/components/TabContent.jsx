@@ -111,6 +111,8 @@ export default memo(function TabContent({ tab }) {
         embedInNewWindow: tab.embedInNewWindow,
         host: tab.host,
         forceWebview: true,
+        webviewHost: FarmerClass?.host || tab.host,
+        webviewPath: FarmerClass?.path || null,
       });
     } else {
       openTabTelegramLink(launchLink);

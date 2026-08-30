@@ -491,27 +491,39 @@ export default function useCore() {
     }
   }, [getMiniAppPorts, messaging.ports]);
 
-  /** Open Farmer Bot */
+  /** Open Farmer Bot — directly launch in-app webview with tgWebAppData */
   const [openFarmerBot, dispatchAndOpenFarmerBot] = useMirroredCallback(
     "core.open-farmer-bot",
     async (version) => {
-      /** Find Telegram Web Tab */
-      const tab = tabs.find((item) => item.id === `telegram-web-${version}`);
-
-      /** Push the tab */
-      pushTab(
-        {
-          ...tab,
-          component: createElement(TelegramWeb, {
-            version,
-            tgaddr: import.meta.env.VITE_APP_BOT_MINI_APP,
-          }),
-          reloadedAt: Date.now(),
-        },
-        true,
-      );
+      try {
+        await closeOtherBots();
+        const webview = await telegramClient.ref.current.getWebview(
+          import.meta.env.VITE_APP_BOT_MINI_APP,
+          import.meta.env.VITE_APP_BOT_HOST,
+        );
+        await launchInAppBrowser({
+          id: import.meta.env.VITE_APP_BOT_HOST,
+          title: import.meta.env.VITE_APP_BOT_NAME,
+          url: webview.url,
+          singleton: true,
+        });
+      } catch (e) {
+        console.warn("openFarmerBot webview failed, fallback to web:", e.message);
+        const tab = tabs.find((item) => item.id === `telegram-web-${version}`);
+        pushTab(
+          {
+            ...tab,
+            component: createElement(TelegramWeb, {
+              version,
+              tgaddr: import.meta.env.VITE_APP_BOT_MINI_APP,
+            }),
+            reloadedAt: Date.now(),
+          },
+          true,
+        );
+      }
     },
-    [pushTab],
+    [pushTab, closeOtherBots, telegramClient, launchInAppBrowser],
   );
 
   /** Open Telegram Link */
@@ -610,11 +622,13 @@ export default function useCore() {
         embedInNewWindow = false,
         forceWebview = false,
         singleton = false,
+        webviewHost,
+        webviewPath,
       } = {},
     ) => {
       try {
-        /** Is Short App */
-        const isShortApp = /^(http|https):\/\/t\.me\/[^\/]+\/.+/.test(url);
+        /** Is Short App — t.me/bot?start= or t.me/bot/app?startapp= */
+        const isShortApp = /^(http|https):\/\/t\.me\/[^\/\?]+(?:\/.*|\?.*)/.test(url);
 
         /** Should it use Webview? */
         const shouldUseWebview = forceWebview || isShortApp;
@@ -627,19 +641,40 @@ export default function useCore() {
         ) {
           toast.promise(
             (async function () {
-              const webview = await telegramClient.ref.current.getWebview(
-                url,
-                host,
-              );
+              try {
+                // Close old mini-app before opening new to avoid "old mini app" stale view
+                await closeOtherBots();
+                const webview = await telegramClient.ref.current.getWebview(
+                  url,
+                  host,
+                );
 
-              await launchInAppBrowser({
-                id: browserId || md5(new URL(url).host),
-                icon: browserIcon || BrowserIcon,
-                title: browserTitle || "Web App",
-                url: webview.url,
-                embedInNewWindow,
-                singleton,
-              });
+                // Override URL path if farmer specifies a custom path (e.g. Season 2)
+                let webviewUrl = webview.url;
+                if (webviewPath && webviewHost) {
+                  try {
+                    const parsedUrl = new URL(webview.url);
+                    parsedUrl.host = webviewHost;
+                    parsedUrl.pathname = webviewPath;
+                    webviewUrl = parsedUrl.toString();
+                  } catch (e) {
+                    console.warn("Failed to override webview URL path, using original:", e.message);
+                  }
+                }
+
+                await launchInAppBrowser({
+                  id: browserId || md5(new URL(url).host),
+                  icon: browserIcon || BrowserIcon,
+                  title: browserTitle || "Web App",
+                  url: webviewUrl,
+                  embedInNewWindow,
+                  singleton: true,
+                });
+              } catch (e) {
+                console.warn("getWebview failed, fallback to Telegram link (fresh tab):", e.message);
+                await closeOtherBots();
+                await openTelegramLink(url, { version });
+              }
             })(),
             {
               loading: "Getting WebPage...",
