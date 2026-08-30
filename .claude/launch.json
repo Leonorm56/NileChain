@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nilevault-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:/Users/GH/Desktop/NileVault/node_modules/vite/bin/vite.js",
+        "C:/Users/GH/Desktop/NileVault",
+        "--port",
+        "5175",
+        "--strictPort"
+      ],
+      "port": 5175
+    }
+  ]
+}

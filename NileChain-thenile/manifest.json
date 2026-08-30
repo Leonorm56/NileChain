@@ -1,0 +1,74 @@
+{
+  "manifest_version": 3,
+  "name": "(TheNile) NileChain",
+  "description": "(TheNile) Telegram Mini-Apps automation tool.",
+  "version": "1.0.85",
+  "icons": {
+    "16": "nile-icon-16.png",
+    "32": "nile-icon-32.png",
+    "48": "nile-icon-48.png",
+    "128": "nile-icon-128.png"
+  },
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "unlimitedStorage",
+    "webRequest",
+    "declarativeNetRequest",
+    "downloads",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://*/*",
+    "ws://*/*",
+    "wss://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*.woff",
+        "assets/*.woff2",
+        "browser-sandbox.html",
+        "tonconnect-provider.js"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "extension/content-script-isolated.js"
+      ],
+      "css": [
+        "extension/content-script-styles.css"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "extension/content-script-main.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals;"
+  },
+  "sandbox": {
+    "pages": []
+  }
+}

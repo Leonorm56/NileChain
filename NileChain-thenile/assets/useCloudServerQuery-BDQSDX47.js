@@ -1,0 +1,1 @@
+import{I as e,_n as t}from"./index-B4Y4WN4Y.js";function n(){let{settings:n,cloudBackend:r}=e();return t({enabled:n.enableCloud&&!!n.cloudServer,retry:!1,refetchOnMount:!1,refetchOnReconnect:!1,refetchOnWindowFocus:!1,queryKey:[`app`,`cloud`,`server`,n.cloudServer],queryFn:({signal:e})=>r.get(`/api/server`,{signal:e}).then(e=>e.data)})}export{n as t};

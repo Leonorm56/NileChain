@@ -365,24 +365,6 @@ pnpm clean
 
 ---
 
-## Integration with Nile Fly
-
-Connect to [Nile Fly](../purrfect-fly) for cloud-based farming:
-
-1. **Deploy Nile Fly** on your server
-2. **Open Cloud Manager** in NileChain settings
-3. **Configure Server URL** and authenticate with JWT token
-4. **Manage cloud farming:**
-   - Add/remove accounts
-   - Enable/disable farmers
-   - Monitor farming progress
-
-**Note:** Cloud Manager is a built-in tool in NileChain that provides an interface to manage your Nile Fly server.
-
-See [Nile Fly README](../purrfect-fly/README.md) for server setup.
-
----
-
 ## Supported Farmers
 
 NileChain supports 20+ Telegram bots including game bots, earning bots, airdrop bots, task bots, and more. Farmers are continuously updated and new ones added regularly.

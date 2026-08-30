@@ -2,8 +2,7 @@
   "license": "MIT",
   "version": "1.0.79",
   "scripts": {
-    "build:farmer": "pnpm -F nilechain-farmer build",
-    "start:fly": "pnpm -F nilecloud start"
+    "build:farmer": "pnpm -F nilechain-farmer build"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

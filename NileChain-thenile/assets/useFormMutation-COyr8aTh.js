@@ -1,0 +1,1 @@
+import{An as e,gn as t}from"./index-B4Y4WN4Y.js";function n(n,r){return t({onError(t){n&&Object.entries(t.response?.data?.errors||{}).forEach(([e,t])=>n.setError(e,{message:t[0]})),e.error(t.response?.data.message||`An error occurred!`)},...r})}export{n as t};

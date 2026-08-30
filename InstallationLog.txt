@@ -1,0 +1,6 @@
+************************************* Invoked: Mon Aug 24 22:05:40 2026
+[0] Arguments: C:\Users\GH\AppData\Local\Temp\msys2.exe, --confirm-accept-license
+[3] Operations sanity check succeeded.
+[4] Warning: Cannot create lock file "C:\Users\GH\AppData\Local\Temp\msys21234865.lock": The process cannot access the file because it is being used by another process.
+ (0x00000020)
+[16] UnableToStart : Unable to start installer : Another msys2 instance is already running. Wait until it finishes, close it, or restart your system.

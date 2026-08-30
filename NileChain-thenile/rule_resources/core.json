@@ -1,0 +1,85 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        {
+          "header": "content-security-policy",
+          "operation": "remove"
+        },
+        {
+          "header": "x-frame-options",
+          "operation": "remove"
+        },
+        {
+          "header": "cross-origin-embedder-policy",
+          "operation": "remove"
+        },
+        {
+          "header": "cross-origin-opener-policy",
+          "operation": "remove"
+        },
+        {
+          "header": "cross-origin-resource-policy",
+          "operation": "remove"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "*"
+    }
+  },
+  {
+    "id": 100,
+    "priority": 2,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "regexSubstitution": "https://bridge.tonapi.io/\\1"
+      }
+    },
+    "condition": {
+      "regexFilter": "^https://bridge\\.stower\\.money/(.*)$",
+      "resourceTypes": [
+        "xmlhttprequest",
+        "other"
+      ]
+    }
+  },
+  {
+    "id": 101,
+    "priority": 2,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "regexSubstitution": "https://bridge.tonapi.io/\\1"
+      }
+    },
+    "condition": {
+      "regexFilter": "^https://bridge\\.mirai\\.app/(.*)$",
+      "resourceTypes": [
+        "xmlhttprequest",
+        "other"
+      ]
+    }
+  },
+  {
+    "id": 102,
+    "priority": 2,
+    "action": {
+      "type": "redirect",
+      "redirect": {
+        "regexSubstitution": "https://bridge.tonapi.io/\\1"
+      }
+    },
+    "condition": {
+      "regexFilter": "^https://go-bridge\\.tomo\\.inc/(.*)$",
+      "resourceTypes": [
+        "xmlhttprequest",
+        "other"
+      ]
+    }
+  }
+]
