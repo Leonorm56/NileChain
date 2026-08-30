@@ -592,6 +592,10 @@ export default function createRunner(FarmerClass) {
         /** Reset error count */
         await instance.resetErrorCount();
 
+        /** Clear current task so getResult returns 'started' instead of 'running' */
+        instance.currentTask = null;
+        instance.currentTaskStartedAt = null;
+
         /** Log success */
         this.logger.success(`[${instance.account.id}] Farming completed`);
       } catch (error) {
@@ -732,6 +736,10 @@ export default function createRunner(FarmerClass) {
               );
             } catch (err) {
               this.logger.error("Queue processing error:", err);
+              this.lastResults.set(
+                instance.account.id,
+                { status: "error" },
+              );
               if (instance.account.id === this.primaryAccountId) {
                 this.resetPrimaryFarmerLink(instance);
               }
@@ -752,6 +760,10 @@ export default function createRunner(FarmerClass) {
                 );
               } catch (err) {
                 this.logger.error("Queue processing error:", err);
+                this.lastResults.set(
+                  instance.account.id,
+                  { status: "error" },
+                );
                 if (instance.account.id === this.primaryAccountId) {
                   this.resetPrimaryFarmerLink(instance);
                 }
