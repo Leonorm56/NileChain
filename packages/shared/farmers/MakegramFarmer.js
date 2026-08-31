@@ -490,27 +490,24 @@ export default class MakegramFarmer extends BaseFarmer {
       return;
     }
 
-    // Calculate total food needed
-    let foodNeeded = 0;
-    for (const tool of idle) {
-      foodNeeded += this.foodCostForTool(tool);
-    }
+    // Buy food until we have at least 20, max spend 100k
     const foodHave = Number(s2.склад?.еда || 0);
-    if (foodHave >= foodNeeded) {
-      this.logger.info(`ARISE: enough food (${foodHave}/${foodNeeded}), not needed.`);
+    if (foodHave >= 20) {
+      this.logger.info(`ARISE: enough food (${foodHave}), not needed.`);
       return;
     }
 
     this.logger.info(
-      `ARISE: need ${foodNeeded - foodHave} more food (${foodHave}/${foodNeeded}) for ${idle.length} idle tools`,
+      `ARISE: have ${foodHave} food, buying up to 20 (max 100k coins)`,
     );
 
     // Buy cheapest lots one at a time, refetch market after each buy
     // (lots disappear after purchase). Buy whatever is cheapest and available.
-    // Max spend: 100,000 coins per cycle.
+    // Stop at 20 food or 100k coins spent.
+    const FOOD_TARGET = 20;
+    const MAX_SPEND = 100000;
     let bought = 0;
     let spent = 0;
-    const MAX_SPEND = 100000;
     const maxAttempts = 10; // safety limit
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -518,7 +515,7 @@ export default class MakegramFarmer extends BaseFarmer {
 
       // Re-check food after each buy
       const curFood = Number(this.s2_state?.склад?.еда || 0);
-      if (curFood >= foodNeeded) break;
+      if (curFood >= FOOD_TARGET) break;
       if (spent >= MAX_SPEND) {
         this.logger.info(`ARISE: reached ${MAX_SPEND} coin spend limit, stop buying.`);
         break;
@@ -585,12 +582,10 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Market — tiered sell logic per sellLOGIC.txt                          */
+  /* Market — adaptive pricing with cancel & replace                      */
   /*                                                                       */
-  /* Ore:  1×1950, 2×(1850–1900), 3×(1700–1800)                           */
-  /* Logs: 1×2100, 2×(1990–2000), 3×(1850–1890)                           */
-  /* Food: 1×3800, 2×3500, 3×3000  (accounts with bow ONLY)               */
-  /* Max 3 orders per resource, up to 10 pending lots total.              */
+  /* Checks current corridor, cancels orders outside it, places new ones    */
+  /* at current prices. Max 3 orders per resource.                         */
   /* --------------------------------------------------------------------- */
 
   hasBow() {
@@ -604,6 +599,28 @@ export default class MakegramFarmer extends BaseFarmer {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  /** Count pending lots for a specific resource */
+  pendingForResource(item) {
+    const lots = this.s2_state?.мойЛот || [];
+    return lots.filter((l) => l.товар === item).length;
+  }
+
+  /** Cancel a market lot — returns resources to warehouse */
+  async cancelLot(lotId) {
+    const res = await this.post("s2/market/cancel", { лот: lotId }).catch((e) => {
+      this.logger.warn(`Cancel lot ${lotId} failed:`, e.message);
+      return null;
+    });
+    if (res?.ok) {
+      const returned = res.вернулось ? Object.entries(res.вернулось).map(([k,v]) => `${k}+${v}`).join(', ') : '?';
+      this.logger.info(`Cancelled lot ${lotId} (returned: ${returned})`);
+      // Use state from response (saves API call)
+      if (res.состояние?.ok) this.s2_state = res.состояние;
+    }
+    return res;
+  }
+
+  /** Sell one lot, returns true on success */
   async sellOne(item, qty, price, pendingRef) {
     if (pendingRef.value >= 10) {
       this.logger.info("Market: 10 pending lots (max), stop selling.");
@@ -630,41 +647,82 @@ export default class MakegramFarmer extends BaseFarmer {
     return false;
   }
 
-  /** Count pending lots for a specific resource */
-  pendingForResource(item) {
-    const lots = this.s2_state?.мойЛот || [];
-    return lots.filter((l) => l.товар === item).length;
-  }
+  /**
+   * Fetch market, cancel stale orders, place new ones at current prices.
+   * Uses the cheapest lot (first) and most expensive lot (last) as price bounds.
+   */
+  async handleResourceMarket(item, warehouseQty, pendingRef) {
+    // 1. Fetch current market
+    const market = await this.getMarket(item).catch((e) => {
+      this.logger.warn(`Market fetch ${item} failed:`, e.message);
+      return null;
+    });
+    if (!market?.ok || !Array.isArray(market.лоты)) {
+      this.logger.info(`Market: no data for ${item}.`);
+      return;
+    }
 
-  async sellTiered(item, have, tiers, pendingRef) {
-    const totalNeeded = tiers.reduce((s, t) => s + t.qty, 0);
-    if (have < totalNeeded) {
-      this.logger.info(
-        `Market: not enough ${item} (${have}) for 3 orders (need ${totalNeeded}), skip.`,
-      );
+    const lots = market.лоты.filter((l) => !l.свой).sort((a, b) => a.цена - b.цена);
+    if (lots.length === 0) {
+      this.logger.info(`Market: no lots for ${item}.`);
       return;
     }
-    // Check how many pending orders already exist for this resource
-    const alreadyPending = this.pendingForResource(item);
-    if (alreadyPending >= 3) {
-      this.logger.info(`Market: ${item} already has ${alreadyPending} pending orders, skip.`);
+
+    // Price bounds = cheapest lot and most expensive lot
+    const cheapest = Number(lots[0].цена);
+    const mostExpensive = Number(lots[lots.length - 1].цена);
+    this.logger.info(`Market ${item}: cheapest=${cheapest} mostExpensive=${mostExpensive} (${lots.length} lots)`);
+
+    // 2. Cancel our pending lots that are outside current price range
+    const myLots = (this.s2_state?.мойЛот || []).filter((l) => l.товар === item);
+    let cancelled = 0;
+    for (const lot of myLots) {
+      if (this.signal?.aborted) break;
+      const lotPrice = Number(lot.цена);
+      if (lotPrice < cheapest || lotPrice > mostExpensive) {
+        this.logger.info(`Cancelling ${item} lot ${lot.id} at ${lotPrice} (outside range ${cheapest}–${mostExpensive})`);
+        await this.cancelLot(lot.id);
+        cancelled++;
+        await this.utils.delayForSeconds(1, { signal: this.signal });
+      }
+    }
+    if (cancelled > 0) {
+      await this.flag().catch(() => {});
+    }
+
+    // 3. Count remaining pending for this resource
+    const currentPending = this.pendingForResource(item);
+    if (currentPending >= 3) {
+      this.logger.info(`Market: ${item} already has ${currentPending}/3 pending orders, skip.`);
       return;
     }
+    if (warehouseQty <= 0) {
+      this.logger.info(`Market: no ${item} to sell.`);
+      return;
+    }
+
+    // 4. Place up to 3 orders at medium and low prices
+    const slotsLeft = 3 - currentPending;
+    const range = mostExpensive - cheapest;
+    const midPrice = this.randInt(cheapest + Math.floor(range * 0.3), cheapest + Math.floor(range * 0.6));
+    const tiers = [
+      { qty: 1, price: midPrice, label: `1× medium (${midPrice})` },
+      { qty: 2, price: cheapest, label: `2× low (${cheapest})` },
+      { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
+    ];
+
     let placed = 0;
     for (const tier of tiers) {
       if (this.signal?.aborted) break;
       if (pendingRef.value >= 10) break;
-      if (placed >= 3) break;
-      if (alreadyPending + placed >= 3) break;
-      const price = this.randInt(tier.minPrice, tier.maxPrice);
-      this.logger.info(
-        `Selling ${item} ${tier.qty}×${price} (${tier.label || "tier"})`,
-      );
+      if (placed >= slotsLeft) break;
+      const price = tier.price;
+      this.logger.info(`Selling ${item} ${tier.qty}×${price} (${tier.label})`);
       const ok = await this.sellOne(item, tier.qty, price, pendingRef);
       if (ok) placed++;
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
-    this.logger.info(`Market: ${item} — placed ${placed}/3 orders (${alreadyPending} already pending).`);
+    this.logger.info(`Market: ${item} — ${cancelled} cancelled, ${placed} placed (${currentPending + placed}/3 pending).`);
   }
 
   async handleMarket() {
@@ -689,42 +747,17 @@ export default class MakegramFarmer extends BaseFarmer {
 
     const pendingRef = { value: pending };
 
-    // --- ORE: 3 orders — 1×1950, 2×(1850–1900), 3×(1700–1800) ---
-    const ore = Number(wh.руда || 0);
-    if (ore > 0) {
-      await this.sellTiered("руда", ore, [
-        { qty: 1, minPrice: 1950, maxPrice: 1950, label: "tier 1: 1×1950" },
-        { qty: 2, minPrice: 1850, maxPrice: 1900, label: "tier 2: 2×1850–1900" },
-        { qty: 3, minPrice: 1700, maxPrice: 1800, label: "tier 3: 3×1700–1800" },
-      ], pendingRef);
-    } else {
-      this.logger.info("Market: no ore to sell.");
+    // --- ORE ---
+    await this.handleResourceMarket("руда", Number(wh.руда || 0), pendingRef);
+
+    // --- LOGS ---
+    if (pendingRef.value < 10) {
+      await this.handleResourceMarket("брёвна", Number(wh.брёвна || 0), pendingRef);
     }
 
-    // --- LOGS: 3 orders — 1×2100, 2×(1990–2000), 3×(1850–1890) ---
-    const logs = Number(wh.брёвна || 0);
-    if (logs > 0 && pendingRef.value < 10) {
-      await this.sellTiered("брёвна", logs, [
-        { qty: 1, minPrice: 2100, maxPrice: 2100, label: "tier 1: 1×2100" },
-        { qty: 2, minPrice: 1990, maxPrice: 2000, label: "tier 2: 2×1990–2000" },
-        { qty: 3, minPrice: 1850, maxPrice: 1890, label: "tier 3: 3×1850–1890" },
-      ], pendingRef);
-    } else if (logs === 0) {
-      this.logger.info("Market: no logs to sell.");
-    }
-
-    // --- FOOD: 3 orders — 1×3800, 2×3500, 3×3000 (bow accounts ONLY) ---
+    // --- FOOD (bow accounts ONLY) ---
     if (pendingRef.value < 10 && this.hasBow()) {
-      const food = Number(wh.еда || 0);
-      if (food > 0) {
-        await this.sellTiered("еда", food, [
-          { qty: 1, minPrice: 3800, maxPrice: 3800, label: "tier 1: 1×3800" },
-          { qty: 2, minPrice: 3500, maxPrice: 3500, label: "tier 2: 2×3500" },
-          { qty: 3, minPrice: 3000, maxPrice: 3000, label: "tier 3: 3×3000" },
-        ], pendingRef);
-      } else {
-        this.logger.info("Market: no food to sell.");
-      }
+      await this.handleResourceMarket("еда", Number(wh.еда || 0), pendingRef);
     } else if (!this.hasBow()) {
       this.logger.info("Market: no bow — food not sold.");
     }
