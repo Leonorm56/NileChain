@@ -485,8 +485,85 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Market — sell ore and logs using corridor pricing                     */
-  /* --------------------------------------------------------------------- */
+  /* Market — tiered sell logic per sellLOGIC.txt                          */
+  /*
+   * Ore:  1×1950, 2×(1850–1900), 3×(1700–1800)
+   * Logs: 1×2100, 2×(1990–2000), 3×(1850–1890)
+   * Food: 1×3800, 2×3500, 3×3000  (accounts with bow ONLY)
+   * Total 6 orders per cycle (3 ore + 3 logs), or fewer.
+   * Skip selling entirely if any pending orders remain.
+   */
+
+  /** Check if account has a bow tool (food only sold with bows) */
+  hasBow() {
+    const tools = this.s2_state?.инструменты || [];
+    return tools.some(
+      (t) => t.тип === "лук" || t.тип?.toLowerCase()?.includes("bow"),
+    );
+  }
+
+  /** Random integer in [min, max] inclusive */
+  randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  /**
+   * Sell a single item at a fixed price.
+   * Returns true if the lot was placed, false otherwise.
+   */
+  async sellOne(товар, кол, цена, pendingRef) {
+    if (pendingRef.value >= 10) {
+      this.logger.info("Market: 10 pending lots (max), stop selling.");
+      return false;
+    }
+    const res = await this.sellMarket(товар, кол, цена).catch((e) => {
+      if (e.response?.status === 400) {
+        this.logger.info(`Sell ${товар} ${кол}×${цена} rejected (400 corridor).`);
+      } else {
+        this.logger.warn(`Sell ${товар} ${кол}×${цена} failed:`, e.message);
+      }
+      return null;
+    });
+    if (res?.ok) {
+      this.logger.success(`Listed ${товар} ${кол}×${цена}`);
+      pendingRef.value++;
+      // Refresh state to get updated lot count
+      this.s2_state = await this.getState().catch(() => this.s2_state);
+      await this.flag().catch(() => {});
+      pendingRef.value = Array.isArray(this.s2_state?.мойЛот)
+        ? this.s2_state.мойЛот.length
+        : pendingRef.value;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Execute 3 tiered sell orders for a resource.
+   * tiers: [{ qty, minPrice, maxPrice, label }, ...]
+   */
+  async sellTiered(товар, have, tiers, pendingRef) {
+    const totalNeeded = tiers.reduce((s, t) => s + t.qty, 0);
+    if (have < totalNeeded) {
+      this.logger.info(
+        `Market: not enough ${товар} (${have}) for 3 orders (need ${totalNeeded}), skip.`,
+      );
+      return;
+    }
+    let placed = 0;
+    for (const tier of tiers) {
+      if (this.signal?.aborted) break;
+      if (pendingRef.value >= 10) break;
+      const цена = this.randInt(tier.minPrice, tier.maxPrice);
+      this.logger.info(
+        `Selling ${товар} ${tier.qty}×${цена} (${tier.label || "tier"})`,
+      );
+      const ok = await this.sellOne(товар, tier.qty, цена, pendingRef);
+      if (ok) placed++;
+      await this.utils.delayForSeconds(2, { signal: this.signal });
+    }
+    this.logger.info(`Market: ${товар} — placed ${placed}/3 orders.`);
+  }
 
   async handleMarket() {
     const s2 = this.s2_state;
@@ -500,110 +577,54 @@ export default class MakegramFarmer extends BaseFarmer {
     this.logger.info(
       `Market: руда:${склад.руда || 0} брёвна:${склад.брёвна || 0} еда:${склад.еда || 0} | lots ${pending}/10`,
     );
-    if (pending >= 10) {
-      this.logger.info("Market: 10 pending lots (max), skip.");
+    if (pending > 0) {
+      this.logger.info(`Market: ${pending} pending lots still active, skip selling this cycle.`);
       return;
     }
 
-    // --- ORE ---
+    const pendingRef = { value: pending };
+
+    // --- ORE: 3 orders ---
+    // 1×1950, 2×(1850–1900), 3×(1700–1800)
     const ore = Number(склад.руда || 0);
-    if (ore > 0 && pending < 10) {
-      const oreMarket = await this.getMarket("руда").catch(() => null);
-      const corridor = oreMarket?.коридор;
-      const lots = oreMarket?.лоты || [];
-
-      const median = Number(corridor?.медиана || 1400);
-      const мин = Number(corridor?.мин || 840);
-      const макс = Number(corridor?.макс || 1960);
-
-      // Price: slightly below median, but above lowest ask
-      let price = Math.floor(median * 0.9);
-      price = Math.max(мин, Math.min(макс, price));
-
-      if (lots.length > 0) {
-        const lowestAsk = Math.min(
-          ...lots.map((l) => Number(l.цена) || Infinity),
-        );
-        if (lowestAsk !== Infinity && price <= lowestAsk) {
-          price = lowestAsk + 1;
-        }
-      }
-
-      // Sell 5 ore per session
-      const sellQty = Math.min(5, ore);
-      this.logger.info(
-        `Selling ore ${sellQty}×${price} (have ${ore}, median ${median})`,
-      );
-
-      const res = await this.sellMarket("руда", sellQty, price).catch((e) => {
-        if (e.response?.status === 400)
-          this.logger.info(`Sell ore rejected (400 corridor).`);
-        else this.logger.warn("Sell ore failed:", e.message);
-        return null;
-      });
-
-      if (res?.ok) {
-        this.logger.success(`Listed ore ${sellQty}×${price}`);
-        pending++;
-        this.s2_state = await this.getState().catch(() => this.s2_state);
-        await this.flag().catch(() => {});
-        pending = Array.isArray(this.s2_state?.мойЛот)
-          ? this.s2_state.мойЛот.length
-          : pending;
-      }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
-    } else if (ore === 0) {
+    if (ore > 0) {
+      await this.sellTiered("руда", ore, [
+        { qty: 1, minPrice: 1950, maxPrice: 1950, label: "1×1950" },
+        { qty: 2, minPrice: 1850, maxPrice: 1900, label: "2×1850–1900" },
+        { qty: 3, minPrice: 1700, maxPrice: 1800, label: "3×1700–1800" },
+      ], pendingRef);
+    } else {
       this.logger.info("Market: no ore to sell.");
     }
 
-    // --- LOGS ---
+    // --- LOGS: 3 orders ---
+    // 1×2100, 2×(1990–2000), 3×(1850–1890)
     const logs = Number(склад.брёвна || 0);
-    if (logs > 0 && pending < 10) {
-      const logsMarket = await this.getMarket("брёвна").catch(() => null);
-      const corridor = logsMarket?.коридор;
-      const lots = logsMarket?.лоты || [];
-
-      const median = Number(corridor?.медиана || 4088);
-      const мин = Number(corridor?.мин || 2452);
-      const макс = Number(corridor?.макс || 5724);
-
-      let price = Math.floor(median * 0.9);
-      price = Math.max(мин, Math.min(макс, price));
-
-      if (lots.length > 0) {
-        const lowestAsk = Math.min(
-          ...lots.map((l) => Number(l.цена) || Infinity),
-        );
-        if (lowestAsk !== Infinity && price <= lowestAsk) {
-          price = lowestAsk + 1;
-        }
-      }
-
-      // Sell 5 logs per session
-      const sellQty = Math.min(5, logs);
-      this.logger.info(`Selling logs ${sellQty}×${price} (have ${logs})`);
-
-      const res = await this
-        .sellMarket("брёвна", sellQty, price)
-        .catch((e) => {
-          if (e.response?.status === 400)
-            this.logger.info(`Sell logs rejected (400 corridor).`);
-          else this.logger.warn("Sell logs failed:", e.message);
-          return null;
-        });
-
-      if (res?.ok) {
-        this.logger.success(`Listed logs ${sellQty}×${price}`);
-        pending++;
-        this.s2_state = await this.getState().catch(() => this.s2_state);
-        await this.flag().catch(() => {});
-        pending = Array.isArray(this.s2_state?.мойЛот)
-          ? this.s2_state.мойЛот.length
-          : pending;
-      }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+    if (logs > 0 && pendingRef.value < 10) {
+      await this.sellTiered("брёвна", logs, [
+        { qty: 1, minPrice: 2100, maxPrice: 2100, label: "1×2100" },
+        { qty: 2, minPrice: 1990, maxPrice: 2000, label: "2×1990–2000" },
+        { qty: 3, minPrice: 1850, maxPrice: 1890, label: "3×1850–1890" },
+      ], pendingRef);
     } else if (logs === 0) {
       this.logger.info("Market: no logs to sell.");
+    }
+
+    // --- FOOD: 3 orders (ONLY if account has bow) ---
+    // 1×3800, 2×3500, 3×3000
+    if (pendingRef.value < 10 && this.hasBow()) {
+      const food = Number(склад.еда || 0);
+      if (food > 0) {
+        await this.sellTiered("еда", food, [
+          { qty: 1, minPrice: 3800, maxPrice: 3800, label: "1×3800" },
+          { qty: 2, minPrice: 3500, maxPrice: 3500, label: "2×3500" },
+          { qty: 3, minPrice: 3000, maxPrice: 3000, label: "3×3000" },
+        ], pendingRef);
+      } else {
+        this.logger.info("Market: no food to sell.");
+      }
+    } else if (!this.hasBow()) {
+      this.logger.info("Market: no bow — food not sold.");
     }
   }
 
