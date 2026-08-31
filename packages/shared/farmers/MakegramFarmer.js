@@ -630,6 +630,12 @@ export default class MakegramFarmer extends BaseFarmer {
     return false;
   }
 
+  /** Count pending lots for a specific resource */
+  pendingForResource(item) {
+    const lots = this.s2_state?.мойЛот || [];
+    return lots.filter((l) => l.товар === item).length;
+  }
+
   async sellTiered(item, have, tiers, pendingRef) {
     const totalNeeded = tiers.reduce((s, t) => s + t.qty, 0);
     if (have < totalNeeded) {
@@ -638,11 +644,18 @@ export default class MakegramFarmer extends BaseFarmer {
       );
       return;
     }
+    // Check how many pending orders already exist for this resource
+    const alreadyPending = this.pendingForResource(item);
+    if (alreadyPending >= 3) {
+      this.logger.info(`Market: ${item} already has ${alreadyPending} pending orders, skip.`);
+      return;
+    }
     let placed = 0;
     for (const tier of tiers) {
       if (this.signal?.aborted) break;
       if (pendingRef.value >= 10) break;
       if (placed >= 3) break;
+      if (alreadyPending + placed >= 3) break;
       const price = this.randInt(tier.minPrice, tier.maxPrice);
       this.logger.info(
         `Selling ${item} ${tier.qty}×${price} (${tier.label || "tier"})`,
@@ -651,7 +664,7 @@ export default class MakegramFarmer extends BaseFarmer {
       if (ok) placed++;
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
-    this.logger.info(`Market: ${item} — placed ${placed}/3 orders.`);
+    this.logger.info(`Market: ${item} — placed ${placed}/3 orders (${alreadyPending} already pending).`);
   }
 
   async handleMarket() {
@@ -663,8 +676,11 @@ export default class MakegramFarmer extends BaseFarmer {
 
     const wh = s2.склад || {};
     let pending = Array.isArray(s2.мойЛот) ? s2.мойЛот.length : 0;
+    const orePending = this.pendingForResource("руда");
+    const logsPending = this.pendingForResource("брёвна");
+    const foodPending = this.pendingForResource("еда");
     this.logger.info(
-      `Market: ore:${wh.руда || 0} logs:${wh.брёвна || 0} food:${wh.еда || 0} | lots ${pending}/10`,
+      `Market: ore:${wh.руда || 0}(${orePending}/3) logs:${wh.брёвна || 0}(${logsPending}/3) food:${wh.еда || 0}(${foodPending}/3) | total lots ${pending}/10`,
     );
     if (pending >= 10) {
       this.logger.info("Market: 10 pending lots (max), skip.");
