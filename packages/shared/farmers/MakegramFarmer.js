@@ -540,11 +540,14 @@ export default class MakegramFarmer extends BaseFarmer {
 
   /**
    * Execute up to 3 sell orders for a resource (max 3 per resource).
-   * tiers: [{ minPrice, maxPrice, label }, ...]
+   * tiers: [{ qty, minPrice, maxPrice, label }, ...]
    */
   async sellTiered(товар, have, tiers, pendingRef) {
-    if (have <= 0) {
-      this.logger.info(`Market: no ${товар} to sell.`);
+    const totalNeeded = tiers.reduce((s, t) => s + t.qty, 0);
+    if (have < totalNeeded) {
+      this.logger.info(
+        `Market: not enough ${товар} (${have}) for 3 orders (need ${totalNeeded}), skip.`,
+      );
       return;
     }
     let placed = 0;
@@ -554,9 +557,9 @@ export default class MakegramFarmer extends BaseFarmer {
       if (placed >= 3) break;
       const цена = this.randInt(tier.minPrice, tier.maxPrice);
       this.logger.info(
-        `Selling ${товар} 1×${цена} (${tier.label || "tier"})`,
+        `Selling ${товар} ${tier.qty}×${цена} (${tier.label || "tier"})`,
       );
-      const ok = await this.sellOne(товар, 1, цена, pendingRef);
+      const ok = await this.sellOne(товар, tier.qty, цена, pendingRef);
       if (ok) placed++;
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
@@ -582,38 +585,38 @@ export default class MakegramFarmer extends BaseFarmer {
 
     const pendingRef = { value: pending };
 
-    // --- ORE: up to 3 orders (1 each) ---
+    // --- ORE: 3 orders — 1×1950, 2×(1850–1900), 3×(1700–1800) ---
     const ore = Number(склад.руда || 0);
     if (ore > 0) {
       await this.sellTiered("руда", ore, [
-        { minPrice: 1950, maxPrice: 1950, label: "tier 1: 1950" },
-        { minPrice: 1850, maxPrice: 1900, label: "tier 2: 1850–1900" },
-        { minPrice: 1700, maxPrice: 1800, label: "tier 3: 1700–1800" },
+        { qty: 1, minPrice: 1950, maxPrice: 1950, label: "tier 1: 1×1950" },
+        { qty: 2, minPrice: 1850, maxPrice: 1900, label: "tier 2: 2×1850–1900" },
+        { qty: 3, minPrice: 1700, maxPrice: 1800, label: "tier 3: 3×1700–1800" },
       ], pendingRef);
     } else {
       this.logger.info("Market: no ore to sell.");
     }
 
-    // --- LOGS: up to 3 orders (1 each) ---
+    // --- LOGS: 3 orders — 1×2100, 2×(1990–2000), 3×(1850–1890) ---
     const logs = Number(склад.брёвна || 0);
     if (logs > 0 && pendingRef.value < 10) {
       await this.sellTiered("брёвна", logs, [
-        { minPrice: 2100, maxPrice: 2100, label: "tier 1: 2100" },
-        { minPrice: 1990, maxPrice: 2000, label: "tier 2: 1990–2000" },
-        { minPrice: 1850, maxPrice: 1890, label: "tier 3: 1850–1890" },
+        { qty: 1, minPrice: 2100, maxPrice: 2100, label: "tier 1: 1×2100" },
+        { qty: 2, minPrice: 1990, maxPrice: 2000, label: "tier 2: 2×1990–2000" },
+        { qty: 3, minPrice: 1850, maxPrice: 1890, label: "tier 3: 3×1850–1890" },
       ], pendingRef);
     } else if (logs === 0) {
       this.logger.info("Market: no logs to sell.");
     }
 
-    // --- FOOD: up to 3 orders (1 each, bow accounts ONLY) ---
+    // --- FOOD: 3 orders — 1×3800, 2×3500, 3×3000 (bow accounts ONLY) ---
     if (pendingRef.value < 10 && this.hasBow()) {
       const food = Number(склад.еда || 0);
       if (food > 0) {
         await this.sellTiered("еда", food, [
-          { minPrice: 3800, maxPrice: 3800, label: "tier 1: 3800" },
-          { minPrice: 3500, maxPrice: 3500, label: "tier 2: 3500" },
-          { minPrice: 3000, maxPrice: 3000, label: "tier 3: 3000" },
+          { qty: 1, minPrice: 3800, maxPrice: 3800, label: "tier 1: 1×3800" },
+          { qty: 2, minPrice: 3500, maxPrice: 3500, label: "tier 2: 2×3500" },
+          { qty: 3, minPrice: 3000, maxPrice: 3000, label: "tier 3: 3×3000" },
         ], pendingRef);
       } else {
         this.logger.info("Market: no food to sell.");
