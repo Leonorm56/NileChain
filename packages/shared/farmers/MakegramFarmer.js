@@ -4,22 +4,17 @@ import BaseFarmer from "../lib/BaseFarmer.js";
  * Makegram Season 2 — mgrmga.org/s2-2026
  *
  * Full farmer for https://api.mgrmga.org/s2/*
- * HAR: update.har (372), update2.har (212), ldjoeafklccnbigohkogkcelpkgaoaii.har (9)
- * Auth: X-Init-Data header (query_id + user + auth_date + signature + hash) + Origin https://mgrmga.org
- * State endpoint returns base64 or plain JSON (handled with tryDecode).
+ * Auth: X-Init-Data header + Origin https://mgrmga.org
  *
- * API flow per cycle (HAR-verified):
- *   state → flag → contracts → [collect → repair → start → market] → flag → contracts → ...
+ * API flow per cycle:
+ *   state → flag → [chest → tasks → village → collect → repair → market → start] → flag
  *
  * Key findings from HAR:
  *   - Webview: https://mgrmga.org/s2-2026/index.html
- *   - Start expedition costs 8 food (топливо: 8)
- *   - Contracts: 2/day limit, витрина (available) + мои (active)
- *   - Market corridors: ore (медиана:1400, мин:840, макс:1960), logs (медиана:4088, мин:2452, макс:5724)
- *   - flag = heartbeat ping (returns {ok, флаг, сетка: 16})
- *   - repair returns empty 200 (no body)
+ *   - Start expedition costs 8 food
+ *   - flag = heartbeat ping
+ *   - repair returns empty 200
  *   - collect returns {ok, ресурс, добыто, состояние}
- *   - sell 400 = corridor/dump protection
  */
 
 const API_URL = "https://api.mgrmga.org";
@@ -69,9 +64,6 @@ export default class MakegramFarmer extends BaseFarmer {
       .then((r) => r.data);
   }
 
-  /**
-   * Try to decode base64-encoded JSON responses (common in s2 endpoints).
-   */
   tryDecode(data) {
     if (!data) return data;
     if (typeof data === "object" && data.ok !== undefined) return data;
@@ -89,7 +81,6 @@ export default class MakegramFarmer extends BaseFarmer {
     return data;
   }
 
-  /** GET with automatic base64 decode for s2 endpoints */
   async apiGet(path, params = {}) {
     try {
       const res = await this.api
@@ -107,7 +98,6 @@ export default class MakegramFarmer extends BaseFarmer {
     }
   }
 
-  /** POST with automatic base64 decode for s2 endpoints */
   async apiPost(path, payload = {}) {
     try {
       const res = await this.api
@@ -126,7 +116,7 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* S2 API — HAR-verified endpoints                                        */
+  /* S2 API endpoints                                                      */
   /* --------------------------------------------------------------------- */
 
   async getState() {
@@ -137,37 +127,29 @@ export default class MakegramFarmer extends BaseFarmer {
     return this.post("s2/flag", {});
   }
 
-  async getContracts() {
-    return this.post("s2/contracts", {});
+  async getMarket(item) {
+    return this.get("s2/market", { товар: item });
   }
 
-  async getMarket(товар) {
-    return this.get("s2/market", { товар });
+  async sellMarket(item, qty, price) {
+    return this.post("s2/market/sell", { товар: item, кол: qty, цена: price });
   }
 
-  async sellMarket(товар, кол, цена) {
-    return this.post("s2/market/sell", { товар, кол, цена });
+  async buyMarket(lot) {
+    return this.post("s2/market/buy", { лот: lot });
   }
 
-  async buyMarket(лот) {
-    return this.post("s2/market/buy", { лот });
-  }
-
-  async cancelMarket(лот) {
-    return this.post("s2/market/cancel", { лот });
-  }
-
-  async startExpedition(инструмент, часов, точка = "ближняя") {
+  async startExpedition(tool, hours, point = "ближняя") {
     return this.post("s2/start", {
-      инструмент: String(инструмент),
-      часов,
-      точка,
+      инструмент: String(tool),
+      часов: hours,
+      точка: point,
     });
   }
 
-  async collectExpedition(вылазка) {
+  async collectExpedition(expedition) {
     const res = await this.api
-      .post(`${API_URL}/s2/collect`, { вылазка }, { responseType: "text" })
+      .post(`${API_URL}/s2/collect`, { вылазка: expedition }, { responseType: "text" })
       .then((r) => r.data)
       .catch((e) => {
         throw e;
@@ -175,24 +157,24 @@ export default class MakegramFarmer extends BaseFarmer {
     return this.tryDecode(res);
   }
 
-  async repairTool(предмет, hp) {
-    return this.post("s2/repair", { предмет: String(предмет), hp });
+  async repairTool(item, hp) {
+    return this.post("s2/repair", { предмет: String(item), hp });
   }
 
   async getTasks() {
     return this.apiGet("s2/tasks");
   }
 
-  async openTask(код) {
-    return this.post("s2/tasks/open", { код });
+  async openTask(code) {
+    return this.post("s2/tasks/open", { код: code });
   }
 
-  async claimTask(код) {
-    return this.post("s2/tasks/claim", { код });
+  async claimTask(code) {
+    return this.post("s2/tasks/claim", { код: code });
   }
 
-  async openChest(повод = "новичок") {
-    return this.post("s2/chest", { повод });
+  async openChest(reason = "новичок") {
+    return this.post("s2/chest", { повод: reason });
   }
 
   async getVillageGifts() {
@@ -200,11 +182,10 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Login — fetch state, flag, contracts                                  */
+  /* Login — fetch state + flag                                            */
   /* --------------------------------------------------------------------- */
 
   async login() {
-    // 1. Get state
     this.s2_state = await this.getState().catch((e) => {
       const status = e.response?.status || "no-status";
       this.logger.warn(`S2 state failed [${status}]`);
@@ -215,11 +196,7 @@ export default class MakegramFarmer extends BaseFarmer {
     if (!this.s2_state?.ok)
       throw new Error("S2 state failed — check X-Init-Data / proxy");
 
-    // 2. Flag heartbeat (always called after state in HAR)
     await this.flag().catch(() => {});
-
-    // 3. Contracts (always called after flag in HAR)
-    this.s2_contracts = await this.getContracts().catch(() => null);
 
     this.user_data = { ok: true, coins: this.s2_state.баланс, ...this.s2_state };
     return this.user_data;
@@ -258,7 +235,7 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Tasks — open then claim with delay (HAR-verified flow)                */
+  /* Tasks                                                                 */
   /* --------------------------------------------------------------------- */
 
   async handleTasks() {
@@ -279,20 +256,17 @@ export default class MakegramFarmer extends BaseFarmer {
       if (!code) continue;
       if (task.claimed || task.получен) continue;
 
-      // Open first if not opened
       if (!task.opened && !task.открыт) {
         await this.openTask(code).catch(() => null);
         await this.utils.delayForSeconds(2, { signal: this.signal });
       }
 
-      // Claim — if 400, wait and retry once (HAR: toxic_x got 400 then 200)
       const claim = await this.claimTask(code).catch((e) => {
         if (e.response?.status === 400) return { notReady: true };
         this.logger.warn(`Task ${code} claim error:`, e.message);
         return null;
       });
       if (claim?.notReady) {
-        // Wait and retry once (some tasks need time after open)
         await this.utils.delayForSeconds(5, { signal: this.signal });
         const retry = await this.claimTask(code).catch(() => null);
         if (retry?.ok)
@@ -375,7 +349,7 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Repair — fix tools below 40 hp (HAR: repair uses hp_макс - hp)       */
+  /* Repair — fix tools below 40 hp                                       */
   /* --------------------------------------------------------------------- */
 
   async repairTools() {
@@ -394,13 +368,12 @@ export default class MakegramFarmer extends BaseFarmer {
           e.response?.data?.error || e.message,
         );
       });
-      // Refresh state after repair (resources consumed)
       this.s2_state = await this.getState().catch(() => this.s2_state);
       await this.flag().catch(() => {});
-      const sklad = this.s2_state?.склад;
-      if (sklad)
+      const wh = this.s2_state?.склад;
+      if (wh)
         this.logger.info(
-          `After repair: руда:${sklad.руда} брёвна:${sklad.брёвна} еда:${sklad.еда}`,
+          `After repair: ore:${wh.руда} logs:${wh.брёвна} food:${wh.еда}`,
         );
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
@@ -427,12 +400,13 @@ export default class MakegramFarmer extends BaseFarmer {
     }
 
     const food = Number(s2.склад?.еда || 0);
+    const totalFoodNeeded = idle.reduce((sum, t) => sum + this.foodCostForTool(t), 0);
     this.logger.info(
-      `Start check: ${idle.length} idle tools, food: ${food} (need ${START_FOOD_COST} each)`,
+      `Start check: ${idle.length} idle tools, food: ${food} (need ${totalFoodNeeded} total)`,
     );
-    if (food < START_FOOD_COST) {
+    if (food < this.foodCostForTool(idle[0])) {
       this.logger.info(
-        `Not enough food (${food}) to start (need ${START_FOOD_COST}), skip.`,
+        `Not enough food (${food}) to start any tool (min ${this.foodCostForTool(idle[0])}), skip.`,
       );
       return;
     }
@@ -444,11 +418,11 @@ export default class MakegramFarmer extends BaseFarmer {
         continue;
       }
 
-      // Re-check food before each start
       const curFood = Number(this.s2_state?.склад?.еда ?? 0);
-      if (curFood < START_FOOD_COST) {
+      const toolFood = this.foodCostForTool(tool);
+      if (curFood < toolFood) {
         this.logger.info(
-          `Not enough food (${curFood}) for next tool, stop.`,
+          `Not enough food (${curFood}) for ${tool.тип} (need ${toolFood}), stop.`,
         );
         break;
       }
@@ -472,7 +446,6 @@ export default class MakegramFarmer extends BaseFarmer {
         this.logger.success(
           `Started ${tool.тип} ${tool.id} 4h (fuel: ${fuel})`,
         );
-        // Update state
         if (res.состояние?.ok) {
           this.s2_state = res.состояние;
         } else {
@@ -485,16 +458,141 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Market — tiered sell logic per sellLOGIC.txt                          */
-  /*
-   * Ore:  1×1950, 2×(1850–1900), 3×(1700–1800)
-   * Logs: 1×2100, 2×(1990–2000), 3×(1850–1890)
-   * Food: 1×3800, 2×3500, 3×3000  (accounts with bow ONLY)
-   * Total 6 orders per cycle (3 ore + 3 logs), or fewer.
-   * Skip selling entirely if any pending orders remain.
-   */
+  /* ARISE — buy food from market and restart farming                     */
+  /*                                                                       */
+  /* Runs LAST. If idle tools need food to start, buy the cheapest food    */
+  /* lots from the market. Axe needs 9 food, pickaxe needs 8 food.         */
+  /* Smart buying: only buys the exact amount needed.                      */
+  /* --------------------------------------------------------------------- */
 
-  /** Check if account has a bow tool (food only sold with bows) */
+  /** Food cost per tool type */
+  foodCostForTool(tool) {
+    if (tool.тип === "топор" || tool.тип?.toLowerCase()?.includes("axe"))
+      return 9;
+    return 8; // pickaxe (кирка) default
+  }
+
+  async arise() {
+    const s2 = this.s2_state;
+    if (!s2?.ok || !Array.isArray(s2.инструменты)) {
+      this.logger.info("ARISE: no state or tools, skip.");
+      return;
+    }
+
+    // Find idle tools that can start
+    const idle = s2.инструменты.filter(
+      (t) =>
+        (!t.занят_до || t.занят_до === 0 || t.занят_до < Date.now()) &&
+        t.hp > 2,
+    );
+    if (idle.length === 0) {
+      this.logger.info("ARISE: all tools busy or hp too low, skip.");
+      return;
+    }
+
+    // Calculate total food needed
+    let foodNeeded = 0;
+    for (const tool of idle) {
+      foodNeeded += this.foodCostForTool(tool);
+    }
+    const foodHave = Number(s2.склад?.еда || 0);
+    if (foodHave >= foodNeeded) {
+      this.logger.info(`ARISE: enough food (${foodHave}/${foodNeeded}), not needed.`);
+      return;
+    }
+
+    this.logger.info(
+      `ARISE: need ${foodNeeded - foodHave} more food (${foodHave}/${foodNeeded}) for ${idle.length} idle tools`,
+    );
+
+    // Buy cheapest lots one at a time, refetch market after each buy
+    // (lots disappear after purchase). Buy whatever is cheapest and available.
+    // Max spend: 100,000 coins per cycle.
+    let bought = 0;
+    let spent = 0;
+    const MAX_SPEND = 100000;
+    const maxAttempts = 10; // safety limit
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (this.signal?.aborted) break;
+
+      // Re-check food after each buy
+      const curFood = Number(this.s2_state?.склад?.еда || 0);
+      if (curFood >= foodNeeded) break;
+      if (spent >= MAX_SPEND) {
+        this.logger.info(`ARISE: reached ${MAX_SPEND} coin spend limit, stop buying.`);
+        break;
+      }
+
+      // Fetch fresh market
+      const market = await this.getMarket("еда").catch((e) => {
+        this.logger.warn("ARISE: food market fetch failed:", e.message);
+        return null;
+      });
+      if (!market?.ok || !Array.isArray(market.лоты)) break;
+
+      // Find cheapest lot (skip own)
+      const lots = market.лоты
+        .filter((l) => !l.свой)
+        .sort((a, b) => a.цена - b.цена);
+
+      if (lots.length === 0) {
+        this.logger.info("ARISE: no food lots left on market.");
+        break;
+      }
+
+      // Buy the cheapest lot (whatever size it is)
+      const lot = lots[0];
+      const lotCost = lot.цена * lot.кол;
+      if (spent + lotCost > MAX_SPEND) {
+        this.logger.info(`ARISE: lot ${lot.id} costs ${lotCost} (would exceed ${MAX_SPEND} limit), skip.`);
+        break;
+      }
+      this.logger.info(
+        `ARISE: buying lot ${lot.id} — ${lot.кол} food × ${lot.цена} (from ${lot.ник})`,
+      );
+      const res = await this.buyMarket(lot.id).catch((e) => {
+        this.logger.warn(`ARISE: buy lot ${lot.id} failed:`, e.message);
+        return null;
+      });
+      if (res?.ok) {
+        bought++;
+        spent += lot.цена * lot.кол;
+        this.logger.success(`ARISE: bought lot ${lot.id} (+${lot.кол} food, total: ${curFood + lot.кол})`);
+        // Update state from buy response
+        if (res.состояние?.ok) {
+          this.s2_state = res.состояние;
+        } else {
+          this.s2_state = await this.getState().catch(() => this.s2_state);
+        }
+        await this.flag().catch(() => {});
+      }
+      await this.utils.delayForSeconds(2, { signal: this.signal });
+    }
+
+    if (bought > 0) {
+      const finalFood = Number(this.s2_state?.склад?.еда || 0);
+      this.logger.success(
+        `ARISE: bought ${bought} lots, spent ${spent} coins, food now: ${finalFood}`,
+      );
+    } else {
+      this.logger.info("ARISE: could not buy any food lots.");
+      return;
+    }
+
+    // Now start expeditions with the food we just bought
+    await this.startExpeditions();
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Market — tiered sell logic per sellLOGIC.txt                          */
+  /*                                                                       */
+  /* Ore:  1×1950, 2×(1850–1900), 3×(1700–1800)                           */
+  /* Logs: 1×2100, 2×(1990–2000), 3×(1850–1890)                           */
+  /* Food: 1×3800, 2×3500, 3×3000  (accounts with bow ONLY)               */
+  /* Max 3 orders per resource, up to 10 pending lots total.              */
+  /* --------------------------------------------------------------------- */
+
   hasBow() {
     const tools = this.s2_state?.инструменты || [];
     return tools.some(
@@ -502,32 +600,26 @@ export default class MakegramFarmer extends BaseFarmer {
     );
   }
 
-  /** Random integer in [min, max] inclusive */
   randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  /**
-   * Sell a single item at a fixed price.
-   * Returns true if the lot was placed, false otherwise.
-   */
-  async sellOne(товар, кол, цена, pendingRef) {
+  async sellOne(item, qty, price, pendingRef) {
     if (pendingRef.value >= 10) {
       this.logger.info("Market: 10 pending lots (max), stop selling.");
       return false;
     }
-    const res = await this.sellMarket(товар, кол, цена).catch((e) => {
+    const res = await this.sellMarket(item, qty, price).catch((e) => {
       if (e.response?.status === 400) {
-        this.logger.info(`Sell ${товар} ${кол}×${цена} rejected (400 corridor).`);
+        this.logger.info(`Sell ${item} ${qty}×${price} rejected (400 corridor).`);
       } else {
-        this.logger.warn(`Sell ${товар} ${кол}×${цена} failed:`, e.message);
+        this.logger.warn(`Sell ${item} ${qty}×${price} failed:`, e.message);
       }
       return null;
     });
     if (res?.ok) {
-      this.logger.success(`Listed ${товар} ${кол}×${цена}`);
+      this.logger.success(`Listed ${item} ${qty}×${price}`);
       pendingRef.value++;
-      // Refresh state to get updated lot count
       this.s2_state = await this.getState().catch(() => this.s2_state);
       await this.flag().catch(() => {});
       pendingRef.value = Array.isArray(this.s2_state?.мойЛот)
@@ -538,15 +630,11 @@ export default class MakegramFarmer extends BaseFarmer {
     return false;
   }
 
-  /**
-   * Execute up to 3 sell orders for a resource (max 3 per resource).
-   * tiers: [{ qty, minPrice, maxPrice, label }, ...]
-   */
-  async sellTiered(товар, have, tiers, pendingRef) {
+  async sellTiered(item, have, tiers, pendingRef) {
     const totalNeeded = tiers.reduce((s, t) => s + t.qty, 0);
     if (have < totalNeeded) {
       this.logger.info(
-        `Market: not enough ${товар} (${have}) for 3 orders (need ${totalNeeded}), skip.`,
+        `Market: not enough ${item} (${have}) for 3 orders (need ${totalNeeded}), skip.`,
       );
       return;
     }
@@ -555,15 +643,15 @@ export default class MakegramFarmer extends BaseFarmer {
       if (this.signal?.aborted) break;
       if (pendingRef.value >= 10) break;
       if (placed >= 3) break;
-      const цена = this.randInt(tier.minPrice, tier.maxPrice);
+      const price = this.randInt(tier.minPrice, tier.maxPrice);
       this.logger.info(
-        `Selling ${товар} ${tier.qty}×${цена} (${tier.label || "tier"})`,
+        `Selling ${item} ${tier.qty}×${price} (${tier.label || "tier"})`,
       );
-      const ok = await this.sellOne(товар, tier.qty, цена, pendingRef);
+      const ok = await this.sellOne(item, tier.qty, price, pendingRef);
       if (ok) placed++;
       await this.utils.delayForSeconds(2, { signal: this.signal });
     }
-    this.logger.info(`Market: ${товар} — placed ${placed}/3 orders.`);
+    this.logger.info(`Market: ${item} — placed ${placed}/3 orders.`);
   }
 
   async handleMarket() {
@@ -573,10 +661,10 @@ export default class MakegramFarmer extends BaseFarmer {
       return;
     }
 
-    const склад = s2.склад || {};
+    const wh = s2.склад || {};
     let pending = Array.isArray(s2.мойЛот) ? s2.мойЛот.length : 0;
     this.logger.info(
-      `Market: руда:${склад.руда || 0} брёвна:${склад.брёвна || 0} еда:${склад.еда || 0} | lots ${pending}/10`,
+      `Market: ore:${wh.руда || 0} logs:${wh.брёвна || 0} food:${wh.еда || 0} | lots ${pending}/10`,
     );
     if (pending >= 10) {
       this.logger.info("Market: 10 pending lots (max), skip.");
@@ -586,7 +674,7 @@ export default class MakegramFarmer extends BaseFarmer {
     const pendingRef = { value: pending };
 
     // --- ORE: 3 orders — 1×1950, 2×(1850–1900), 3×(1700–1800) ---
-    const ore = Number(склад.руда || 0);
+    const ore = Number(wh.руда || 0);
     if (ore > 0) {
       await this.sellTiered("руда", ore, [
         { qty: 1, minPrice: 1950, maxPrice: 1950, label: "tier 1: 1×1950" },
@@ -598,7 +686,7 @@ export default class MakegramFarmer extends BaseFarmer {
     }
 
     // --- LOGS: 3 orders — 1×2100, 2×(1990–2000), 3×(1850–1890) ---
-    const logs = Number(склад.брёвна || 0);
+    const logs = Number(wh.брёвна || 0);
     if (logs > 0 && pendingRef.value < 10) {
       await this.sellTiered("брёвна", logs, [
         { qty: 1, minPrice: 2100, maxPrice: 2100, label: "tier 1: 1×2100" },
@@ -611,7 +699,7 @@ export default class MakegramFarmer extends BaseFarmer {
 
     // --- FOOD: 3 orders — 1×3800, 2×3500, 3×3000 (bow accounts ONLY) ---
     if (pendingRef.value < 10 && this.hasBow()) {
-      const food = Number(склад.еда || 0);
+      const food = Number(wh.еда || 0);
       if (food > 0) {
         await this.sellTiered("еда", food, [
           { qty: 1, minPrice: 3800, maxPrice: 3800, label: "tier 1: 1×3800" },
@@ -627,140 +715,11 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
-  /* Contracts — accept available ones (2/day limit)                       */
-  /* --------------------------------------------------------------------- */
-
-  async handleContracts() {
-    const contracts = this.s2_contracts;
-    if (!contracts?.ok) {
-      this.logger.info("Contracts: no data.");
-      return;
-    }
-
-    const available = contracts.витрина || [];
-    const active = contracts.мои || [];
-    const takenToday = contracts.взятоЗаСутки || 0;
-    const dailyLimit = contracts.вСутки || 2;
-
-    this.logger.info(
-      `Contracts: ${active.length} active, ${takenToday}/${dailyLimit} taken today, ${available.length} available`,
-    );
-
-    if (active.length > 0) {
-      this.logger.info(
-        `Active contracts: ${active.map((c) => `${c.товар}×${c.кол} (${c.ступень})`).join(", ")}`,
-      );
-    }
-
-    // Complete active contracts that have enough warehouse
-    for (const c of active) {
-      if (this.signal?.aborted) break;
-      const склад = this.s2_state?.склад || this.s2_state?.состояние?.склад || {};
-      const have = Number(склад[c.товар] || 0);
-      if (have >= c.кол) {
-        this.logger.info(`Completing contract: ${c.товар}×${c.кол}...`);
-        const res = await this.post("s2/contracts/hand", {
-          контракт: c.номер,
-        }).catch((e) => {
-          this.logger.warn(`Contract complete failed:`, e.message);
-          return null;
-        });
-        if (res?.ok) {
-          this.logger.success(`Completed contract ${c.номер}: +${c.награда} reward`);
-          this.s2_state = await this.getState().catch(() => this.s2_state);
-          await this.flag().catch(() => {});
-          this.s2_contracts = await this.getContracts().catch(() => null);
-        }
-        await this.utils.delayForSeconds(2, { signal: this.signal });
-      }
-    }
-
-    if (takenToday >= dailyLimit) {
-      this.logger.info("Contracts: daily limit reached, skip.");
-      return;
-    }
-
-    if (available.length === 0) {
-      this.logger.info("Contracts: none available.");
-      return;
-    }
-
-    // Accept best value contract (highest reward per hour, if we have resources)
-    const склад = this.s2_state?.склад || {};
-    const sorted = available
-      .map((c) => ({
-        ...c,
-        valuePerHour: c.награда / c.часов,
-      }))
-      .sort((a, b) => b.valuePerHour - a.valuePerHour);
-
-    for (const contract of sorted) {
-      if (this.signal?.aborted) break;
-      if (takenToday >= dailyLimit) break;
-
-      const have = Number(склад[contract.товар] || 0);
-      if (have < contract.кол) {
-        this.logger.info(
-          `Contract ${contract.номер}: ${contract.товар}×${contract.кол} — need ${contract.кол - have} more (have ${have}), skip.`,
-        );
-        continue;
-      }
-
-      this.logger.info(
-        `Accepting contract ${contract.номер}: ${contract.товар}×${contract.кол} for ${contract.награда} (${contract.ступень}, ${contract.valuePerHour.toFixed(0)}/h)...`,
-      );
-      const res = await this.post("s2/contracts/take", {
-        номер: contract.номер,
-      }).catch((e) => {
-        if (e.response?.status === 400)
-          this.logger.info(`Contract ${contract.номер} accept rejected (400).`);
-        else
-          this.logger.warn(
-            `Contract accept failed:`,
-            e.response?.data?.error || e.message,
-          );
-        return null;
-      });
-
-      if (res?.ok) {
-        this.logger.success(
-          `Accepted contract ${contract.номер}: ${contract.товар}×${contract.кол} → ${contract.награда}`,
-        );
-        this.s2_state = await this.getState().catch(() => this.s2_state);
-        await this.flag().catch(() => {});
-        this.s2_contracts = await this.getContracts().catch(() => null);
-      }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
-    }
-  }
-
-  /* --------------------------------------------------------------------- */
-  /* Cancel old/stale market lots                                          */
-  /* --------------------------------------------------------------------- */
-
-  async cancelStaleLots() {
-    const s2 = this.s2_state;
-    if (!s2?.ok || !Array.isArray(s2.мойЛот)) return;
-    const staleThreshold = Date.now() - 3600_000; // older than 1 hour
-    const stale = s2.мойЛот.filter((lot) => lot.created < staleThreshold);
-    if (stale.length === 0) return;
-
-    this.logger.info(`Cancelling ${stale.length} stale market lots...`);
-    for (const lot of stale) {
-      if (this.signal?.aborted) break;
-      await this.cancelMarket(lot.id).catch(() => {});
-      await this.utils.delayForSeconds(1, { signal: this.signal });
-    }
-    this.s2_state = await this.getState().catch(() => this.s2_state);
-    await this.flag().catch(() => {});
-  }
-
-  /* --------------------------------------------------------------------- */
   /* Process — main farming loop                                          */
   /* --------------------------------------------------------------------- */
 
   async process() {
-    // 1. Login (state + flag + contracts)
+    // 1. Login (state + flag)
     await this.login();
     await this.logUserInfo();
 
@@ -773,27 +732,23 @@ export default class MakegramFarmer extends BaseFarmer {
     // 4. Village Gifts
     await this.executeTask("Village Gifts", () => this.handleVillageGifts());
 
-    // 5. Contracts
-    await this.executeTask("Contracts", () => this.handleContracts());
-
-    // 6. Collect finished expeditions
+    // 5. Collect finished expeditions
     await this.executeTask("Collect", () => this.collectExpeditions());
 
-    // 7. Repair damaged tools
+    // 6. Repair damaged tools
     await this.executeTask("Repair", () => this.repairTools());
 
-    // 8. Market — sell resources
+    // 7. Market — sell resources
     await this.executeTask("Market", () => this.handleMarket());
 
-    // 9. Cancel stale lots
-    await this.executeTask("Cancel Lots", () => this.cancelStaleLots());
-
-    // 10. Start new expeditions (must be last — needs food/resources)
+    // 8. Start new expeditions
     await this.executeTask("Start Expedition", () => this.startExpeditions());
 
-    // 11. Final flag + contracts refresh
+    // 9. ARISE — buy food and start if needed (must be last)
+    await this.executeTask("ARISE", () => this.arise());
+
+    // 10. Final flag
     await this.flag().catch(() => {});
-    this.s2_contracts = await this.getContracts().catch(() => null);
   }
 
   /* --------------------------------------------------------------------- */
@@ -831,19 +786,9 @@ export default class MakegramFarmer extends BaseFarmer {
           : "none",
       );
       this.logger.keyValue(
-        "Market Lots",
-        `${(s.мойЛот || []).length}/10`,
-      );
-      this.logger.keyValue(
         "Season",
         `${s.сезон?.эмодзи || ""} ${s.сезон?.имя || "?"} day ${s.сезон?.деньСезона || "?"}/${s.сезон?.дней || "?"}`,
       );
-      if (this.s2_contracts?.ok) {
-        this.logger.keyValue(
-          "Contracts",
-          `${(this.s2_contracts.мои || []).length} active, ${(this.s2_contracts.взятоЗаСутки || 0)}/${this.s2_contracts.вСутки || 2} today`,
-        );
-      }
     } else {
       this.logger.keyValue("Balance", this.user_data?.coins ?? "—");
     }
@@ -878,13 +823,6 @@ export default class MakegramFarmer extends BaseFarmer {
         dispatch: false,
       },
       {
-        id: "contracts",
-        icon: "tasks",
-        title: "Accept Contracts",
-        action: this.handleContracts.bind(this),
-        dispatch: false,
-      },
-      {
         id: "collect",
         icon: "download",
         title: "Collect Expeditions",
@@ -912,9 +850,15 @@ export default class MakegramFarmer extends BaseFarmer {
         action: this.startExpeditions.bind(this),
         dispatch: false,
       },
+      {
+        id: "arise",
+        icon: "shop",
+        title: "ARISE — Buy Food & Start",
+        action: this.arise.bind(this),
+        dispatch: false,
+      },
     ];
 
-    // Per-tool start buttons for idle tools
     const tools = this.s2_state?.инструменты || [];
     const perTool = tools
       .filter(
