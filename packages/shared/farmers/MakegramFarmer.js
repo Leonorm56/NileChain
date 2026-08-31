@@ -577,8 +577,8 @@ export default class MakegramFarmer extends BaseFarmer {
     this.logger.info(
       `Market: руда:${склад.руда || 0} брёвна:${склад.брёвна || 0} еда:${склад.еда || 0} | lots ${pending}/10`,
     );
-    if (pending > 0) {
-      this.logger.info(`Market: ${pending} pending lots still active, skip selling this cycle.`);
+    if (pending >= 10) {
+      this.logger.info("Market: 10 pending lots (max), skip.");
       return;
     }
 
