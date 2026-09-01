@@ -228,7 +228,7 @@ export default class MakegramFarmer extends BaseFarmer {
       if (res?.already) break;
       if (res?.ok) this.logger.success(`Opened chest ${i + 1}/2!`);
       else if (!res) break;
-      await this.utils.delayForSeconds(1, { signal: this.signal });
+      await this.utils.delayForSeconds(0.5, { signal: this.signal });
     }
     this.s2_state = await this.getState().catch(() => this.s2_state);
     await this.flag().catch(() => {});
@@ -258,7 +258,7 @@ export default class MakegramFarmer extends BaseFarmer {
 
       if (!task.opened && !task.открыт) {
         await this.openTask(code).catch(() => null);
-        await this.utils.delayForSeconds(2, { signal: this.signal });
+        await this.utils.delayForSeconds(1, { signal: this.signal });
       }
 
       const claim = await this.claimTask(code).catch((e) => {
@@ -267,7 +267,7 @@ export default class MakegramFarmer extends BaseFarmer {
         return null;
       });
       if (claim?.notReady) {
-        await this.utils.delayForSeconds(5, { signal: this.signal });
+        await this.utils.delayForSeconds(2, { signal: this.signal });
         const retry = await this.claimTask(code).catch(() => null);
         if (retry?.ok)
           this.logger.success(
@@ -278,7 +278,7 @@ export default class MakegramFarmer extends BaseFarmer {
           `Claimed task ${code}: +${claim.награда || "?"} reward`,
         );
       }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
   }
 
@@ -344,39 +344,221 @@ export default class MakegramFarmer extends BaseFarmer {
           await this.flag().catch(() => {});
         }
       }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
   }
 
   /* --------------------------------------------------------------------- */
-  /* Repair — fix tools below 40 hp                                       */
+  /* MINAZUKI — smart repair: buy materials if needed, then repair        */
+  /*                                                                       */
+  /* Runs after Collect. Tries repair, if missing materials → buys from    */
+  /* market (multiple cheapest lots), then retries. Max 100k spend total.  */
   /* --------------------------------------------------------------------- */
 
-  async repairTools() {
+  /**
+   * Buy cheapest lots of an item from market, trying multiple slots.
+   * Returns { spent, bought }.
+   */
+  async buyCheapestLots(item, needed, maxSpend, label) {
+    let spent = 0;
+    let bought = 0;
+    const maxAttempts = 10;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (this.signal?.aborted) break;
+      if (bought >= needed) break;
+      if (spent >= maxSpend) {
+        this.logger.info(`${label}: reached ${maxSpend} coin spend limit.`);
+        break;
+      }
+
+      // Fetch fresh market each time
+      const market = await this.getMarket(item).catch((e) => {
+        this.logger.warn(`${label}: market fetch ${item} failed:`, e.message);
+        return null;
+      });
+      if (!market?.ok || !Array.isArray(market.лоты)) break;
+
+      // Cheapest lots first, skip own
+      const lots = market.лоты
+        .filter((l) => !l.свой)
+        .sort((a, b) => a.цена - b.цена);
+
+      if (lots.length === 0) break;
+
+      // Try up to 10 cheapest lots per fetch
+      let boughtThisRound = false;
+      for (const lot of lots.slice(0, 10)) {
+        if (bought >= needed) break;
+        if (spent >= maxSpend) break;
+
+        const lotCost = lot.цена * lot.кол;
+        if (spent + lotCost > maxSpend) {
+          this.logger.info(`${label}: lot ${lot.id} costs ${lotCost} (would exceed limit), skip.`);
+          continue;
+        }
+
+        this.logger.info(
+          `${label}: buying lot ${lot.id} — ${lot.кол} × ${lot.цена} = ${lotCost} (from ${lot.ник})`,
+        );
+        const res = await this.buyMarket(lot.id).catch((e) => {
+          this.logger.warn(`${label}: buy lot ${lot.id} failed:`, e.message);
+          return null;
+        });
+        if (res?.ok) {
+          bought += lot.кол;
+          spent += lotCost;
+          boughtThisRound = true;
+          this.logger.success(`${label}: bought ${lot.кол} ${item} (+${lot.кол}, total: ${bought}/${needed})`);
+          if (res.состояние?.ok) this.s2_state = res.состояние;
+          else this.s2_state = await this.getState().catch(() => this.s2_state);
+          await this.flag().catch(() => {});
+        }
+        await this.utils.delayForSeconds(0.5, { signal: this.signal });
+      }
+
+      // If no lot was successfully bought this round, stop
+      if (!boughtThisRound) break;
+      await this.utils.delayForSeconds(0.5, { signal: this.signal });
+    }
+
+    return { spent, bought };
+  }
+
+  /** Parse repair cost from error response "цена" field */
+  parseRepairCost(errorResponse) {
+    if (!errorResponse) return null;
+    // Try direct error response
+    const cost = errorResponse.цена || errorResponse.price;
+    if (cost && typeof cost === "object") return cost;
+    return null;
+  }
+
+  async minazuki() {
     const s2 = this.s2_state;
-    if (!s2?.ok || !Array.isArray(s2.инструменты)) return;
+    if (!s2?.ok || !Array.isArray(s2.инструменты)) {
+      this.logger.info("MINAZUKI: no state or tools, skip.");
+      return;
+    }
+
+    const MAX_HEAL_SPEND = 100000;
+    let totalSpent = 0;
+    let repaired = 0;
+    const wh = s2.склад || {};
+
+    this.logger.info(
+      `MINAZUKI: ore:${wh.руда || 0} logs:${wh.брёвна || 0} food:${wh.еда || 0}`,
+    );
+
     for (const tool of s2.инструменты) {
       if (this.signal?.aborted) break;
-      const need = (tool.hp_макс || 40) - tool.hp;
-      if (need <= 0) continue;
+      if (totalSpent >= MAX_HEAL_SPEND) {
+        this.logger.info(`MINAZUKI: reached ${MAX_HEAL_SPEND} coin limit, stop.`);
+        break;
+      }
+
+      const hpMax = tool.hp_макс || 40;
+      const need = hpMax - tool.hp;
+      if (need <= 0) {
+        this.logger.info(`MINAZUKI: ${tool.тип} ${tool.id} hp ${tool.hp}/${hpMax} — full, skip.`);
+        continue;
+      }
+
       this.logger.info(
-        `Repairing ${tool.тип} ${tool.id} hp ${tool.hp}→${tool.hp_макс} (need ${need})`,
+        `MINAZUKI: repairing ${tool.тип} ${tool.id} hp ${tool.hp}→${hpMax} (need ${need} hp)...`,
       );
-      await this.repairTool(tool.id, need).catch((e) => {
-        this.logger.warn(
-          `Repair ${tool.id} failed:`,
-          e.response?.data?.error || e.message,
-        );
+
+      // Try repair
+      let res = await this.repairTool(tool.id, need).catch((e) => {
+        // Return error data so we can parse it
+        const errData = e.response?.data || {};
+        return { ok: false, error: e.message, _raw: errData };
       });
-      this.s2_state = await this.getState().catch(() => this.s2_state);
-      await this.flag().catch(() => {});
-      const wh = this.s2_state?.склад;
-      if (wh)
-        this.logger.info(
-          `After repair: ore:${wh.руда} logs:${wh.брёвна} food:${wh.еда}`,
+
+      if (res?.ok) {
+        this.logger.success(`MINAZUKI: ${tool.тип} ${tool.id} repaired! (+${need} hp)`);
+        if (res.состояние?.ok) this.s2_state = res.состояние;
+        else this.s2_state = await this.getState().catch(() => this.s2_state);
+        await this.flag().catch(() => {});
+        repaired++;
+        await this.utils.delayForSeconds(1, { signal: this.signal });
+        continue;
+      }
+
+      // Check if it's a "not enough materials" error
+      const errorStr = res?.error || res?._raw?.error || "";
+      const costData = this.parseRepairCost(res?._raw || res);
+
+      if (!costData) {
+        // Unknown error (e.g. "выше максимума")
+        this.logger.info(`MINAZUKI: ${tool.тип} ${tool.id} — ${errorStr || "unknown error"}, skip.`);
+        await this.utils.delayForSeconds(0.5, { signal: this.signal });
+        continue;
+      }
+
+      // We have cost data — need to buy materials
+      this.logger.info(
+        `MINAZUKI: ${tool.тип} ${tool.id} needs materials: ${JSON.stringify(costData)}`,
+      );
+
+      // Check what we have vs what we need
+      const s2Now = this.s2_state || s2;
+      const whNow = s2Now.склад || {};
+      const budgetLeft = MAX_HEAL_SPEND - totalSpent;
+
+      // Buy each missing material
+      for (const [mat, qty] of Object.entries(costData)) {
+        if (this.signal?.aborted) break;
+        if (totalSpent >= MAX_HEAL_SPEND) break;
+
+        const have = Number(whNow[mat] || 0);
+        if (have >= qty) {
+          this.logger.info(`MINAZUKI: ${mat} have ${have} >= need ${qty} ✓`);
+          continue;
+        }
+
+        const deficit = qty - have;
+        const perItemBudget = Math.floor((budgetLeft - totalSpent) / 2); // split remaining budget
+        this.logger.info(`MINAZUKI: buying ${deficit} ${mat} (have ${have}, need ${qty})`);
+
+        const { spent: matSpent, bought: matBought } = await this.buyCheapestLots(
+          mat,
+          deficit,
+          perItemBudget,
+          `MINAZUKI ${mat}`,
         );
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+        totalSpent += matSpent;
+
+        if (matBought < deficit) {
+          this.logger.warn(
+            `MINAZUKI: could only buy ${matBought}/${deficit} ${mat} (spent ${matSpent})`,
+          );
+        }
+      }
+
+      // Retry repair after buying materials
+      this.logger.info(`MINAZUKI: retrying repair ${tool.тип} ${tool.id}...`);
+      res = await this.repairTool(tool.id, need).catch((e) => {
+        return { ok: false, error: e.response?.data?.error || e.message };
+      });
+
+      if (res?.ok) {
+        this.logger.success(`MINAZUKI: ${tool.тип} ${tool.id} repaired after buying materials!`);
+        if (res.состояние?.ok) this.s2_state = res.состояние;
+        else this.s2_state = await this.getState().catch(() => this.s2_state);
+        await this.flag().catch(() => {});
+        repaired++;
+      } else {
+        this.logger.warn(
+          `MINAZUKI: ${tool.тип} ${tool.id} repair still failed: ${res?.error || "unknown"}`,
+        );
+      }
+      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
+
+    this.logger.info(
+      `MINAZUKI done: ${repaired} repaired, spent ${totalSpent}/${MAX_HEAL_SPEND} coins`,
+    );
   }
 
   /* --------------------------------------------------------------------- */
@@ -401,15 +583,11 @@ export default class MakegramFarmer extends BaseFarmer {
 
     const food = Number(s2.склад?.еда || 0);
     const totalFoodNeeded = idle.reduce((sum, t) => sum + this.foodCostForTool(t), 0);
+    const minFoodNeeded = Math.min(...idle.map((t) => this.foodCostForTool(t)));
     this.logger.info(
-      `Start check: ${idle.length} idle tools, food: ${food} (need ${totalFoodNeeded} total)`,
+      `Start check: ${idle.length} idle tools, food: ${food} (need ${totalFoodNeeded} total, min ${minFoodNeeded})`,
     );
-    if (food < this.foodCostForTool(idle[0])) {
-      this.logger.info(
-        `Not enough food (${food}) to start any tool (min ${this.foodCostForTool(idle[0])}), skip.`,
-      );
-      return;
-    }
+    // Don't return early — check each tool individually in the loop
 
     for (const tool of idle) {
       if (this.signal?.aborted) break;
@@ -422,9 +600,9 @@ export default class MakegramFarmer extends BaseFarmer {
       const toolFood = this.foodCostForTool(tool);
       if (curFood < toolFood) {
         this.logger.info(
-          `Not enough food (${curFood}) for ${tool.тип} (need ${toolFood}), stop.`,
+          `Not enough food (${curFood}) for ${tool.тип} ${tool.id} (need ${toolFood}), skip tool.`,
         );
-        break;
+        continue;
       }
 
       this.logger.info(
@@ -453,7 +631,7 @@ export default class MakegramFarmer extends BaseFarmer {
         }
         await this.flag().catch(() => {});
       }
-      await this.utils.delayForSeconds(3, { signal: this.signal });
+      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
   }
 
@@ -490,94 +668,39 @@ export default class MakegramFarmer extends BaseFarmer {
       return;
     }
 
-    // Buy food until we have at least 20, max spend 100k
     const foodHave = Number(s2.склад?.еда || 0);
-    if (foodHave >= 20) {
-      this.logger.info(`ARISE: enough food (${foodHave}), not needed.`);
+    const maxSpend = 100000;
+
+    // Check if we already have enough for at least one tool
+    const minFoodNeeded = Math.min(...idle.map((t) => this.foodCostForTool(t)));
+    if (foodHave >= minFoodNeeded) {
+      this.logger.info(`ARISE: food ${foodHave} >= min needed ${minFoodNeeded}, trying start.`);
+      await this.startExpeditions();
       return;
     }
+
+    // Need to buy — target 16 but must have at least minFoodNeeded
+    const FOOD_TARGET = 16;
+    const needed = Math.max(FOOD_TARGET - foodHave, minFoodNeeded - foodHave);
 
     this.logger.info(
-      `ARISE: have ${foodHave} food, buying up to 20 (max 100k coins)`,
+      `ARISE: have ${foodHave} food, need ${needed} more (min for any tool: ${minFoodNeeded}, max ${maxSpend} coins)`,
     );
 
-    // Buy cheapest lots one at a time, refetch market after each buy
-    // (lots disappear after purchase). Buy whatever is cheapest and available.
-    // Stop at 20 food or 100k coins spent.
-    const FOOD_TARGET = 20;
-    const MAX_SPEND = 100000;
-    let bought = 0;
-    let spent = 0;
-    const maxAttempts = 10; // safety limit
+    // Buy from multiple cheapest lots (tries up to 3 lots per market fetch)
+    const { spent, bought } = await this.buyCheapestLots(
+      "еда",
+      needed,
+      maxSpend,
+      "ARISE",
+    );
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (this.signal?.aborted) break;
+    const finalFood = Number(this.s2_state?.склад?.еда || 0);
+    this.logger.info(
+      `ARISE: bought ${bought} food, spent ${spent} coins, food now: ${finalFood}`,
+    );
 
-      // Re-check food after each buy
-      const curFood = Number(this.s2_state?.склад?.еда || 0);
-      if (curFood >= FOOD_TARGET) break;
-      if (spent >= MAX_SPEND) {
-        this.logger.info(`ARISE: reached ${MAX_SPEND} coin spend limit, stop buying.`);
-        break;
-      }
-
-      // Fetch fresh market
-      const market = await this.getMarket("еда").catch((e) => {
-        this.logger.warn("ARISE: food market fetch failed:", e.message);
-        return null;
-      });
-      if (!market?.ok || !Array.isArray(market.лоты)) break;
-
-      // Find cheapest lot (skip own)
-      const lots = market.лоты
-        .filter((l) => !l.свой)
-        .sort((a, b) => a.цена - b.цена);
-
-      if (lots.length === 0) {
-        this.logger.info("ARISE: no food lots left on market.");
-        break;
-      }
-
-      // Buy the cheapest lot (whatever size it is)
-      const lot = lots[0];
-      const lotCost = lot.цена * lot.кол;
-      if (spent + lotCost > MAX_SPEND) {
-        this.logger.info(`ARISE: lot ${lot.id} costs ${lotCost} (would exceed ${MAX_SPEND} limit), skip.`);
-        break;
-      }
-      this.logger.info(
-        `ARISE: buying lot ${lot.id} — ${lot.кол} food × ${lot.цена} (from ${lot.ник})`,
-      );
-      const res = await this.buyMarket(lot.id).catch((e) => {
-        this.logger.warn(`ARISE: buy lot ${lot.id} failed:`, e.message);
-        return null;
-      });
-      if (res?.ok) {
-        bought++;
-        spent += lot.цена * lot.кол;
-        this.logger.success(`ARISE: bought lot ${lot.id} (+${lot.кол} food, total: ${curFood + lot.кол})`);
-        // Update state from buy response
-        if (res.состояние?.ok) {
-          this.s2_state = res.состояние;
-        } else {
-          this.s2_state = await this.getState().catch(() => this.s2_state);
-        }
-        await this.flag().catch(() => {});
-      }
-      await this.utils.delayForSeconds(2, { signal: this.signal });
-    }
-
-    if (bought > 0) {
-      const finalFood = Number(this.s2_state?.склад?.еда || 0);
-      this.logger.success(
-        `ARISE: bought ${bought} lots, spent ${spent} coins, food now: ${finalFood}`,
-      );
-    } else {
-      this.logger.info("ARISE: could not buy any food lots.");
-      return;
-    }
-
-    // Now start expeditions with the food we just bought
+    // MUST start expeditions — even if we didn't reach target, we might have enough for one tool
     await this.startExpeditions();
   }
 
@@ -587,13 +710,6 @@ export default class MakegramFarmer extends BaseFarmer {
   /* Checks current corridor, cancels orders outside it, places new ones    */
   /* at current prices. Max 3 orders per resource.                         */
   /* --------------------------------------------------------------------- */
-
-  hasBow() {
-    const tools = this.s2_state?.инструменты || [];
-    return tools.some(
-      (t) => t.тип === "лук" || t.тип?.toLowerCase()?.includes("bow"),
-    );
-  }
 
   randInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -621,21 +737,24 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   /** Sell one lot, returns true on success */
-  async sellOne(item, qty, price, pendingRef) {
+  async sellOne(item, qty, price, pendingRef, maxQty) {
     if (pendingRef.value >= 10) {
       this.logger.info("Market: 10 pending lots (max), stop selling.");
       return false;
     }
-    const res = await this.sellMarket(item, qty, price).catch((e) => {
+    // Cap qty to maxQty if specified
+    const finalQty = maxQty != null ? Math.min(qty, Math.max(0, maxQty)) : qty;
+    if (finalQty <= 0) return false;
+    const res = await this.sellMarket(item, finalQty, price).catch((e) => {
       if (e.response?.status === 400) {
-        this.logger.info(`Sell ${item} ${qty}×${price} rejected (400 corridor).`);
+        this.logger.info(`Sell ${item} ${finalQty}×${price} rejected (400 corridor).`);
       } else {
-        this.logger.warn(`Sell ${item} ${qty}×${price} failed:`, e.message);
+        this.logger.warn(`Sell ${item} ${finalQty}×${price} failed:`, e.message);
       }
       return null;
     });
     if (res?.ok) {
-      this.logger.success(`Listed ${item} ${qty}×${price}`);
+      this.logger.success(`Listed ${item} ${finalQty}×${price}`);
       pendingRef.value++;
       this.s2_state = await this.getState().catch(() => this.s2_state);
       await this.flag().catch(() => {});
@@ -683,7 +802,7 @@ export default class MakegramFarmer extends BaseFarmer {
         this.logger.info(`Cancelling ${item} lot ${lot.id} at ${lotPrice} (outside range ${cheapest}–${mostExpensive})`);
         await this.cancelLot(lot.id);
         cancelled++;
-        await this.utils.delayForSeconds(1, { signal: this.signal });
+        await this.utils.delayForSeconds(0.5, { signal: this.signal });
       }
     }
     if (cancelled > 0) {
@@ -718,9 +837,12 @@ export default class MakegramFarmer extends BaseFarmer {
       if (placed >= slotsLeft) break;
       const price = tier.price;
       this.logger.info(`Selling ${item} ${tier.qty}×${price} (${tier.label})`);
-      const ok = await this.sellOne(item, tier.qty, price, pendingRef);
-      if (ok) placed++;
-      await this.utils.delayForSeconds(2, { signal: this.signal });
+      const ok = await this.sellOne(item, tier.qty, price, pendingRef, warehouseQty);
+      if (ok) {
+        placed++;
+        warehouseQty = Math.max(0, warehouseQty - tier.qty);
+      }
+      await this.utils.delayForSeconds(1, { signal: this.signal });
     }
     this.logger.info(`Market: ${item} — ${cancelled} cancelled, ${placed} placed (${currentPending + placed}/3 pending).`);
   }
@@ -755,11 +877,15 @@ export default class MakegramFarmer extends BaseFarmer {
       await this.handleResourceMarket("брёвна", Number(wh.брёвна || 0), pendingRef);
     }
 
-    // --- FOOD (bow accounts ONLY) ---
-    if (pendingRef.value < 10 && this.hasBow()) {
-      await this.handleResourceMarket("еда", Number(wh.еда || 0), pendingRef);
-    } else if (!this.hasBow()) {
-      this.logger.info("Market: no bow — food not sold.");
+    // --- FOOD (all accounts sell food, keep max 32, sell the rest) ---
+    if (pendingRef.value < 10) {
+      const foodQty = Number(wh.еда || 0);
+      const foodToSell = Math.max(0, foodQty - 32);
+      if (foodToSell > 0) {
+        await this.handleResourceMarket("еда", foodToSell, pendingRef);
+      } else {
+        this.logger.info(`Market: food ${foodQty} (keeping 32), nothing to sell.`);
+      }
     }
   }
 
@@ -784,8 +910,8 @@ export default class MakegramFarmer extends BaseFarmer {
     // 5. Collect finished expeditions
     await this.executeTask("Collect", () => this.collectExpeditions());
 
-    // 6. Repair damaged tools
-    await this.executeTask("Repair", () => this.repairTools());
+    // 6. MINAZUKI — repair + buy materials if needed
+    await this.executeTask("MINAZUKI", () => this.minazuki());
 
     // 7. Market — sell resources
     await this.executeTask("Market", () => this.handleMarket());
@@ -879,10 +1005,10 @@ export default class MakegramFarmer extends BaseFarmer {
         dispatch: false,
       },
       {
-        id: "repair",
+        id: "minazuki",
         icon: "wrench",
-        title: "Repair Tools",
-        action: this.repairTools.bind(this),
+        title: "MINAZUKI — Repair & Buy",
+        action: this.minazuki.bind(this),
         dispatch: false,
       },
       {
