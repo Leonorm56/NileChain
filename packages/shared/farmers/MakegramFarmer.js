@@ -196,7 +196,6 @@ export default class MakegramFarmer extends BaseFarmer {
     if (!this.s2_state?.ok)
       throw new Error("S2 state failed — check X-Init-Data / proxy");
 
-    await this.flag().catch(() => {});
 
     this.user_data = { ok: true, coins: this.s2_state.баланс, ...this.s2_state };
     return this.user_data;
@@ -228,10 +227,8 @@ export default class MakegramFarmer extends BaseFarmer {
       if (res?.already) break;
       if (res?.ok) this.logger.success(`Opened chest ${i + 1}/2!`);
       else if (!res) break;
-      await this.utils.delayForSeconds(0.5, { signal: this.signal });
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
     }
-    this.s2_state = await this.getState().catch(() => this.s2_state);
-    await this.flag().catch(() => {});
   }
 
   /* --------------------------------------------------------------------- */
@@ -258,7 +255,7 @@ export default class MakegramFarmer extends BaseFarmer {
 
       if (!task.opened && !task.открыт) {
         await this.openTask(code).catch(() => null);
-        await this.utils.delayForSeconds(1, { signal: this.signal });
+        await this.utils.delayForSeconds(0.1, { signal: this.signal });
       }
 
       const claim = await this.claimTask(code).catch((e) => {
@@ -267,7 +264,7 @@ export default class MakegramFarmer extends BaseFarmer {
         return null;
       });
       if (claim?.notReady) {
-        await this.utils.delayForSeconds(2, { signal: this.signal });
+        await this.utils.delayForSeconds(0.1, { signal: this.signal });
         const retry = await this.claimTask(code).catch(() => null);
         if (retry?.ok)
           this.logger.success(
@@ -278,7 +275,7 @@ export default class MakegramFarmer extends BaseFarmer {
           `Claimed task ${code}: +${claim.награда || "?"} reward`,
         );
       }
-      await this.utils.delayForSeconds(1, { signal: this.signal });
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
     }
   }
 
@@ -338,13 +335,9 @@ export default class MakegramFarmer extends BaseFarmer {
         );
         if (res.состояние?.ok) {
           this.s2_state = res.состояние;
-          await this.flag().catch(() => {});
-        } else {
-          this.s2_state = await this.getState().catch(() => this.s2_state);
-          await this.flag().catch(() => {});
         }
       }
-      await this.utils.delayForSeconds(1, { signal: this.signal });
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
     }
   }
 
@@ -411,15 +404,13 @@ export default class MakegramFarmer extends BaseFarmer {
           boughtThisRound = true;
           this.logger.success(`${label}: bought ${lot.кол} ${item} (+${lot.кол}, total: ${bought}/${needed})`);
           if (res.состояние?.ok) this.s2_state = res.состояние;
-          else this.s2_state = await this.getState().catch(() => this.s2_state);
-          await this.flag().catch(() => {});
         }
-        await this.utils.delayForSeconds(0.5, { signal: this.signal });
+        await this.utils.delayForSeconds(0.1, { signal: this.signal });
       }
 
       // If no lot was successfully bought this round, stop
       if (!boughtThisRound) break;
-      await this.utils.delayForSeconds(0.5, { signal: this.signal });
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
     }
 
     return { spent, bought };
@@ -478,10 +469,8 @@ export default class MakegramFarmer extends BaseFarmer {
       if (res?.ok) {
         this.logger.success(`MINAZUKI: ${tool.тип} ${tool.id} repaired! (+${need} hp)`);
         if (res.состояние?.ok) this.s2_state = res.состояние;
-        else this.s2_state = await this.getState().catch(() => this.s2_state);
-        await this.flag().catch(() => {});
         repaired++;
-        await this.utils.delayForSeconds(1, { signal: this.signal });
+        await this.utils.delayForSeconds(0.1, { signal: this.signal });
         continue;
       }
 
@@ -492,7 +481,7 @@ export default class MakegramFarmer extends BaseFarmer {
       if (!costData) {
         // Unknown error (e.g. "выше максимума")
         this.logger.info(`MINAZUKI: ${tool.тип} ${tool.id} — ${errorStr || "unknown error"}, skip.`);
-        await this.utils.delayForSeconds(0.5, { signal: this.signal });
+        await this.utils.delayForSeconds(0.1, { signal: this.signal });
         continue;
       }
 
@@ -545,18 +534,15 @@ export default class MakegramFarmer extends BaseFarmer {
       if (res?.ok) {
         this.logger.success(`MINAZUKI: ${tool.тип} ${tool.id} repaired after buying materials!`);
         if (res.состояние?.ok) this.s2_state = res.состояние;
-        else this.s2_state = await this.getState().catch(() => this.s2_state);
-        await this.flag().catch(() => {});
         repaired++;
       } else {
         this.logger.warn(
           `MINAZUKI: ${tool.тип} ${tool.id} repair still failed: ${res?.error || "unknown"}`,
         );
       }
-      await this.utils.delayForSeconds(1, { signal: this.signal });
-    }
-
-    this.logger.info(
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
+      }
+      this.logger.info(
       `MINAZUKI done: ${repaired} repaired, spent ${totalSpent}/${MAX_HEAL_SPEND} coins`,
     );
   }
@@ -626,12 +612,9 @@ export default class MakegramFarmer extends BaseFarmer {
         );
         if (res.состояние?.ok) {
           this.s2_state = res.состояние;
-        } else {
-          this.s2_state = await this.getState().catch(() => this.s2_state);
         }
-        await this.flag().catch(() => {});
       }
-      await this.utils.delayForSeconds(1, { signal: this.signal });
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
     }
   }
 
@@ -756,8 +739,6 @@ export default class MakegramFarmer extends BaseFarmer {
     if (res?.ok) {
       this.logger.success(`Listed ${item} ${finalQty}×${price}`);
       pendingRef.value++;
-      this.s2_state = await this.getState().catch(() => this.s2_state);
-      await this.flag().catch(() => {});
       pendingRef.value = Array.isArray(this.s2_state?.мойЛот)
         ? this.s2_state.мойЛот.length
         : pendingRef.value;
@@ -802,11 +783,10 @@ export default class MakegramFarmer extends BaseFarmer {
         this.logger.info(`Cancelling ${item} lot ${lot.id} at ${lotPrice} (outside range ${cheapest}–${mostExpensive})`);
         await this.cancelLot(lot.id);
         cancelled++;
-        await this.utils.delayForSeconds(0.5, { signal: this.signal });
+        await this.utils.delayForSeconds(0.1, { signal: this.signal });
       }
     }
     if (cancelled > 0) {
-      await this.flag().catch(() => {});
     }
 
     // 3. Count remaining pending for this resource
@@ -842,7 +822,7 @@ export default class MakegramFarmer extends BaseFarmer {
         placed++;
         warehouseQty = Math.max(0, warehouseQty - tier.qty);
       }
-      await this.utils.delayForSeconds(1, { signal: this.signal });
+      await this.utils.delayForSeconds(0.1, { signal: this.signal });
     }
     this.logger.info(`Market: ${item} — ${cancelled} cancelled, ${placed} placed (${currentPending + placed}/3 pending).`);
   }
@@ -898,31 +878,22 @@ export default class MakegramFarmer extends BaseFarmer {
     await this.login();
     await this.logUserInfo();
 
-    // 2. Chest
+    // 2. Chest (skips if already opened — checks сундукОткрыт in state)
     await this.executeTask("Chest", () => this.openChestIfNeeded());
 
-    // 3. Tasks
-    await this.executeTask("Tasks", () => this.handleTasks());
-
-    // 4. Village Gifts
-    await this.executeTask("Village Gifts", () => this.handleVillageGifts());
-
-    // 5. Collect finished expeditions
+    // 3. Collect finished expeditions
     await this.executeTask("Collect", () => this.collectExpeditions());
 
-    // 6. MINAZUKI — repair + buy materials if needed
+    // 4. MINAZUKI — repair + buy materials if needed
     await this.executeTask("MINAZUKI", () => this.minazuki());
 
-    // 7. Market — sell resources
+    // 5. Market — sell resources
     await this.executeTask("Market", () => this.handleMarket());
 
-    // 8. Start new expeditions
-    await this.executeTask("Start Expedition", () => this.startExpeditions());
-
-    // 9. ARISE — buy food and start if needed (must be last)
+    // 6. ARISE — buy food if needed + start all expeditions
     await this.executeTask("ARISE", () => this.arise());
 
-    // 10. Final flag
+    // 7. Final flag
     await this.flag().catch(() => {});
   }
 
@@ -935,7 +906,7 @@ export default class MakegramFarmer extends BaseFarmer {
     this.logCurrentUser();
     if (this.s2_state?.ok) {
       const s = this.s2_state;
-      this.logger.keyValue("Balance", `${s.баланс} (cold: ${s.холодные})`);
+      this.logger.keyValue("Balance", `${s.баланс} (withdrawable: ${s.кВыводу})`);
       this.logger.keyValue(
         "Warehouse",
         `ore:${s.склад?.руда || 0} logs:${s.склад?.брёвна || 0} food:${s.склад?.еда || 0}`,
@@ -962,7 +933,7 @@ export default class MakegramFarmer extends BaseFarmer {
       );
       this.logger.keyValue(
         "Season",
-        `${s.сезон?.эмодзи || ""} ${s.сезон?.имя || "?"} day ${s.сезон?.деньСезона || "?"}/${s.сезон?.дней || "?"}`,
+        `${s.сезон?.эмодзи || ""} ${s.сезон?.имя || "?"} day ${s.сезон?.деньСезона || "?"}/${s.сезон?.дней || "?"} (${s.сезон?.доКонцаДней || "?"} left)`,
       );
     } else {
       this.logger.keyValue("Balance", this.user_data?.coins ?? "—");
