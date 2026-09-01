@@ -331,12 +331,31 @@ export default class MakegramFarmer extends BaseFarmer {
     // Place up to 3 orders
     const slotsLeft = 3 - currentPending;
     const range = mostExpensive - cheapest;
-    const midPrice = this.randInt(cheapest + Math.floor(range * 0.3), cheapest + Math.floor(range * 0.6));
-    const tiers = [
-      { qty: 2, price: midPrice, label: `2× medium (${midPrice})` },
-      { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
-      { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
-    ];
+    const isCloud = process.env.NODE_ENV === "production";
+    let tiers;
+    if (isCloud) {
+      // Cloud: randomize quantities & prices for anti-detection
+      const qtyPool = [1, 2, 3, 5, 10, 15, 20];
+      tiers = [];
+      for (let i = 0; i < Math.min(slotsLeft, 3); i++) {
+        const qty = qtyPool[this.randInt(0, qtyPool.length - 1)];
+        const priceOffset = this.randInt(-Math.floor(range * 0.1), Math.floor(range * 0.1));
+        const isHigh = i === 0;
+        const price = isHigh
+          ? cheapest + Math.floor(range * 0.3) + priceOffset
+          : cheapest + priceOffset;
+        const clamped = Math.max(cheapest, Math.min(mostExpensive, price));
+        tiers.push({ qty, price: clamped, label: `${qty}× @${clamped}` });
+      }
+    } else {
+      // Local: fixed tiers for easy testing
+      const midPrice = this.randInt(cheapest + Math.floor(range * 0.3), cheapest + Math.floor(range * 0.6));
+      tiers = [
+        { qty: 2, price: midPrice, label: `2× medium (${midPrice})` },
+        { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
+        { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
+      ];
+    }
 
     let placed = 0;
     for (const tier of tiers) {
@@ -632,6 +651,15 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   async process() {
+    const isCloud = process.env.NODE_ENV === "production";
+
+    // 0. Stagger — random delay so 140 accounts don't all hit at once (cloud only)
+    if (isCloud) {
+      const stagger = this.randInt(2, 15);
+      this.logger.info(`Stagger: waiting ${stagger}s before starting...`);
+      await this.utils.delayForSeconds(stagger, { signal: this.signal });
+    }
+
     // 1. Login
     await this.login();
     await this.logUserInfo();
@@ -644,9 +672,14 @@ export default class MakegramFarmer extends BaseFarmer {
     this.task("COLLECT");
     await this.collectExpeditions();
 
-    // 4. Market — sell resources
-    this.task("MARKET");
-    await this.handleMarket();
+    // 4. Market — sell resources (skip ~20% randomly on cloud)
+    const skipMarket = isCloud && Math.random() < 0.2;
+    if (!skipMarket) {
+      this.task("MARKET");
+      await this.handleMarket();
+    } else {
+      this.logger.info("MARKET: skipped this cycle (cloud random)");
+    }
 
     // 5. BANKAI — repair + buy materials + buy food + start expeditions
     this.task("BANKAI");
