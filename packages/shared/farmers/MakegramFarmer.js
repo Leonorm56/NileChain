@@ -437,6 +437,10 @@ export default class MakegramFarmer extends BaseFarmer {
     const slotsLeft = 3 - currentPending;
     const qtyMap = { еда: 20, руда: 50, брёвна: 50 };
     const qty = qtyMap[item] || 10;
+    if (warehouseQty < qty) {
+      this.logger.info(`Market: ${item} has ${warehouseQty}, need ${qty} min — skip.`);
+      return;
+    }
     const tiers = [
       { qty, price: cheapest, label: `${qty}× @${cheapest} (lowest)` },
     ];
@@ -731,7 +735,9 @@ export default class MakegramFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   task(title) {
-    this.logger.output(this.logger.c.magenta.bold(`\n═══ ${title} ═══`));
+    const line = `═══ ${title} ═══`;
+    this.logger.output(this.logger.c.magenta.bold(`\n${line}`));
+    this.logger.info(line);
   }
 
   async process() {
