@@ -613,6 +613,15 @@ export default function createRunner(FarmerClass) {
           return;
         }
 
+        /** Account banned — mark and skip silently (no TG message) */
+        if (error?.isBanned && instance.farmer) {
+          instance.farmer.isBanned = true;
+          instance.farmer.active = false;
+          await instance.farmer.save();
+          this.logger.error(`[${instance.account.id}] ⛔ ACCOUNT BAN: ${error.message}`);
+          return;
+        }
+
         if (this.deactivateOnError) {
           await instance.disconnect();
         }

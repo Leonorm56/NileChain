@@ -158,10 +158,17 @@ export default class MakegramFarmer extends BaseFarmer {
     return null;
   }
 
+  /** Human-like delay before solving captcha (2-5s) */
+  async humanCaptchaDelay() {
+    const delay = this.randInt(2, 5);
+    await this.utils.delayForSeconds(delay, { signal: this.signal });
+  }
+
   async sellMarket(item, qty, price) {
     const captcha = await this.fetchCaptcha();
     const payload = { товар: item, кол: qty, цена: price };
     if (captcha) {
+      await this.humanCaptchaDelay();
       const answer = this.solveMath(captcha.вопрос);
       if (answer) {
         payload.капчаId = captcha.id;
@@ -177,6 +184,7 @@ export default class MakegramFarmer extends BaseFarmer {
     const captcha = await this.fetchCaptcha();
     const payload = { лот: lot };
     if (captcha) {
+      await this.humanCaptchaDelay();
       const answer = this.solveMath(captcha.вопрос);
       if (answer) {
         payload.капчаId = captcha.id;
@@ -186,6 +194,42 @@ export default class MakegramFarmer extends BaseFarmer {
       }
     }
     return this.post("s2/market/buy", payload);
+  }
+
+  /* --------------------------------------------------------------------- */
+  /* Village browsing — human-like behavior                                */
+  /* --------------------------------------------------------------------- */
+
+  /** Browse village top list */
+  async browseVillageTop() {
+    return this.get("village/top").catch(() => null);
+  }
+
+  /** Browse village list */
+  async browseVillageList() {
+    return this.get("village/list", { поиск: "" }).catch(() => null);
+  }
+
+  /** Check village gifts */
+  async browseVillageGifts() {
+    return this.get("village/gifts").catch(() => null);
+  }
+
+  /** Do random village browsing (cloud only) */
+  async humanBrowse() {
+    if (process.env.NODE_ENV !== "production") return;
+    const actions = [
+      () => this.browseVillageTop(),
+      () => this.browseVillageList(),
+      () => this.browseVillageGifts(),
+    ];
+    // Pick 1-2 random actions
+    const count = this.randInt(1, 2);
+    const shuffled = actions.sort(() => Math.random() - 0.5).slice(0, count);
+    for (const action of shuffled) {
+      await this.utils.delayForSeconds(this.randInt(1, 3), { signal: this.signal });
+      await action();
+    }
   }
 
   async startExpedition(tool, hours, point = "ближняя") {
@@ -221,6 +265,14 @@ export default class MakegramFarmer extends BaseFarmer {
   async login() {
     this.s2_state = await this.getState().catch((e) => {
       const status = e.response?.status || "no-status";
+      const respData = e.response?.data;
+      // Check for ban
+      if (respData?.бан) {
+        this.logger.error(`ACCOUNT BAN: ${respData.причина || 'unknown'}`);
+        const err = new Error(`Account banned: ${respData.причина || 'bot farm'}`);
+        err.isBanned = true;
+        throw err;
+      }
       this.logger.warn(`S2 state failed [${status}]`);
       if (status === 401 || status === 403)
         this.logger.warn("X-Init-Data expired — will refresh next run");
@@ -704,18 +756,27 @@ export default class MakegramFarmer extends BaseFarmer {
     this.task("COLLECT");
     await this.collectExpeditions();
 
-    // 4. Market — sell resources (skip ~20% randomly on cloud)
-    const skipMarket = isCloud && Math.random() < 0.2;
-    if (!skipMarket) {
-      this.task("MARKET");
-      await this.handleMarket();
-    } else {
-      this.logger.info("MARKET: skipped this cycle (cloud random)");
+    // 4. Village browse — human-like (cloud only, ~60% chance)
+    if (isCloud && Math.random() < 0.6) {
+      this.task("VILLAGE");
+      await this.humanBrowse();
     }
 
-    // 5. BANKAI — repair + buy materials + buy food + start expeditions
-    this.task("BANKAI");
-    await this.bankai();
+    // 5. Market & BANKAI — randomize order per account
+    const skipMarket = isCloud && Math.random() < 0.2;
+    const doMarket = !skipMarket;
+    const doBankai = true;
+
+    if (isCloud && Math.random() < 0.5) {
+      // BANKAI first, then MARKET
+      if (doBankai) { this.task("BANKAI"); await this.bankai(); }
+      if (doMarket) { this.task("MARKET"); await this.handleMarket(); }
+    } else {
+      // MARKET first, then BANKAI
+      if (doMarket) { this.task("MARKET"); await this.handleMarket(); }
+      if (doBankai) { this.task("BANKAI"); await this.bankai(); }
+    }
+    if (skipMarket) this.logger.info("MARKET: skipped this cycle (cloud random)");
 
     // 6. Final flag
     await this.flag().catch(() => {});
