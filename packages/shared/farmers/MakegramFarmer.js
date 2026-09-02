@@ -423,9 +423,11 @@ export default class MakegramFarmer extends BaseFarmer {
       }
     }
 
-    const currentPending = this.pendingForResource(item);
-    if (currentPending >= 3) {
-      this.logger.info(`Market: ${item} already has ${currentPending}/3 pending, skip.`);
+    // Sell every cycle — fixed qty per item at lowest price
+    const qtyMap = { еда: 20, руда: 50, брёвна: 50 };
+    const qty = qtyMap[item] || 10;
+    if (warehouseQty < qty) {
+      this.logger.info(`Market: ${item} has ${warehouseQty}, need ${qty} min — skip.`);
       return;
     }
     if (warehouseQty <= 0) {
@@ -433,27 +435,23 @@ export default class MakegramFarmer extends BaseFarmer {
       return;
     }
 
-    // Place up to 3 orders — fixed qty per item, always lowest price
+    // Fill up to 3 pending slots
+    const currentPending = this.pendingForResource(item);
     const slotsLeft = 3 - currentPending;
-    const qtyMap = { еда: 20, руда: 50, брёвна: 50 };
-    const qty = qtyMap[item] || 10;
-    if (warehouseQty < qty) {
-      this.logger.info(`Market: ${item} has ${warehouseQty}, need ${qty} min — skip.`);
+    if (slotsLeft <= 0) {
+      this.logger.info(`Market: ${item} already has ${currentPending}/3 pending, skip.`);
       return;
     }
-    const tiers = [
-      { qty, price: cheapest, label: `${qty}× @${cheapest} (lowest)` },
-    ];
 
     let placed = 0;
-    for (const tier of tiers) {
+    for (let i = 0; i < slotsLeft; i++) {
       if (this.signal?.aborted) break;
       if (pendingRef.value >= 10) break;
-      if (placed >= slotsLeft) break;
-      const ok = await this.sellOne(item, tier.qty, tier.price, pendingRef, warehouseQty);
+      if (warehouseQty < qty) break;
+      const ok = await this.sellOne(item, qty, cheapest, pendingRef, warehouseQty);
       if (ok) {
         placed++;
-        warehouseQty = Math.max(0, warehouseQty - tier.qty);
+        warehouseQty = Math.max(0, warehouseQty - qty);
       }
     }
     this.logger.info(`Market: ${item} — ${placed} placed (${currentPending + placed}/3 pending).`);
@@ -769,20 +767,15 @@ export default class MakegramFarmer extends BaseFarmer {
     }
 
     // 5. Market & BANKAI — randomize order per account
-    const skipMarket = isCloud && Math.random() < 0.2;
-    const doMarket = !skipMarket;
-    const doBankai = true;
-
     if (isCloud && Math.random() < 0.5) {
       // BANKAI first, then MARKET
-      if (doBankai) { this.task("BANKAI"); await this.bankai(); }
-      if (doMarket) { this.task("MARKET"); await this.handleMarket(); }
+      this.task("BANKAI"); await this.bankai();
+      this.task("MARKET"); await this.handleMarket();
     } else {
       // MARKET first, then BANKAI
-      if (doMarket) { this.task("MARKET"); await this.handleMarket(); }
-      if (doBankai) { this.task("BANKAI"); await this.bankai(); }
+      this.task("MARKET"); await this.handleMarket();
+      this.task("BANKAI"); await this.bankai();
     }
-    if (skipMarket) this.logger.info("MARKET: skipped this cycle (cloud random)");
 
     // 6. Final flag
     await this.flag().catch(() => {});
