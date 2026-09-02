@@ -127,12 +127,65 @@ export default class MakegramFarmer extends BaseFarmer {
     return this.get("s2/market", { товар: item });
   }
 
+  /** Fetch a math captcha */
+  async fetchCaptcha() {
+    const res = await this.post("s2/captcha", {});
+    if (!res?.ok || !res.id || !res.вопрос) {
+      this.logger.warn("Captcha fetch failed:", JSON.stringify(res));
+      return null;
+    }
+    return res;
+  }
+
+  /** Solve math captcha like "3 + 7" → "10" */
+  solveMath(question) {
+    try {
+      const clean = question.replace(/[^0-9+\-*/]/g, " ");
+      const parts = clean.split(/\s+/).filter(Boolean);
+      if (parts.length === 3) {
+        const [a, op, b] = parts;
+        const numA = Number(a), numB = Number(b);
+        if (isNaN(numA) || isNaN(numB)) return null;
+        let result;
+        if (op === "+") result = numA + numB;
+        else if (op === "-") result = numA - numB;
+        else if (op === "*") result = numA * numB;
+        else if (op === "/") result = Math.floor(numA / numB);
+        else return null;
+        return String(result);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   async sellMarket(item, qty, price) {
-    return this.post("s2/market/sell", { товар: item, кол: qty, цена: price });
+    const captcha = await this.fetchCaptcha();
+    const payload = { товар: item, кол: qty, цена: price };
+    if (captcha) {
+      const answer = this.solveMath(captcha.вопрос);
+      if (answer) {
+        payload.капчаId = captcha.id;
+        payload.капчаОтвет = answer;
+      } else {
+        this.logger.warn(`Captcha solve failed for: ${captcha.вопрос}`);
+      }
+    }
+    return this.post("s2/market/sell", payload);
   }
 
   async buyMarket(lot) {
-    return this.post("s2/market/buy", { лот: lot });
+    const captcha = await this.fetchCaptcha();
+    const payload = { лот: lot };
+    if (captcha) {
+      const answer = this.solveMath(captcha.вопрос);
+      if (answer) {
+        payload.капчаId = captcha.id;
+        payload.капчаОтвет = answer;
+      } else {
+        this.logger.warn(`Captcha solve failed for: ${captcha.вопрос}`);
+      }
+    }
+    return this.post("s2/market/buy", payload);
   }
 
   async startExpedition(tool, hours, point = "ближняя") {
@@ -328,34 +381,13 @@ export default class MakegramFarmer extends BaseFarmer {
       return;
     }
 
-    // Place up to 3 orders
+    // Place up to 3 orders — fixed qty per item, always lowest price
     const slotsLeft = 3 - currentPending;
-    const range = mostExpensive - cheapest;
-    const isCloud = process.env.NODE_ENV === "production";
-    let tiers;
-    if (isCloud) {
-      // Cloud: randomize quantities & prices for anti-detection
-      const qtyPool = [1, 2, 3, 5, 10, 15, 20];
-      tiers = [];
-      for (let i = 0; i < Math.min(slotsLeft, 3); i++) {
-        const qty = qtyPool[this.randInt(0, qtyPool.length - 1)];
-        const priceOffset = this.randInt(-Math.floor(range * 0.1), Math.floor(range * 0.1));
-        const isHigh = i === 0;
-        const price = isHigh
-          ? cheapest + Math.floor(range * 0.3) + priceOffset
-          : cheapest + priceOffset;
-        const clamped = Math.max(cheapest, Math.min(mostExpensive, price));
-        tiers.push({ qty, price: clamped, label: `${qty}× @${clamped}` });
-      }
-    } else {
-      // Local: fixed tiers for easy testing
-      const midPrice = this.randInt(cheapest + Math.floor(range * 0.3), cheapest + Math.floor(range * 0.6));
-      tiers = [
-        { qty: 2, price: midPrice, label: `2× medium (${midPrice})` },
-        { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
-        { qty: 3, price: cheapest, label: `3× low (${cheapest})` },
-      ];
-    }
+    const qtyMap = { еда: 20, руда: 50, брёвна: 50 };
+    const qty = qtyMap[item] || 10;
+    const tiers = [
+      { qty, price: cheapest, label: `${qty}× @${cheapest} (lowest)` },
+    ];
 
     let placed = 0;
     for (const tier of tiers) {
