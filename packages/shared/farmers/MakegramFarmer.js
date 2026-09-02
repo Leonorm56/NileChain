@@ -181,19 +181,7 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   async buyMarket(lot) {
-    const captcha = await this.fetchCaptcha();
-    const payload = { лот: lot };
-    if (captcha) {
-      await this.humanCaptchaDelay();
-      const answer = this.solveMath(captcha.вопрос);
-      if (answer) {
-        payload.капчаId = captcha.id;
-        payload.капчаОтвет = answer;
-      } else {
-        this.logger.warn(`Captcha solve failed for: ${captcha.вопрос}`);
-      }
-    }
-    return this.post("s2/market/buy", payload);
+    return this.post("s2/market/buy", { лот: lot });
   }
 
   /* --------------------------------------------------------------------- */
@@ -509,15 +497,10 @@ export default class MakegramFarmer extends BaseFarmer {
       await this.handleResourceMarket("брёвна", Number(wh.брёвна || 0), pendingRef);
     }
 
-    // --- FOOD (sell if > 32) ---
+    // --- FOOD (sell fixed 20) ---
     if (pendingRef.value < 10) {
       const foodQty = Number(wh.еда || 0);
-      const foodToSell = Math.max(0, foodQty - 32);
-      if (foodToSell > 0) {
-        await this.handleResourceMarket("еда", foodToSell, pendingRef);
-      } else {
-        this.logger.info(`Market: food ${foodQty} (keeping 32), nothing to sell.`);
-      }
+      await this.handleResourceMarket("еда", foodQty, pendingRef);
     }
   }
 
@@ -547,144 +530,34 @@ export default class MakegramFarmer extends BaseFarmer {
       return;
     }
 
-    const MAX_HEAL_SPEND = 100000;
-    const MAX_FOOD_SPEND = 100000;
-    let totalHealSpent = 0;
-    let totalFoodSpent = 0;
-    let repaired = 0;
-    const wh = s2.склад || {};
-
-    // --- Quick check: anything to do? ---
     const tools = s2.инструменты;
-    // Any tool missing HP? (allow repair even at low HP)
-    const needsRepair = tools.some((t) => (t.hp_макс || 40) - t.hp > 0);
-    // Idle tools with enough HP to start (hp > 2)
+    let totalFoodSpent = 0;
+    const wh = s2.склад || {};
+    const foodHave = Number(wh.еда || 0);
+
+    // --- Find idle tools ---
     const idle = tools.filter(
       (t) => (!t.занят_до || t.занят_до === 0 || t.занят_до < Date.now()) && t.hp > 2,
     );
-    const foodHave = Number(wh.еда || 0);
-    const minFoodNeeded = idle.length > 0 ? Math.min(...idle.map((t) => this.foodCostForTool(t))) : Infinity;
-    const needsFood = idle.length > 0 && foodHave < minFoodNeeded;
-    const needsStart = idle.length > 0;
+    this.logger.info(`BANKAI: food:${foodHave} idle:${idle.length} tools:${tools.length}`);
 
-    if (!needsRepair && !needsFood && !needsStart) {
-      this.logger.info(`BANKAI: tools OK (repair:${needsRepair} food:${foodHave} idle:${idle.length} needFood:${needsFood}), skip.`);
+    if (idle.length === 0) {
+      this.logger.info("BANKAI: all tools busy, skip.");
       return;
     }
 
-    this.logger.info(`BANKAI: repair:${needsRepair} food:${foodHave}/${minFoodNeeded} idle:${idle.length}`);
-
-    // --- Step 1: Pre-fetch all market data in parallel ---
-    const marketItems = new Set(["еда"]);
-    if (needsRepair) {
-      // Fetch common repair materials
-      for (const mat of ["руда", "брёвна", "слитки", "доски", "пайки"]) {
-        marketItems.add(mat);
-      }
-    }
-    const marketData = await this.fetchAllMarkets([...marketItems]);
-    this.logger.info(`BANKAI: fetched ${Object.keys(marketData).length} markets in parallel`);
-
-    // --- Step 2: Repair tools (buy materials from pre-fetched market) ---
-    if (needsRepair) {
-      for (const tool of tools) {
-        if (this.signal?.aborted) break;
-        if (totalHealSpent >= MAX_HEAL_SPEND) {
-          this.logger.info(`BANKAI: heal limit ${MAX_HEAL_SPEND} reached.`);
-          break;
-        }
-
-        const hpMax = tool.hp_макс || 40;
-        const need = hpMax - tool.hp;
-        if (need <= 0) continue;
-
-        // Try repair
-        let res = await this.repairTool(tool.id, need).catch((e) => {
-          const errData = e.response?.data || {};
-          return { ok: false, error: e.message, _raw: errData };
-        });
-
-        if (res?.ok) {
-          this.logger.success(`BANKAI: ${tool.тип} ${tool.id} repaired! (+${need} hp)`);
-          if (res.стояние?.ok) this.s2_state = res.стояние;
-          repaired++;
-          continue;
-        }
-
-        // Need materials?
-        const costData = this.parseRepairCost(res?._raw || res);
-        if (!costData) {
-          this.logger.info(`BANKAI: ${tool.тип} ${tool.id} — ${res?.error || "skip"}`);
-          continue;
-        }
-
-        this.logger.info(`BANKAI: ${tool.тип} ${tool.id} needs: ${JSON.stringify(costData)}`);
-
-        // Buy each missing material from pre-fetched market
-        const s2Now = this.s2_state || s2;
-        const whNow = s2Now.склад || {};
-
-        for (const [mat, qty] of Object.entries(costData)) {
-          if (this.signal?.aborted) break;
-          if (totalHealSpent >= MAX_HEAL_SPEND) break;
-
-          const have = Number(whNow[mat] || 0);
-          if (have >= qty) continue;
-
-          const deficit = qty - have;
-          const lots = this.getCheapestLots(marketData[mat], 10);
-
-          let matBought = 0;
-          for (const lot of lots) {
-            if (matBought >= deficit) break;
-            if (totalHealSpent >= MAX_HEAL_SPEND) break;
-            if (totalHealSpent + lot.цена * lot.кол > MAX_HEAL_SPEND) continue;
-
-            const buyRes = await this.buyMarket(lot.id).catch((e) => {
-              this.logger.warn(`BANKAI buy ${mat} lot ${lot.id} failed:`, e.message);
-              return null;
-            });
-            if (buyRes?.ok) {
-              matBought += lot.кол;
-              totalHealSpent += lot.цена * lot.кол;
-              if (buyRes.стояние?.ok) this.s2_state = buyRes.стояние;
-            }
-          }
-          if (matBought < deficit) {
-            this.logger.warn(`BANKAI: only bought ${matBought}/${deficit} ${mat}`);
-          }
-        }
-
-        // Retry repair
-        res = await this.repairTool(tool.id, need).catch((e) => {
-          return { ok: false, error: e.response?.data?.error || e.message };
-        });
-        if (res?.ok) {
-          this.logger.success(`BANKAI: ${tool.тип} ${tool.id} repaired after buying materials!`);
-          if (res.стояние?.ok) this.s2_state = res.стояние;
-          repaired++;
-        } else {
-          this.logger.warn(`BANKAI: ${tool.тип} ${tool.id} repair failed: ${res?.error || "unknown"}`);
-        }
-      }
-    }
-
-    // --- Step 3: Buy food if needed ---
-    if (idle.length === 0) {
-      this.logger.info("BANKAI: all tools busy, skip food buy.");
-    } else if (needsFood) {
-      const currentFood = Number(this.s2_state?.склад?.еда || foodHave);
-      const needed = Math.max(16 - currentFood, minFoodNeeded - currentFood);
-
-      this.logger.info(`BANKAI: buying food, have ${currentFood}, need ${needed} more`);
-
-      const lots = this.getCheapestLots(marketData["еда"], 10);
+    // --- Step 1: Buy food FIRST (repair needs food too) ---
+    const totalFoodNeeded = idle.reduce((sum, t) => sum + this.foodCostForTool(t), 0) + 10;
+    const currentFood = Number(this.s2_state?.склад?.еда || foodHave);
+    const foodDeficit = Math.max(0, totalFoodNeeded - currentFood);
+    if (foodDeficit > 0) {
+      this.logger.info(`BANKAI: buying food, have ${currentFood}, need ${totalFoodNeeded} (deficit: ${foodDeficit})`);
+      const marketData = await this.getMarket("еда").catch(() => null);
+      const lots = this.getCheapestLots(marketData, 20);
       let foodBought = 0;
 
       for (const lot of lots) {
-        if (foodBought >= needed) break;
-        if (totalFoodSpent >= MAX_FOOD_SPEND) break;
-        if (totalFoodSpent + lot.цена * lot.кол > MAX_FOOD_SPEND) continue;
+        if (foodBought >= foodDeficit) break;
 
         const buyRes = await this.buyMarket(lot.id).catch((e) => {
           this.logger.warn(`BANKAI food lot ${lot.id} failed:`, e.message);
@@ -697,14 +570,77 @@ export default class MakegramFarmer extends BaseFarmer {
         }
       }
       this.logger.info(`BANKAI: bought ${foodBought} food, spent ${totalFoodSpent} coins`);
+    } else {
+      this.logger.info(`BANKAI: food OK (${currentFood} >= ${totalFoodNeeded}), skip buy.`);
+    }    // --- Step 2: Repair idle tools once (API allows 1 repair per cycle, fixed +hp) ---
+    let repaired = 0;
+    let healSpent = 0;
+    for (const tool of idle) {
+      if (this.signal?.aborted) break;
+      const hpMax = tool.hp_макс || 40;
+      const need = hpMax - tool.hp;
+      if (need <= 0) continue;
+
+      const res = await this.repairTool(tool.id, need).catch((e) => {
+        const body = e.response?.data || {};
+        this.logger.info(`BANKAI: ${tool.тип} ${tool.id} repair 400: ${JSON.stringify(body).slice(0, 300)}`);
+        return { ok: false, ...body };
+      });
+      if (res?.ok) {
+        this.logger.success(`BANKAI: ${tool.тип} ${tool.id} repaired! (${tool.hp}→${hpMax} hp)`);
+        if (res.стояние?.ok) this.s2_state = res.стояние;
+        repaired++;
+        continue;
+      }
+
+      // Repair failed — check if it needs materials (ore/logs)
+      const cost = res?.цена || res?.cost || res?.нужно;
+      if (cost && typeof cost === "object") {
+        this.logger.info(`BANKAI: ${tool.тип} ${tool.id} needs materials: ${JSON.stringify(cost)}`);
+        const matItems = Object.keys(cost);
+        const marketData = await this.fetchAllMarkets(matItems);
+        const whNow = this.s2_state?.склад || {};
+
+        for (const [mat, qty] of Object.entries(cost)) {
+          if (this.signal?.aborted) break;
+          const have = Number(whNow[mat] || 0);
+          if (have >= qty) continue;
+          const deficit = qty - have;
+          const lots = this.getCheapestLots(marketData[mat], 10);            let bought = 0;
+            for (const lot of lots) {
+              if (bought >= deficit) break;
+              const buyRes = await this.buyMarket(lot.id).catch(() => null);
+              if (buyRes?.ok) {
+                bought += lot.кол;
+                healSpent += lot.цена * lot.кол;
+                if (buyRes.стояние?.ok) this.s2_state = buyRes.стояние;
+              }
+            }
+          this.logger.info(`BANKAI: bought ${bought}/${deficit} ${mat}`);
+        }
+
+        // Retry repair after buying materials
+        const res2 = await this.repairTool(tool.id, need).catch((e) => {
+          return { ok: false, error: e.response?.data?.error || e.message };
+        });
+        if (res2?.ok) {
+          this.logger.success(`BANKAI: ${tool.тип} ${tool.id} repaired after buying materials! (${tool.hp}→${hpMax} hp)`);
+          if (res2.стояние?.ok) this.s2_state = res2.стояние;
+          repaired++;
+        } else {
+          this.logger.info(`BANKAI: ${tool.тип} ${tool.id} repair failed: ${res2?.error || "unknown"}`);
+        }
+      } else {
+        this.logger.info(`BANKAI: ${tool.тип} ${tool.id} repair skipped: ${res?.error || "unknown"}`);
+      }
     }
 
-    // --- Step 4: Start all idle tools ---
-    const currentIdle = (this.s2_state?.инструменты || tools).filter(
+    // --- Step 3: Start all idle tools ---
+    const nowIdle = (this.s2_state?.инструменты || tools).filter(
       (t) => (!t.занят_до || t.занят_до === 0 || t.занят_до < Date.now()) && t.hp > 2,
     );
-
-    for (const tool of currentIdle) {
+    let started = 0;
+    for (const tool of nowIdle) {
       if (this.signal?.aborted) break;
       const curFood = Number(this.s2_state?.склад?.еда ?? 0);
       const toolFood = this.foodCostForTool(tool);
@@ -720,12 +656,11 @@ export default class MakegramFarmer extends BaseFarmer {
       if (res?.ok !== false && res !== null) {
         this.logger.success(`BANKAI: started ${tool.тип} ${tool.id} 4h`);
         if (res.стояние?.ok) this.s2_state = res.стояние;
+        started++;
       }
     }
 
-    this.logger.info(
-      `BANKAI done: repaired=${repaired} healSpent=${totalHealSpent} foodSpent=${totalFoodSpent}`,
-    );
+    this.logger.info(`BANKAI done: repaired=${repaired} started=${started} foodSpent=${totalFoodSpent}`);
   }
 
   /* --------------------------------------------------------------------- */
