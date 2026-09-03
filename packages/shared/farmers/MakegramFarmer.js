@@ -14,7 +14,7 @@ import BaseFarmer from "../lib/BaseFarmer.js";
  */
 
 const API_URL = "https://api.mgrmga.org";
-const START_FOOD_COST = 8;
+const START_FOOD_COST = 10;
 
 export default class MakegramFarmer extends BaseFarmer {
   static id = "makegram";
@@ -181,7 +181,13 @@ export default class MakegramFarmer extends BaseFarmer {
   }
 
   async buyMarket(lot) {
-    return this.post("s2/market/buy", { лот: lot });
+    try {
+      return await this.post("s2/market/buy", { лот: lot });
+    } catch (e) {
+      const body = e.response?.data ? JSON.stringify(e.response.data).slice(0, 500) : e.message;
+      this.logger.error(`BUY FAIL lot=${lot} status=${e.response?.status || '?'} body=${body}`);
+      throw e;
+    }
   }
 
   /* --------------------------------------------------------------------- */
@@ -497,10 +503,17 @@ export default class MakegramFarmer extends BaseFarmer {
       await this.handleResourceMarket("брёвна", Number(wh.брёвна || 0), pendingRef);
     }
 
-    // --- FOOD (sell fixed 20) ---
+    // --- FOOD (sell fixed 20, ONLY on accounts with лук/bow) ---
     if (pendingRef.value < 10) {
-      const foodQty = Number(wh.еда || 0);
-      await this.handleResourceMarket("еда", foodQty, pendingRef);
+      const hasBow = (s2.инструменты || []).some(
+        (t) => t.тип === "лук",
+      );
+      if (hasBow) {
+        const foodQty = Number(wh.еда || 0);
+        await this.handleResourceMarket("еда", foodQty, pendingRef);
+      } else {
+        this.logger.info("Market: no лук (bow) — keeping food for expeditions.");
+      }
     }
   }
 
@@ -512,8 +525,7 @@ export default class MakegramFarmer extends BaseFarmer {
   /* --------------------------------------------------------------------- */
 
   foodCostForTool(tool) {
-    if (tool.тип === "топор" || tool.тип?.toLowerCase()?.includes("axe")) return 9;
-    return 8;
+    return 10;
   }
 
   parseRepairCost(errorResponse) {
@@ -550,23 +562,47 @@ export default class MakegramFarmer extends BaseFarmer {
     const totalFoodNeeded = idle.reduce((sum, t) => sum + this.foodCostForTool(t), 0) + 10;
     const currentFood = Number(this.s2_state?.склад?.еда || foodHave);
     const foodDeficit = Math.max(0, totalFoodNeeded - currentFood);
+    let balance = Number(this.s2_state?.баланс || 0);
     if (foodDeficit > 0) {
-      this.logger.info(`BANKAI: buying food, have ${currentFood}, need ${totalFoodNeeded} (deficit: ${foodDeficit})`);
-      const marketData = await this.getMarket("еда").catch(() => null);
-      const lots = this.getCheapestLots(marketData, 20);
+      this.logger.info(`BANKAI: buying food, have ${currentFood}, need ${totalFoodNeeded} (deficit: ${foodDeficit}) balance=${balance}`);
+      let marketData = await this.getMarket("еда").catch(() => null);
+      let lots = this.getCheapestLots(marketData, 20);
       let foodBought = 0;
+      let consecutiveFails = 0;
 
       for (const lot of lots) {
         if (foodBought >= foodDeficit) break;
 
+        // Skip lots we can't afford
+        const lotCost = lot.цена * lot.кол;
+        if (lotCost > balance) {
+          this.logger.info(`BANKAI: skipping food lot ${lot.id} — costs ${lotCost} > balance ${balance}`);
+          break; // More expensive lots follow
+        }
+
         const buyRes = await this.buyMarket(lot.id).catch((e) => {
-          this.logger.warn(`BANKAI food lot ${lot.id} failed:`, e.message);
+          const body = e.response?.data ? JSON.stringify(e.response.data).slice(0, 200) : e.message;
+          this.logger.warn(`BANKAI food lot ${lot.id} failed [${e.response?.status || '?'}]: ${body}`);
           return null;
         });
         if (buyRes?.ok) {
           foodBought += lot.кол;
-          totalFoodSpent += lot.цена * lot.кол;
-          if (buyRes.стояние?.ok) this.s2_state = buyRes.стояние;
+          totalFoodSpent += lotCost;
+          consecutiveFails = 0;
+          // Update balance from response state
+          if (buyRes.стояние?.ok) {
+            this.s2_state = buyRes.стояние;
+            balance = Number(buyRes.стояние.баланс || balance);
+          }
+        } else {
+          consecutiveFails++;
+          // After 3 consecutive failures, refresh market data
+          if (consecutiveFails >= 3) {
+            this.logger.info(`BANKAI: ${consecutiveFails} consecutive buy failures, refreshing market...`);
+            marketData = await this.getMarket("еда").catch(() => null);
+            lots = this.getCheapestLots(marketData, 20);
+            consecutiveFails = 0;
+          }
         }
       }
       this.logger.info(`BANKAI: bought ${foodBought} food, spent ${totalFoodSpent} coins`);
