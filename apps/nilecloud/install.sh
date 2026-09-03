@@ -15,6 +15,20 @@ print_subheading() {
     echo -e "${YELLOW}$1${NC}"
 }
 
+print_heading "Setting up swap space (prevents OOM kills)..."
+if [ ! -f /swapfile ]; then
+    sudo fallocate -l 2G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    sudo sysctl vm.swappiness=10
+    echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+    print_subheading "Swap enabled: 2GB"
+else
+    print_subheading "Swap already configured."
+fi
+
 print_heading "Installing Nginx web server..."
 sudo apt-get update
 sudo apt-get upgrade -y
@@ -70,7 +84,7 @@ fi
 print_heading "Installing project dependencies..."
 print_subheading "Cleaning stale node_modules..."
 rm -rf node_modules apps/nilecloud/node_modules
-pnpm install
+CI=true pnpm install
 
 print_heading "Setting up environment variables..."
 if [ ! -f apps/nilecloud/.env ]; then

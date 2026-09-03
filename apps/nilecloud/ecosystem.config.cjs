@@ -11,6 +11,10 @@ module.exports = {
       args: "start --options",
       interpreter: "none",
       kill_timeout: 5000,
+      max_memory_restart: "1500M",
+      exp_backoff_restart_delay: 100,
+      max_restarts: 10,
+      min_uptime: "10s",
       cwd: __dirname,
       env: {
         PORT: env.PORT || 3000,

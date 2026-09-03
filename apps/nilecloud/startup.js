@@ -5,6 +5,28 @@ import bot from "./lib/bot.js";
 import cleanDatabase from "./actions/clean-database.js";
 import updateProxies from "./actions/update-proxies.js";
 
+/** Prevent crashes from unhandled promise rejections (e.g. nonce hash errors) */
+process.on("unhandledRejection", (reason, promise) => {
+  const msg = reason?.message || reason?.toString() || "unknown";
+  // Telegram nonce errors are non-fatal — just log and continue
+  if (msg.includes("nonce") || msg.includes("SecurityError") || msg.includes("TIMEOUT")) {
+    console.error(`[TG Nonce/Timeout — suppressed] ${msg}`);
+    return;
+  }
+  console.error("[unhandledRejection]", reason);
+});
+
+/** Prevent crashes from uncaught exceptions */
+process.on("uncaughtException", (err) => {
+  const msg = err?.message || err?.toString() || "unknown";
+  if (msg.includes("nonce") || msg.includes("SecurityError") || msg.includes("TIMEOUT")) {
+    console.error(`[TG uncaughtException — suppressed] ${msg}`);
+    return;
+  }
+  console.error("[uncaughtException — CRITICAL]", err);
+  // Don't exit — let PM2 handle restarts
+});
+
 /** Handle Graceful Shutdown */
 process.on("SIGINT", async () => {
   console.log("Gracefully shutting down...");
