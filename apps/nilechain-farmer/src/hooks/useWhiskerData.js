@@ -2,7 +2,6 @@ import { sendWebviewMessage } from "@/utils";
 import useBackupAndRestore from "./useBackupAndRestore";
 import { useEffect } from "react";
 import useMemoizedCallback from "./useMemoizedCallback";
-import nileWalletClient from "@/lib/nileWalletClient";
 
 export default function useWhiskerData(app) {
   const [backup, restore] = useBackupAndRestore(app);
@@ -17,9 +16,33 @@ export default function useWhiskerData(app) {
   /** Whisker Message */
   useEffect(() => {
     if (window.electron?.ipcRenderer) {
+      /** Whether whisker data has arrived yet (host may drop the one-shot
+       * delivery if the webview mounts before the guest page is ready). */
+      let receivedWhiskerData = false;
+      let attempts = 0;
+      let retryTimer = null;
+
+      /** Request whisker data, retrying until the host actually replies. */
+      const requestWhiskerData = () => {
+        attempts += 1;
+        console.log("Requesting for Whisker data...", { attempts });
+        sendWebviewMessage({
+          action: "get-whisker-data",
+        });
+      };
+
       /** Message Listener */
       const listener = (_event, { action, data }) => {
         console.log("Received message from Whisker...", { action, data });
+
+        /** Mark delivery so the retry loop can stop. */
+        if (action === "set-whisker-data") {
+          receivedWhiskerData = true;
+          if (retryTimer) {
+            clearInterval(retryTimer);
+            retryTimer = null;
+          }
+        }
 
         /** Reply to Message */
         const reply = (data) => {
@@ -65,9 +88,6 @@ export default function useWhiskerData(app) {
             /** Expose Partition */
             window.WHISKER_PARTITION = account.partition;
 
-            /** Route NileWallet through Electron IPC when in desktop app */
-            nileWalletClient.setPartition(account.partition);
-
             /** Update Account */
             updateActiveAccount(account);
 
@@ -84,14 +104,26 @@ export default function useWhiskerData(app) {
       /** Add Listener */
       window.electron.ipcRenderer.on("host-message", listener);
 
-      /** Request for Whisker Data */
-      console.log("Requesting for Whisker data...");
-      sendWebviewMessage({
-        action: "get-whisker-data",
-      });
+      /** Request for Whisker Data — first attempt right away, then retry
+       * every 3s until the host delivers (covers webview mount races where
+       * the one-shot request/reply is dropped before the guest page loads). */
+      requestWhiskerData();
+      retryTimer = setInterval(() => {
+        if (receivedWhiskerData || attempts >= 30) {
+          clearInterval(retryTimer);
+          retryTimer = null;
+          return;
+        }
+        requestWhiskerData();
+      }, 3000);
 
-      return () =>
+      return () => {
+        if (retryTimer) {
+          clearInterval(retryTimer);
+          retryTimer = null;
+        }
         window.electron.ipcRenderer.removeListener("host-message", listener);
+      };
     }
   }, [
     getBackupData,
