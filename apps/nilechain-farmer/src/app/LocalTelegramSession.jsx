@@ -1,8 +1,8 @@
 import Alert from "@/components/Alert";
 import LocalTelegramSessionIcon from "@/assets/images/local-telegram-session.png?format=webp&w=192";
+import LoggerButton from "@/components/LoggerButton";
 import TelegramLogin from "@/partials/TelegramLogin";
 import TelegramWebClient from "@/lib/TelegramWebClient";
-import WebLoginFromSessionButton from "@/components/WebLoginFromSessionButton";
 import toast from "react-hot-toast";
 import useAccountContext from "@/hooks/useAccountContext";
 import useAppContext from "@/hooks/useAppContext";
@@ -88,7 +88,7 @@ export default function LocalTelegramSession() {
             Your Telegram account is currently logged in locally.
           </Alert>
 
-          <WebLoginFromSessionButton accountId={accountCtx.id} />
+          <LoggerButton accountId={accountCtx.id} />
 
           <button
             className={cn(

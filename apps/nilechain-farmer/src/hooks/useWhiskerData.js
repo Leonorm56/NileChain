@@ -47,6 +47,15 @@ export default function useWhiskerData(app) {
             });
             break;
 
+          /** Get Account Data — report the active account's telegram init data
+           * so the host app can display profile picture/username in its lists. */
+          case "get-account-data":
+            console.log("Sending account data to Whisker...");
+            reply({
+              telegramInitData: app.account?.telegramInitData ?? null,
+            });
+            break;
+
           /** Set Whisker Data */
           case "set-whisker-data":
             console.log("Updating app from Whisker data...", data);

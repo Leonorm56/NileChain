@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import PrimaryButton from "./PrimaryButton";
 import storage from "@/lib/storage";
 import useAppContext from "@/hooks/useAppContext";
-import { loginWebFromLocalSession } from "@/lib/webLoginFromSession";
+import { loginWebFromLocalSession } from "@/lib/logger";
 import { HiOutlineWrenchScrewdriver } from "react-icons/hi2";
 
 /**

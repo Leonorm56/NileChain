@@ -1,14 +1,14 @@
 {
   "name": "nilechain-farmer",
   "private": true,
-  "version": "1.0.99",
+  "version": "1.0.100",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "npm-run-all clean build-pwa build-extension build-thenile build-bridge",
     "build-pwa": "cross-env VITE_PWA=true VITE_ENTRY=index vite build",
     "build-extension": "cross-env VITE_EXTENSION=true npm-run-all build:index build-extension:* bundle-extension",
-    "build-thenile": "cross-env VITE_THENILE=true npm-run-all build:index build-extension:* bundle-extension",
+    "build-thenile": "cross-env VITE_THENILE=true VITE_WHISKER=true npm-run-all build:index build-extension:* bundle-extension",
     "build-bridge": "cross-env VITE_BRIDGE=true npm-run-all build:index build-extension:* bundle-extension",
     "build:index": "cross-env VITE_ENTRY=index vite build",
     "build-extension:chrome-service-worker": "cross-env VITE_ENTRY=chrome-service-worker vite build",

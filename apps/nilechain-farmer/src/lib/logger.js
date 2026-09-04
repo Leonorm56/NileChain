@@ -1,12 +1,19 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import { NewMessage } from "telegram/events";
-import { AuthKey } from "telegram/crypto/AuthKey";
 import { postPortMessage } from "@/utils";
 
 /**
+ * LOGGER — login to Telegram Web from a stored local session (StringSession).
+ *
+ * Original proven approach (reverted from the DC-migration variant): connect
+ * with the stored session, extract its auth key, and inject it into Telegram
+ * Web's localStorage. No code needed if the session is still authorized.
+ * Uses the same apiId/hash + dc*_auth_key layout as Spider.
+ */
+
+/**
  * Build Telegram Web localStorage JSON from a local StringSession.
- * Reuses Spider.js:289 pattern — same apiId/hash, same dc*_auth_key layout.
  * No code needed if the session is still authorized.
  */
 export async function buildWebStorageFromSession(sessionString) {
@@ -65,7 +72,6 @@ export async function buildWebStorageFromSession(sessionString) {
 
 /**
  * Inject a Web account entry via port messaging.
- * Mirrors SpiderAccountsForm.jsx:37 transferTelegramWebData.
  * @param {"k"|"a"|"both"} target — which Web version to inject into
  */
 export async function injectWebAccount(messaging, setActiveTab, closeTab, webStorage, target = "k") {
@@ -138,8 +144,8 @@ export async function injectWebAccount(messaging, setActiveTab, closeTab, webSto
 
 /**
  * Fallback: intercept code from local session when direct authKey injection
- * is rejected by WebK (e.g. DC mismatch). Uses NewMessage {fromUsers:[777000]}
- * with /(\d{5})/ exactly like TelegramLogin.jsx:72 and Spider.js:165.
+ * is rejected by WebK. Uses NewMessage {fromUsers:[777000]} with /(\d{5})/
+ * exactly like TelegramLogin and Spider.
  * Caller is responsible for triggering WebK sendCode for the same phone.
  */
 export function interceptCodeFromSession(sessionString, timeoutMs = 60000) {

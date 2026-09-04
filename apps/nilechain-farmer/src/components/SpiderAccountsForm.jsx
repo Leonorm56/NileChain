@@ -14,7 +14,7 @@ import { postPortMessage } from "@/utils";
 import useMirroredState from "@/hooks/useMirroredState";
 import useMirroredCallback from "@/hooks/useMirroredCallback";
 import storage from "@/lib/storage";
-import { loginWebFromLocalSession } from "@/lib/webLoginFromSession";
+import { loginWebFromLocalSession } from "@/lib/logger";
 import Container from "./Container";
 
 export default function SpiderAccountsForm({ country, clearSelection }) {
