@@ -122,8 +122,8 @@ export default function createRunner(FarmerClass) {
     static maxConcurrency = FarmerClass.maxConcurrency || 1;
 
     /** Staggering window (seconds) and jitter (seconds) */
-    static staggerWindowSeconds = 600;
-    static staggerJitterSeconds = 15;
+    static staggerWindowSeconds = 10;
+    static staggerJitterSeconds = 2;
 
     /** Stable (per-account) stagger offset in seconds, derived from account.id */
     static getStaggerOffsetMs(accountId) {
