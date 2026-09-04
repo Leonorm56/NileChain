@@ -446,21 +446,42 @@ export default function createRunner(FarmerClass) {
         }
       }
 
-      /** Update WebAppData */
-      if (this.constructor.platform === "telegram" && this.account.session) {
+      /** Update WebAppData — skipped for banned accounts and bounded by a
+       *  hard timeout so a stalled Telegram (MTProto) connection can't freeze
+       *  the whole sequential cycle (seen as EADDRINUSE crash loops). */
+      if (
+        this.constructor.platform === "telegram" &&
+        this.account.session &&
+        !this.farmer?.isBanned
+      ) {
         try {
           /** Create Telegram Client */
           this.client = await GramClient.create(this.account.session);
 
-          /** Connect */
-          await this.client.connect();
-
-          /** Update the web app data */
-          if (this.constructor.type === "webapp") {
-            await this.updateWebAppData();
-          }
+          /** Connect + refresh the web app data */
+          const setup = (async () => {
+            await this.client.connect();
+            if (this.constructor.type === "webapp") {
+              await this.updateWebAppData();
+            }
+          })();
+          /** Ignore late rejections once the race below has settled. */
+          setup.catch(() => {});
+          await Promise.race([
+            setup,
+            delay(60_000, { precised: true }).then(() => {
+              throw new Error(
+                "Telegram init-data refresh timed out (MTProto stalled)",
+              );
+            }),
+          ]);
         } catch (e) {
           this.logger.error("Failed to update WebAppData", e.message);
+          /** Release the stalled socket so it doesn't linger until the next
+           *  cycle and block the port/process restarts. */
+          try {
+            await this.client?.destroy?.();
+          } catch {}
         }
       }
 
