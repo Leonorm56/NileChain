@@ -28,10 +28,6 @@ const MAX_ITEM_LEVEL = 20;
 /** How many buildings to buy before stopping and upgrading those instead. */
 const MAX_FARM_SIZE = 25;
 
-/** Stop upgrading buildings once profit-per-hour reaches this cap.
- *  Configurable via FARMER_RIGNITE_MAX_PPH env var (default 120000). */
-const MAX_PPH = Number(process.env.FARMER_RIGNITE_MAX_PPH) || 120_000;
-
 /** Seconds to wait between simulated ad watches. */
 const AD_COOLDOWN_SECONDS = 2;
 
@@ -346,34 +342,26 @@ export default class RigniteFarmer extends BaseFarmer {
   }
 
   /**
-   * Buy upgrades in the app's unlock order, then keep spending until the coin
-   * balance is exhausted. Two passes:
+   * Upgrade logic — split into two clearly separated farming phases:
    *
-   *   1. Expand — unlock new buildings (in unlock order) up to MAX_FARM_SIZE,
-   *      taking each to level 3 so the next one opens.
-   *   2. Deepen — pour every remaining coin into raising the levels of the
-   *      buildings we already own (up to MAX_ITEM_LEVEL), cycling through them
-   *      until a purchase is refused because coins ran out.
+   *   FARMING PHASE 1 (EXPAND) — unlock new buildings in the app's unlock
+   *   order up to MAX_FARM_SIZE (25), taking each new building to level 3
+   *   (UNLOCK_LEVEL) so the next tier opens.
+   *
+   *   FARMING PHASE 2 (DEEPEN) — runs only once the full farm (25 buildings)
+   *   is owned; one pass per run raising every owned building toward
+   *   MAX_ITEM_LEVEL (20).
    *
    * A section (tools, energy, ...) only unlocks once every item of the
    * previous section has been bought, and item `cat_N` only unlocks once
-   * `cat_(N-1)` has reached level 3 (UNLOCK_LEVEL). The server enforces both
-   * with FINISH_PREV_SECTION / "Gereken item seviyesi yok" errors, so we buy
-   * deterministically: finish each section left-to-right, taking each item to
-   * level 3 before moving to the next. New purchases stop once MAX_FARM_SIZE
-   * buildings are owned, but the deepen pass ALWAYS runs afterwards — even
-   * when fewer than MAX_FARM_SIZE are owned — so leftover coins are never
-   * left sitting idle.
+   * `cat_(N-1)` has reached level 3. The server enforces both with
+   * FINISH_PREV_SECTION / "Gereken item seviyesi yok" errors, so Phase 1
+   * buys deterministically: finish each section left-to-right. While the
+   * farm is still expanding (fewer than MAX_FARM_SIZE owned) every coin goes
+   * toward unlocking the next building and Phase 2 does not run.
    */
   async upgradeItems() {
     const user = this.user_data;
-
-    // Skip all upgrades if PPH is already at or above the cap.
-    if (Number(user?.profitPerHour) >= MAX_PPH) {
-      this.logger.success(`PPH cap reached (${user.profitPerHour}). Skipping upgrades.`);
-      return;
-    }
-
     let coins = Number(user?.coins) || 0;
     const items = JSON.parse(JSON.stringify(user?.items || {}));
 
@@ -381,9 +369,71 @@ export default class RigniteFarmer extends BaseFarmer {
     const ownedCount = () =>
       ITEM_IDS.reduce((n, id) => n + ((items[id] ?? 0) > 0 ? 1 : 0), 0);
 
+    // ================= FARMING PHASE 1 — EXPAND ========================
+    this.logger.newline();
+    this.logger.log(`Farming Phase 1 — expand (${ownedCount()}/${MAX_FARM_SIZE} buildings owned).`);
+    const phase1 = await this.phase1Expand(coins, items, ownedCount);
+    coins = phase1.coins;
+    if (phase1.upgrades) {
+      this.logger.success(`Farming Phase 1 done — bought ${phase1.upgrades} upgrade(s).`);
+    } else if (ownedCount() >= MAX_FARM_SIZE) {
+      this.logger.info("Farming Phase 1 done — farm already complete (25/25).");
+    } else {
+      this.logger.info("Farming Phase 1 done — not enough coins to expand further yet.");
+    }
+
+    // ================= FARMING PHASE 2 — DEEPEN ========================
+    // Only runs once the full farm is unlocked — before that every coin goes
+    // to expansion (Farming Phase 1).
+    this.logger.newline();
+    if (ownedCount() >= MAX_FARM_SIZE) {
+      this.logger.log("Farming Phase 2 — deepen (raise owned buildings toward level 20).");
+      const phase2 = await this.phase2Deepen(coins, items);
+      coins = phase2.coins;
+      if (phase2.upgrades) {
+        this.logger.success(`Farming Phase 2 done — applied ${phase2.upgrades} upgrade(s).`);
+      } else {
+        this.logger.info("Farming Phase 2 done — nothing upgradeable (maxed or out of coins).");
+      }
+    } else {
+      this.logger.info(
+        `Farming Phase 2 skipped — ${ownedCount()}/${MAX_FARM_SIZE} buildings owned, still in Farming Phase 1.`,
+      );
+    }
+
+    const battery = await this.upgradeBattery().catch((e) => {
+      this.logger.info("Battery upgrade not available:", this.readError(e));
+      return null;
+    });
+    if (battery?.state) {
+      this.user_data = { ...battery.state, coins: Number(battery.state.coins ?? coins) };
+      this.logger.success("Battery upgraded.");
+    } else if (battery?.coins !== undefined || (battery && !battery.state)) {
+      const patch = this.activeMerge(battery);
+      this.user_data = { ...this.user_data, ...patch };
+      if (patch.batteryLevel) this.logger.success("Battery upgraded.");
+    }
+
+    this.user_data = {
+      ...this.user_data,
+      coins,
+      items,
+      ...this.activeMerge(this.user_data),
+    };
+  }
+
+  /**
+   * FARMING PHASE 1 — Expand.
+   * Unlock new buildings (in unlock order) up to MAX_FARM_SIZE, taking each
+   * new building to level 3 (UNLOCK_LEVEL) so the next tier opens. The tools
+   * section is always open; later sections need the whole previous section
+   * bought first. Stops early when coins run out / next tier is locked — the
+   * next run resumes with more coins. Returns the remaining coin balance and
+   * the number of purchases made.
+   */
+  async phase1Expand(coins, items, ownedCount) {
     let upgrades = 0;
 
-    // --- Phase 1: buy until MAX_FARM_SIZE buildings are owned ------------
     for (let c = 0; c < CATEGORIES.length; c++) {
       if (this.signal?.aborted || ownedCount() >= MAX_FARM_SIZE) break;
       const category = CATEGORIES[c];
@@ -427,71 +477,53 @@ export default class RigniteFarmer extends BaseFarmer {
           items[itemId] = level;
           upgrades++;
           this.logger.success(`Upgraded ${itemId} to level ${level} (${ownedCount()}/${MAX_FARM_SIZE} buildings).`);
-          if (Number(result.profitPerHour) >= MAX_PPH) {
-            this.logger.success(`PPH cap reached (${result.profitPerHour}). Stopping upgrades.`);
-            return;
-          }
         }
       }
     }
 
-    // --- Phase 2: keep leveling every owned building until coins run out --
-    // Runs regardless of how many buildings we own, so leftover coins that
-    // aren't enough to unlock the next (pricey) card still go toward cheaper
-    // level-ups on what we already have.
-    {
-      let affordable = true;
-      while (affordable && this.signal?.aborted === false) {
-        affordable = false;
-        for (let tier = 0; tier < ITEM_IDS.length; tier++) {
-          if (this.signal?.aborted) break;
-          const itemId = ITEM_IDS[tier];
-          if ((items[itemId] ?? 0) <= 0) continue; // not owned
-          if ((items[itemId] ?? 0) >= MAX_ITEM_LEVEL) continue; // maxed
+    return { coins, upgrades };
+  }
 
-          const result = await this.buyItem(itemId).catch((e) => {
-            this.logger.warn(`Upgrade ${itemId} failed:`, this.readError(e));
-            return null;
-          });
-          if (!result || result?.coins === undefined || result?.profitPerHour === undefined) {
-            break; // can't afford this tier -> stop the whole pass
-          }
-          coins = Number(result.coins);
-          const level = Number(result.level) || (items[itemId] ?? 0) + 1;
-          items[itemId] = level;
-          upgrades++;
-          affordable = true;
-          this.logger.success(`Upgraded ${itemId} to level ${level}.`);
-          if (Number(result.profitPerHour) >= MAX_PPH) {
-            this.logger.success(`PPH cap reached (${result.profitPerHour}). Stopping upgrades.`);
-            return;
-          }
-        }
+  /**
+   * FARMING PHASE 2 — Deepen.
+   * Called only when the full farm (all MAX_FARM_SIZE buildings) is unlocked.
+   * One pass per run over every owned building, raising it toward
+   * MAX_ITEM_LEVEL. A building that can't be afforded logs LESS COINS and the
+   * loop moves on; the next run tries again with more coins. Returns the
+   * remaining coin balance and the number of purchases made.
+   */
+  async phase2Deepen(coins, items) {
+    let upgrades = 0;
+
+    for (let tier = 0; tier < ITEM_IDS.length; tier++) {
+      if (this.signal?.aborted) break;
+      const itemId = ITEM_IDS[tier];
+      const curLevel = items[itemId] ?? 0;
+      if (curLevel <= 0) continue; // not owned
+
+      if (curLevel >= MAX_ITEM_LEVEL) {
+        this.logger.info(`Upgrade ${itemId} already MAX level (${curLevel}).`);
+        continue;
       }
+
+      const result = await this.buyItem(itemId).catch((e) => {
+        this.logger.warn(`Upgrade ${itemId} failed:`, this.readError(e));
+        return null;
+      });
+      // A refused purchase (no fresh coins/profitPerHour in the reply) means
+      // not enough coins — log and keep going.
+      if (!result || result?.coins === undefined || result?.profitPerHour === undefined) {
+        this.logger.info(`Upgrade ${itemId} — LESS COINS.`);
+        continue;
+      }
+      coins = Number(result.coins);
+      const newLevel = Number(result.level) || curLevel + 1;
+      items[itemId] = newLevel;
+      upgrades++;
+      this.logger.success(`Upgraded ${itemId} to level ${newLevel}.`);
     }
 
-    const battery = await this.upgradeBattery().catch((e) => {
-      this.logger.info("Battery upgrade not available:", this.readError(e));
-      return null;
-    });
-    if (battery?.state) {
-      this.user_data = { ...battery.state, coins: Number(battery.state.coins ?? coins) };
-      this.logger.success("Battery upgraded.");
-    } else if (battery?.coins !== undefined || (battery && !battery.state)) {
-      const patch = this.activeMerge(battery);
-      this.user_data = { ...this.user_data, ...patch };
-      if (patch.batteryLevel) this.logger.success("Battery upgraded.");
-    }
-
-    this.user_data = {
-      ...this.user_data,
-      coins,
-      items,
-      ...this.activeMerge(this.user_data),
-    };
-
-    if (upgrades) this.logger.success(`Bought ${upgrades} upgrade(s).`);
-    else this.logger.info("No upgrades available yet.");
+    return { coins, upgrades };
   }
 
   /**
