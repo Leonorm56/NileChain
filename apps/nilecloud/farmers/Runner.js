@@ -740,6 +740,28 @@ export default function createRunner(FarmerClass) {
       }
     }
 
+    /** Timestamp of the last account that started (anti-ban pacing). */
+    static lastStartTs = 0;
+
+    /**
+     * Space consecutive account starts by a random 15-30s (anti-ban pacing).
+     * Works for both sequential and concurrent execution: whatever the pool
+     * size, no account starts sooner than this gap after the previous one.
+     */
+    static async paceBetweenStarts() {
+      const now = Date.now();
+      const elapsed = this.lastStartTs ? now - this.lastStartTs : Infinity;
+      const gapMs = 15_000 + Math.random() * 15_000;
+      const wait = Math.max(0, gapMs - elapsed);
+      if (wait > 0) {
+        this.logger.info(
+          `Pacing: ${Math.round(wait / 1000)}s before next account start.`,
+        );
+        await delay(wait, { precised: true });
+      }
+      this.lastStartTs = Date.now();
+    }
+
     /** Process queue — supports concurrent execution via maxConcurrency. */
     static async processQueue() {
       if (this.isProcessingQueue) return;
@@ -757,6 +779,7 @@ export default function createRunner(FarmerClass) {
 
           if (concurrency <= 1) {
             /* ---- Sequential (original behaviour) ---- */
+            await this.paceBetweenStarts();
             const { instance, skipExecution } = this.dequeue();
             try {
               await this.execute(instance, skipExecution);
@@ -774,12 +797,12 @@ export default function createRunner(FarmerClass) {
                 this.resetPrimaryFarmerLink(instance);
               }
             }
+
           } else {
             /* ---- Concurrent pool ---- */
             const active = new Set();
 
-            const runOne = async () => {
-              const { instance, skipExecution } = this.dequeue();
+            const runOne = async (instance, skipExecution) => {
               const key = instance.account.id;
               active.add(key);
               try {
@@ -802,9 +825,12 @@ export default function createRunner(FarmerClass) {
               }
             };
 
-            /* Fill the pool up to concurrency */
+            /* Fill the pool up to concurrency — starts are spaced by
+             * paceBetweenStarts() so dequeues serialize one per gap. */
             while (active.size < concurrency && this.queue.length > 0) {
-              runOne(); // fire-and-forget; the pool tracks completion
+              await this.paceBetweenStarts();
+              const { instance, skipExecution } = this.dequeue();
+              runOne(instance, skipExecution); // fire-and-forget; the pool tracks completion
             }
 
             /* Wait for at least one slot to free up, then loop */
