@@ -11,6 +11,9 @@ import BaseFarmer from "../lib/BaseFarmer.js";
 
 const API_URL = "https://api.rignite.app";
 
+/** Ad provider mode served by GET /client-version.json (fallback if fetch fails). */
+const AD_MODE_DEFAULT = "adexium_house";
+
 /** Building/upgrade categories in unlock order (each has 8 tiers). */
 const CATEGORIES = ["tools", "energy", "workers", "land", "special", "cosmic"];
 
@@ -30,6 +33,10 @@ const MAX_FARM_SIZE = 25;
 
 /** Seconds to wait between simulated ad watches. */
 const AD_COOLDOWN_SECONDS = 2;
+
+/** Phase-1 tap prep targets: taps per click and max energy to reach before tapping. */
+const BOOST_TARGET_MULTITAP = 5;
+const BOOST_TARGET_MAX_ENERGY = 3500;
 
 export default class RigniteFarmer extends BaseFarmer {
   static id = "rignite";
@@ -69,10 +76,53 @@ export default class RigniteFarmer extends BaseFarmer {
   /* Transport                                                             */
   /* --------------------------------------------------------------------- */
 
+  /** Today's date (process-local) in the app's `yyyy-mm-dd` policy format. */
+  getAdPolicyDate() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  /**
+   * The app reads GET /client-version.json for its `adMode`, then sends
+   * `x-rignite-ad-policy: <adMode>:<date>.1` on every request. Since
+   * 2026-09-05 the server answers ad endpoints with CLIENT_UPDATE_REQUIRED
+   * when that header is missing, so fetch the mode once per run (fall back to
+   * the known mode if the fetch fails — never block farming on it).
+   */
+  async ensureAdMode() {
+    if (this.adMode) return this.adMode;
+    try {
+      const res = await fetch(
+        `https://app.rignite.app/client-version.json?_=${Date.now()}`,
+        { signal: this.signal },
+      );
+      const data = res.ok ? await res.json() : null;
+      if (data?.adMode) this.adMode = data.adMode;
+    } catch {
+      // offline / blocked — fall through to the default
+    }
+    this.adMode = this.adMode || AD_MODE_DEFAULT;
+    return this.adMode;
+  }
+
+  /** Headers the real client sends on every api call (ad-policy gate + tg). */
+  getClientHeaders() {
+    const headers = {
+      "x-requested-with": "org.telegram.messenger",
+    };
+    const mode = this.adMode || AD_MODE_DEFAULT;
+    headers["x-rignite-ad-policy"] = `${mode}:${this.getAdPolicyDate()}.1`;
+    return headers;
+  }
+
   /** Post to an endpoint with the init data header baked in. */
   post(path, payload = {}) {
     return this.api
-      .post(`${API_URL}/${path}`, payload, { signal: this.signal })
+      .post(`${API_URL}/${path}`, payload, {
+        headers: this.getClientHeaders(),
+        signal: this.signal,
+      })
       .then((res) => res.data);
   }
 
@@ -133,6 +183,11 @@ export default class RigniteFarmer extends BaseFarmer {
   /** Free refill that restores energy to max (uses the `fullEnergyLeft` pool). */
   fullEnergy() {
     return this.post("boost/full-energy", {});
+  }
+
+  /** Upgrade a boost one level (type: "multitap" | "energy_limit"). */
+  upgradeBoost(type) {
+    return this.post("boost/upgrade", { type });
   }
 
   /** Buy one level of an item. */
@@ -527,12 +582,74 @@ export default class RigniteFarmer extends BaseFarmer {
   }
 
   /**
-   * Tap until the battery is recharged to 100%, spending every free
-   * full-energy refill along the way. Every tap charges the battery (see the
-   * app's tap state machine) and the `/tap` response reports the fresh
-   * battery/energy/coins fields. When the energy bar runs dry before the
-   * battery is full, `/boost/full-energy` tops it back up until the daily
-   * refill pool is exhausted.
+   * Buy tap boosts until 5 taps/click, then raise the energy limit to at most
+   * BOOST_TARGET_MAX_ENERGY (3.5k) — never beyond it. Best effort on coins: a
+   * refusal means not affordable, so we stop and retry next run.
+   */
+  async buyTapBoosts() {
+    let tapLvl = Number(this.user_data?.multitapLevel) || 1;
+    while (tapLvl < BOOST_TARGET_MULTITAP && !this.signal?.aborted) {
+      const res = await this.upgradeBoost("multitap").catch(() => null);
+      const next = Number(res?.multitapLevel) || 0;
+      if (!res || next <= tapLvl) break;
+      tapLvl = next;
+      this.logger.success(`Tap boost → ${tapLvl} taps/click.`);
+    }
+
+    let maxE = Number(this.user_data?.maxEnergy) || 0;
+    while (maxE < BOOST_TARGET_MAX_ENERGY && !this.signal?.aborted) {
+      const res = await this.upgradeBoost("energy_limit").catch(() => null);
+      const next = Number(res?.maxEnergy) || 0;
+      if (!res || next <= maxE || next > BOOST_TARGET_MAX_ENERGY) break;
+      maxE = next;
+      this.logger.success(`Energy boost → ${maxE} max.`);
+    }
+
+    // Boost replies carry partial state — refresh so tapping sees new levels.
+    const me = await this.getMe().catch(() => null);
+    if (me) this.user_data = { ...this.user_data, ...me };
+  }
+
+  /**
+   * Watch one full-energy ad (type "full_energy"): intent → watch → complete →
+   * refresh /me. Refills the tap-energy bar to 100% from the near-unlimited
+   * ad pool (`adEnergyLeft`), unlike the free refills that run out.
+   */
+  async watchFullEnergyAd() {
+    const intent = await this.adIntent("full_energy").catch((e) => {
+      this.logger.warn("Full-energy ad intent failed:", this.readError(e));
+      return null;
+    });
+    if (!intent?.ok) {
+      this.logger.warn("Full-energy ad intent refused:", JSON.stringify(intent).slice(0, 200));
+      return false;
+    }
+
+    const rng = this.getUserRandomGenerator();
+    const ms = 10000 + Math.floor(rng() * 5000);
+    await this.utils.delay(ms, { precised: true, signal: this.signal }).catch(() => {});
+    if (this.signal?.aborted) return false;
+
+    const done = await this.adComplete({ network: "warhold", ymid: null, ms, tapGap: -1 }).catch(() => null);
+    if (!done?.ok) return false;
+
+    const me = await this.getMe().catch(() => null);
+    if (me) this.user_data = { ...this.user_data, ...me };
+
+    const energy = Number(this.user_data?.energy) ?? 0;
+    const max = Number(this.user_data?.maxEnergy) || 0;
+    if (energy >= max) this.logger.success(`Energy recharged to 100% via ad (${energy}/${max}).`);
+    else this.logger.warn(`Ad done but energy not refilled (${energy}/${max}).`);
+    return true;
+  }
+
+  /**
+   * Tap until the battery is recharged to 100%. Before tapping it buys the
+   * tap boosts (5 taps/click, 3.5k max ⚡) and watches one full-energy ad so
+   * the session starts at 100% energy. Every tap charges the battery and the
+   * `/tap` response reports fresh battery/energy/coins fields. When energy runs
+   * dry before the battery is full, `/boost/full-energy` tops it back up until
+   * the daily free-refill pool is exhausted.
    */
   async tapUntilBatteryFull() {
     let user = this.user_data;
@@ -543,6 +660,15 @@ export default class RigniteFarmer extends BaseFarmer {
       this.logger.info("No battery to charge yet.");
       return 0;
     }
+    if (Number(user.batteryEnergy ?? 0) >= cap) {
+      this.logger.info("No battery charge needed (battery 100%).");
+      return 0;
+    }
+
+    // Phase-1 prep: buy tap boosts (capped at 5 taps / 3.5k max energy) so the
+    // session taps with the strongest tap/energy before the battery is drained.
+    await this.buyTapBoosts();
+    user = this.user_data;
 
     const multitap = Math.max(1, Number(user.multitapLevel) || 1);
     let battery = Number(user.batteryEnergy) ?? 0;
@@ -916,8 +1042,12 @@ export default class RigniteFarmer extends BaseFarmer {
 
   async process() {
     await this.login();
+    await this.ensureAdMode();
 
     await this.logUserInfo();
+    // The full-energy ad always runs first — it tops the tap energy bar to
+    // 100% before any other task (tap/collect/upgrades) touches the account.
+    await this.executeTask("Energy Ad", () => this.watchFullEnergyAd());
     await this.executeTask("Tap", () => this.tapUntilBatteryFull());
     await this.executeTask("Collect", () => this.collectEverything());
     await this.executeTask("Upgrades", () => this.upgradeItems());
