@@ -1,6 +1,6 @@
 {
   "license": "MIT",
-  "version": "1.0.105",
+  "version": "1.0.106",
   "scripts": {
     "build:farmer": "pnpm -F nilechain-farmer build"
   },

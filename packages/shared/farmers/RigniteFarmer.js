@@ -28,8 +28,8 @@ const UNLOCK_LEVEL = 3;
 /** The server caps how many levels an item can be upgraded to. */
 const MAX_ITEM_LEVEL = 20;
 
-/** How many buildings to buy before stopping and upgrading those instead. */
-const MAX_FARM_SIZE = 25;
+/** How many buildings to buy before stopping; beyond this, only upgrades. */
+const MAX_FARM_SIZE = 20;
 
 /** Seconds to wait between simulated ad watches. */
 const AD_COOLDOWN_SECONDS = 2;
@@ -439,11 +439,11 @@ export default class RigniteFarmer extends BaseFarmer {
    * Upgrade logic — split into two clearly separated farming phases:
    *
    *   FARMING PHASE 1 (EXPAND) — unlock new buildings in the app's unlock
-   *   order up to MAX_FARM_SIZE (25), taking each new building to level 3
+   *   order up to MAX_FARM_SIZE (20), taking each new building to level 3
    *   (UNLOCK_LEVEL) so the next tier opens.
    *
-   *   FARMING PHASE 2 (DEEPEN) — runs only once the full farm (25 buildings)
-   *   is owned; one pass per run raising every owned building toward
+   *   FARMING PHASE 2 (DEEPEN) — runs once the farm (MAX_FARM_SIZE) is
+   *   owned; one pass per run raising every owned building toward
    *   MAX_ITEM_LEVEL (20).
    *
    * A section (tools, energy, ...) only unlocks once every item of the
@@ -471,7 +471,7 @@ export default class RigniteFarmer extends BaseFarmer {
     if (phase1.upgrades) {
       this.logger.success(`Farming Phase 1 done — bought ${phase1.upgrades} upgrade(s).`);
     } else if (ownedCount() >= MAX_FARM_SIZE) {
-      this.logger.info("Farming Phase 1 done — farm already complete (25/25).");
+      this.logger.info(`Farming Phase 1 done — farm already complete (${MAX_FARM_SIZE}/${MAX_FARM_SIZE}).`);
     } else {
       this.logger.info("Farming Phase 1 done — not enough coins to expand further yet.");
     }
@@ -512,8 +512,8 @@ export default class RigniteFarmer extends BaseFarmer {
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
-    // Runs only once the full farm (MAX_FARM_SIZE) is owned AND the account
-    // is under the MAX_PPH ceiling. While above the 200K battery gate the
+    // Runs once the full farm (MAX_FARM_SIZE) is owned AND the account is
+    // under the MAX_PPH ceiling. While above the 200K battery gate the
     // account pauses deepening until the battery reaches MAX_BATTERY_LEVEL.
     this.logger.newline();
     if (ownedCount() < MAX_FARM_SIZE) {
