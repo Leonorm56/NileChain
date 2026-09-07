@@ -38,6 +38,26 @@ const AD_COOLDOWN_SECONDS = 2;
 const BOOST_TARGET_MULTITAP = 5;
 const BOOST_TARGET_MAX_ENERGY = 3500;
 
+/** Maximum battery level before we stop upgrading it. */
+const MAX_BATTERY_LEVEL = 25;
+
+/** PPH gate: accounts above this must max the battery before Phase 2 deepening. */
+const BATTERY_GATE_PPH = 200000;
+
+/** PPH ceiling: Phase 2 stops deepening once an account reaches this. */
+const MAX_PPH = 450000;
+
+/** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
+const MAX_ADS_PER_HOUR = 2;
+const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * In-process mirror of each account's ad-watch log, used when the host gives
+ * no persistent `farmer.storage` (long-lived node runner) and as a write-back
+ * cache when it does. Values are arrays of epoch-ms watch timestamps.
+ */
+const AD_WATCH_MEMORY = new Map();
+
 export default class RigniteFarmer extends BaseFarmer {
   static id = "rignite";
   static title = "Rignite";
@@ -76,11 +96,11 @@ export default class RigniteFarmer extends BaseFarmer {
   /* Transport                                                             */
   /* --------------------------------------------------------------------- */
 
-  /** Today's date (process-local) in the app's `yyyy-mm-dd` policy format. */
+  /** Today's date (UTC, matching the server) in the `yyyy-mm-dd` policy format. */
   getAdPolicyDate() {
     const d = new Date();
     const p = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
   }
 
   /**
@@ -112,18 +132,37 @@ export default class RigniteFarmer extends BaseFarmer {
       "x-requested-with": "org.telegram.messenger",
     };
     const mode = this.adMode || AD_MODE_DEFAULT;
-    headers["x-rignite-ad-policy"] = `${mode}:${this.getAdPolicyDate()}.1`;
+    const policy = this.adPolicy || `${mode}:${this.getAdPolicyDate()}.1`;
+    headers["x-rignite-ad-policy"] = policy;
     return headers;
   }
 
   /** Post to an endpoint with the init data header baked in. */
-  post(path, payload = {}) {
-    return this.api
-      .post(`${API_URL}/${path}`, payload, {
+  async post(path, payload = {}) {
+    const attempt = () =>
+      this.api.post(`${API_URL}/${path}`, payload, {
         headers: this.getClientHeaders(),
         signal: this.signal,
-      })
-      .then((res) => res.data);
+      });
+    let res;
+    try {
+      res = await attempt();
+    } catch (error) {
+      const body = error?.response?.data;
+      const sent = this.getClientHeaders()["x-rignite-ad-policy"];
+      // The server answers ad endpoints with 426 CLIENT_UPDATE_REQUIRED and
+      // names the exact policy it expects — adopt it and replay once rather
+      // than failing the whole run.
+      if (error?.response?.status === 426 && body?.expectedPolicy && body.expectedPolicy !== sent) {
+        this.adMode = String(body.expectedPolicy).split(":")[0] || this.adMode;
+        this.adPolicy = body.expectedPolicy;
+        this.logger?.info?.(`Ad policy updated to ${body.expectedPolicy}.`);
+        res = await attempt();
+      } else {
+        throw error;
+      }
+    }
+    return res.data;
   }
 
   /** The referral id the app wants (digits of the primary user id). */
@@ -437,11 +476,55 @@ export default class RigniteFarmer extends BaseFarmer {
       this.logger.info("Farming Phase 1 done — not enough coins to expand further yet.");
     }
 
-    // ================= FARMING PHASE 2 — DEEPEN ========================
-    // Only runs once the full farm is unlocked — before that every coin goes
-    // to expansion (Farming Phase 1).
+    // ================= BATTERY UPGRADE =====================================
+    // Battery gate: once an account climbs past BATTERY_GATE_PPH (200K) it
+    // must max the battery (MAX_BATTERY_LEVEL, 25) BEFORE Phase 2 deepening
+    // resumes. Accounts at 200K or below skip straight to deepening.
     this.logger.newline();
-    if (ownedCount() >= MAX_FARM_SIZE) {
+    const pph = Number(user?.profitPerHour) || 0;
+    const curBatteryLevel = Number(user?.batteryLevel) || 0;
+    const gateMet = pph > BATTERY_GATE_PPH;
+    if (gateMet && curBatteryLevel < MAX_BATTERY_LEVEL) {
+      this.logger.log(`Upgrading Battery — PPH ${pph} above the ${BATTERY_GATE_PPH / 1000}K gate, must reach L${MAX_BATTERY_LEVEL} before deepening (L${curBatteryLevel} now).`);
+      const battery = await this.upgradeBattery().catch((e) => {
+        this.logger.info("Battery upgrade not available:", this.readError(e));
+        return null;
+      });
+      if (battery?.state) {
+        this.user_data = { ...battery.state, coins: Number(battery.state.coins ?? coins) };
+        this.logger.success("Battery upgraded successfully.");
+      } else if (battery?.coins !== undefined || (battery && !battery.state)) {
+        const patch = this.activeMerge(battery);
+        this.user_data = { ...this.user_data, ...patch };
+        if (patch.batteryLevel) this.logger.success("Battery upgraded successfully.");
+        else this.logger.info("Battery upgrade not available.");
+      } else {
+        this.logger.info("Battery upgrade not available.");
+      }
+    } else if (gateMet) {
+      this.logger.log(`Battery upgrade skipped — battery already at max level (L${curBatteryLevel}).`);
+    } else {
+      this.logger.log(`Battery upgrade skipped — PPH ${pph} at/below the ${BATTERY_GATE_PPH / 1000}K gate.`);
+    }
+
+    // Re-read after the attempt above: a successful reply carries fresh state.
+    coins = Number(this.user_data?.coins) ?? coins;
+    const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
+
+    // ================= FARMING PHASE 2 — DEEPEN ========================
+    // Runs only once the full farm (MAX_FARM_SIZE) is owned AND the account
+    // is under the MAX_PPH ceiling. While above the 200K battery gate the
+    // account pauses deepening until the battery reaches MAX_BATTERY_LEVEL.
+    this.logger.newline();
+    if (ownedCount() < MAX_FARM_SIZE) {
+      this.logger.info(
+        `Farming Phase 2 skipped — ${ownedCount()}/${MAX_FARM_SIZE} buildings owned, still in Farming Phase 1.`,
+      );
+    } else if (pph >= MAX_PPH) {
+      this.logger.info(`Farming Phase 2 skipped — PPH ${pph} at the ${MAX_PPH / 1000}K ceiling.`);
+    } else if (gateMet && batteryLevel < MAX_BATTERY_LEVEL) {
+      this.logger.info(`Farming Phase 2 paused — PPH ${pph} above the ${BATTERY_GATE_PPH / 1000}K gate, battery must reach L${MAX_BATTERY_LEVEL} first (L${batteryLevel}).`);
+    } else {
       this.logger.log("Farming Phase 2 — deepen (raise owned buildings toward level 20).");
       const phase2 = await this.phase2Deepen(coins, items);
       coins = phase2.coins;
@@ -450,23 +533,6 @@ export default class RigniteFarmer extends BaseFarmer {
       } else {
         this.logger.info("Farming Phase 2 done — nothing upgradeable (maxed or out of coins).");
       }
-    } else {
-      this.logger.info(
-        `Farming Phase 2 skipped — ${ownedCount()}/${MAX_FARM_SIZE} buildings owned, still in Farming Phase 1.`,
-      );
-    }
-
-    const battery = await this.upgradeBattery().catch((e) => {
-      this.logger.info("Battery upgrade not available:", this.readError(e));
-      return null;
-    });
-    if (battery?.state) {
-      this.user_data = { ...battery.state, coins: Number(battery.state.coins ?? coins) };
-      this.logger.success("Battery upgraded.");
-    } else if (battery?.coins !== undefined || (battery && !battery.state)) {
-      const patch = this.activeMerge(battery);
-      this.user_data = { ...this.user_data, ...patch };
-      if (patch.batteryLevel) this.logger.success("Battery upgraded.");
     }
 
     this.user_data = {
@@ -610,12 +676,62 @@ export default class RigniteFarmer extends BaseFarmer {
     if (me) this.user_data = { ...this.user_data, ...me };
   }
 
+  /* --------------------------------------------------------------------- */
+  /* Ad budget — 2 boost-ad watches per rolling hour (energy + battery)      */
+  /* --------------------------------------------------------------------- */
+
+  adBudgetKey() {
+    return `rignite:ad-watches:${this.getUserId() ?? "anon"}`;
+  }
+
+  /** Epoch-ms timestamps of boost-ad watches inside the current hour. */
+  async getAdWatchLog() {
+    const key = this.adBudgetKey();
+    const cutoff = Date.now() - AD_BUDGET_WINDOW_MS;
+    let stored = [];
+    try {
+      const raw = await this.storage?.get?.(key);
+      if (Array.isArray(raw)) stored = raw;
+    } catch {
+      stored = [];
+    }
+    const merged = [...new Set([...stored, ...(AD_WATCH_MEMORY.get(key) || [])])]
+      .map(Number)
+      .filter((t) => Number.isFinite(t) && t >= cutoff)
+      .sort((a, b) => a - b);
+    AD_WATCH_MEMORY.set(key, merged);
+    return merged;
+  }
+
+  /** Boost-ad watches still available this hour (0..MAX_ADS_PER_HOUR). */
+  async adsLeftThisHour() {
+    return Math.max(0, MAX_ADS_PER_HOUR - (await this.getAdWatchLog()).length);
+  }
+
+  /** Record one completed boost-ad watch (call only after /ad/complete ok). */
+  async recordAdWatch() {
+    const log = await this.getAdWatchLog();
+    log.push(Date.now());
+    const key = this.adBudgetKey();
+    AD_WATCH_MEMORY.set(key, log);
+    try {
+      await this.storage?.set?.(key, log);
+    } catch {
+      // no persistent storage — the in-process mirror is enough
+    }
+  }
+
   /**
    * Watch one full-energy ad (type "full_energy"): intent → watch → complete →
    * refresh /me. Refills the tap-energy bar to 100% from the near-unlimited
    * ad pool (`adEnergyLeft`), unlike the free refills that run out.
    */
   async watchFullEnergyAd() {
+    if ((await this.adsLeftThisHour()) <= 0) {
+      this.logger.log(`Skipping Energy Ad — ad budget reached (${MAX_ADS_PER_HOUR}/hour).`);
+      return false;
+    }
+
     const intent = await this.adIntent("full_energy").catch((e) => {
       this.logger.warn("Full-energy ad intent failed:", this.readError(e));
       return null;
@@ -633,6 +749,9 @@ export default class RigniteFarmer extends BaseFarmer {
     const done = await this.adComplete({ network: "warhold", ymid: null, ms, tapGap: -1 }).catch(() => null);
     if (!done?.ok) return false;
 
+    // Only a completed watch consumes the hourly ad budget.
+    await this.recordAdWatch();
+
     const me = await this.getMe().catch(() => null);
     if (me) this.user_data = { ...this.user_data, ...me };
 
@@ -640,6 +759,53 @@ export default class RigniteFarmer extends BaseFarmer {
     const max = Number(this.user_data?.maxEnergy) || 0;
     if (energy >= max) this.logger.success(`Energy recharged to 100% via ad (${energy}/${max}).`);
     else this.logger.warn(`Ad done but energy not refilled (${energy}/${max}).`);
+    return true;
+  }
+
+  /**
+   * Watch one battery ad (type "battery"): intent → watch → complete →
+   * refresh /me. Charges the battery energy pool directly. The daily quota is
+   * tracked by `batteryAdLeft` on the /me response.
+   */
+  async watchBatteryAd() {
+    if ((await this.adsLeftThisHour()) <= 0) {
+      this.logger.log(`Skipping Battery Ad — ad budget reached (${MAX_ADS_PER_HOUR}/hour).`);
+      return false;
+    }
+
+    const adLeft = Number(this.user_data?.batteryAdLeft) || 0;
+    if (adLeft <= 0) {
+      this.logger.info("No battery ads left today.");
+      return false;
+    }
+
+    const intent = await this.adIntent("battery").catch((e) => {
+      this.logger.warn("Battery ad intent failed:", this.readError(e));
+      return null;
+    });
+    if (!intent?.ok) {
+      this.logger.warn("Battery ad intent refused:", JSON.stringify(intent).slice(0, 200));
+      return false;
+    }
+
+    const rng = this.getUserRandomGenerator();
+    const ms = 10000 + Math.floor(rng() * 5000);
+    await this.utils.delay(ms, { precised: true, signal: this.signal }).catch(() => {});
+    if (this.signal?.aborted) return false;
+
+    const done = await this.adComplete({ network: "warhold", ymid: null, ms, tapGap: -1 }).catch(() => null);
+    if (!done?.ok) return false;
+
+    // Only a completed watch consumes the hourly ad budget.
+    await this.recordAdWatch();
+
+    const me = await this.getMe().catch(() => null);
+    if (me) this.user_data = { ...this.user_data, ...me };
+
+    const batt = Number(this.user_data?.batteryEnergy) ?? 0;
+    const cap = Number(this.user_data?.batteryCap) || 0;
+    const pct = cap > 0 ? Math.round((batt / cap) * 100) : 0;
+    this.logger.success(`Battery ad done — battery ${pct}% (${batt}/${cap}). Left: ${Number(this.user_data?.batteryAdLeft) ?? 0}.`);
     return true;
   }
 
@@ -1048,6 +1214,7 @@ export default class RigniteFarmer extends BaseFarmer {
     // The full-energy ad always runs first — it tops the tap energy bar to
     // 100% before any other task (tap/collect/upgrades) touches the account.
     await this.executeTask("Energy Ad", () => this.watchFullEnergyAd());
+    await this.executeTask("Battery Ad", () => this.watchBatteryAd());
     await this.executeTask("Tap", () => this.tapUntilBatteryFull());
     await this.executeTask("Collect", () => this.collectEverything());
     await this.executeTask("Upgrades", () => this.upgradeItems());
