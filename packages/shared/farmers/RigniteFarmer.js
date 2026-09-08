@@ -44,9 +44,6 @@ const MAX_BATTERY_LEVEL = 25;
 /** PPH gate: accounts above this must max the battery before Phase 2 deepening. */
 const BATTERY_GATE_PPH = 200000;
 
-/** PPH ceiling: Phase 2 stops deepening once an account reaches this. */
-const MAX_PPH = 450000;
-
 /** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
 const MAX_ADS_PER_HOUR = 2;
 const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
@@ -512,16 +509,14 @@ export default class RigniteFarmer extends BaseFarmer {
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
-    // Runs once the full farm (MAX_FARM_SIZE) is owned AND the account is
-    // under the MAX_PPH ceiling. While above the 200K battery gate the
-    // account pauses deepening until the battery reaches MAX_BATTERY_LEVEL.
+    // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
+    // 200K battery gate the account pauses deepening until the battery
+    // reaches MAX_BATTERY_LEVEL.
     this.logger.newline();
     if (ownedCount() < MAX_FARM_SIZE) {
       this.logger.info(
         `Farming Phase 2 skipped — ${ownedCount()}/${MAX_FARM_SIZE} buildings owned, still in Farming Phase 1.`,
       );
-    } else if (pph >= MAX_PPH) {
-      this.logger.info(`Farming Phase 2 skipped — PPH ${pph} at the ${MAX_PPH / 1000}K ceiling.`);
     } else if (gateMet && batteryLevel < MAX_BATTERY_LEVEL) {
       this.logger.info(`Farming Phase 2 paused — PPH ${pph} above the ${BATTERY_GATE_PPH / 1000}K gate, battery must reach L${MAX_BATTERY_LEVEL} first (L${batteryLevel}).`);
     } else {
