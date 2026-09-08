@@ -44,6 +44,10 @@ const MAX_BATTERY_LEVEL = 25;
 /** PPH gate: accounts above this must max the battery before Phase 2 deepening. */
 const BATTERY_GATE_PPH = 200000;
 
+/** Second-tier battery gate: at this PPH the battery target rises to LATE_BATTERY_LEVEL. */
+const LATE_BATTERY_GATE_PPH = 450000;
+const LATE_BATTERY_LEVEL = 30;
+
 /** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
 const MAX_ADS_PER_HOUR = 2;
 const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
@@ -474,15 +478,18 @@ export default class RigniteFarmer extends BaseFarmer {
     }
 
     // ================= BATTERY UPGRADE =====================================
-    // Battery gate: once an account climbs past BATTERY_GATE_PPH (200K) it
-    // must max the battery (MAX_BATTERY_LEVEL, 25) BEFORE Phase 2 deepening
-    // resumes. Accounts at 200K or below skip straight to deepening.
+    // Battery gate: two tiers —
+    //   200K+ PPH → battery must reach L25 before Phase 2 deepening
+    //   450K+ PPH → battery must reach L30 before Phase 2 deepening
+    // Accounts at 200K or below skip straight to deepening.
     this.logger.newline();
     const pph = Number(user?.profitPerHour) || 0;
     const curBatteryLevel = Number(user?.batteryLevel) || 0;
     const gateMet = pph > BATTERY_GATE_PPH;
-    if (gateMet && curBatteryLevel < MAX_BATTERY_LEVEL) {
-      this.logger.log(`Upgrading Battery — PPH ${pph} above the ${BATTERY_GATE_PPH / 1000}K gate, must reach L${MAX_BATTERY_LEVEL} before deepening (L${curBatteryLevel} now).`);
+    const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
+    const batteryTarget = lateGateMet ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
+    if (gateMet && curBatteryLevel < batteryTarget) {
+      this.logger.log(`Upgrading Battery — PPH ${pph}, must reach L${batteryTarget} before deepening (L${curBatteryLevel} now).`);
       const battery = await this.upgradeBattery().catch((e) => {
         this.logger.info("Battery upgrade not available:", this.readError(e));
         return null;
@@ -499,7 +506,7 @@ export default class RigniteFarmer extends BaseFarmer {
         this.logger.info("Battery upgrade not available.");
       }
     } else if (gateMet) {
-      this.logger.log(`Battery upgrade skipped — battery already at max level (L${curBatteryLevel}).`);
+      this.logger.log(`Battery upgrade skipped — battery already at target level (L${curBatteryLevel}).`);
     } else {
       this.logger.log(`Battery upgrade skipped — PPH ${pph} at/below the ${BATTERY_GATE_PPH / 1000}K gate.`);
     }
@@ -507,18 +514,19 @@ export default class RigniteFarmer extends BaseFarmer {
     // Re-read after the attempt above: a successful reply carries fresh state.
     coins = Number(this.user_data?.coins) ?? coins;
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
+    const effectiveTarget = (Number(this.user_data?.profitPerHour) || pph) > LATE_BATTERY_GATE_PPH ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
     // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
-    // 200K battery gate the account pauses deepening until the battery
-    // reaches MAX_BATTERY_LEVEL.
+    // battery gate the account pauses deepening until the battery reaches
+    // the tier-appropriate target (L25 at 200K+, L30 at 450K+).
     this.logger.newline();
     if (ownedCount() < MAX_FARM_SIZE) {
       this.logger.info(
         `Farming Phase 2 skipped — ${ownedCount()}/${MAX_FARM_SIZE} buildings owned, still in Farming Phase 1.`,
       );
-    } else if (gateMet && batteryLevel < MAX_BATTERY_LEVEL) {
-      this.logger.info(`Farming Phase 2 paused — PPH ${pph} above the ${BATTERY_GATE_PPH / 1000}K gate, battery must reach L${MAX_BATTERY_LEVEL} first (L${batteryLevel}).`);
+    } else if (gateMet && batteryLevel < effectiveTarget) {
+      this.logger.info(`Farming Phase 2 paused — PPH ${pph}, battery must reach L${effectiveTarget} first (L${batteryLevel}).`);
     } else {
       this.logger.log("Farming Phase 2 — deepen (raise owned buildings toward level 20).");
       const phase2 = await this.phase2Deepen(coins, items);
