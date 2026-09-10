@@ -48,6 +48,13 @@ const BATTERY_GATE_PPH = 200000;
 const LATE_BATTERY_GATE_PPH = 450000;
 const LATE_BATTERY_LEVEL = 30;
 
+/** Third-tier battery gate: at this PPH the battery target rises to L30→L40. */
+const THIRD_BATTERY_GATE_PPH = 600000;
+const THIRD_BATTERY_LEVEL = 40;
+
+/** Maximum live PPH before the account stops farming (hard ceiling). */
+const MAX_PPH_CEILING = 650000;
+
 /** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
 const MAX_ADS_PER_HOUR = 2;
 const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
@@ -478,16 +485,18 @@ export default class RigniteFarmer extends BaseFarmer {
     }
 
     // ================= BATTERY UPGRADE =====================================
-    // Battery gate: two tiers —
+    // Battery gate: three tiers —
     //   200K+ PPH → battery must reach L25 before Phase 2 deepening
     //   450K+ PPH → battery must reach L30 before Phase 2 deepening
+    //   600K+ PPH → battery must reach L40 before Phase 2 deepening
     // Accounts at 200K or below skip straight to deepening.
     this.logger.newline();
     const pph = Number(user?.profitPerHour) || 0;
     const curBatteryLevel = Number(user?.batteryLevel) || 0;
     const gateMet = pph > BATTERY_GATE_PPH;
     const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
-    const batteryTarget = lateGateMet ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
+    const thirdGateMet = pph > THIRD_BATTERY_GATE_PPH;
+    const batteryTarget = thirdGateMet ? THIRD_BATTERY_LEVEL : lateGateMet ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
     if (gateMet && curBatteryLevel < batteryTarget) {
       this.logger.log(`Upgrading Battery — PPH ${pph}, must reach L${batteryTarget} before deepening (L${curBatteryLevel} now).`);
       const battery = await this.upgradeBattery().catch((e) => {
@@ -514,7 +523,7 @@ export default class RigniteFarmer extends BaseFarmer {
     // Re-read after the attempt above: a successful reply carries fresh state.
     coins = Number(this.user_data?.coins) ?? coins;
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
-    const effectiveTarget = (Number(this.user_data?.profitPerHour) || pph) > LATE_BATTERY_GATE_PPH ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
+    const effectiveTarget = (Number(this.user_data?.profitPerHour) || pph) > THIRD_BATTERY_GATE_PPH ? THIRD_BATTERY_LEVEL : (Number(this.user_data?.profitPerHour) || pph) > LATE_BATTERY_GATE_PPH ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
     // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
@@ -610,13 +619,16 @@ export default class RigniteFarmer extends BaseFarmer {
 
   /**
    * FARMING PHASE 2 — Deepen.
-   * Called only when the full farm (all MAX_FARM_SIZE buildings) is unlocked.
-   * One pass per run over every owned building, raising it toward
-   * MAX_ITEM_LEVEL. A building that can't be afforded logs LESS COINS and the
-   * loop moves on; the next run tries again with more coins. Returns the
-   * remaining coin balance and the number of purchases made.
+   * PPH ceiling: accounts at or above MAX_PPH_CEILING stop spending coins —
+   * they keep tapping/collecting but won't upgrade past the ceiling.
    */
   async phase2Deepen(coins, items) {
+    const pph = Number(this.user_data?.profitPerHour) || 0;
+    if (pph >= MAX_PPH_CEILING) {
+      this.logger.info(`Farming Phase 2 skipped — PPH ${pph} at or above the ${MAX_PPH_CEILING / 1000}K ceiling.`);
+      return { coins, upgrades: 0 };
+    }
+
     let upgrades = 0;
 
     for (let tier = 0; tier < ITEM_IDS.length; tier++) {
@@ -730,6 +742,11 @@ export default class RigniteFarmer extends BaseFarmer {
    * ad pool (`adEnergyLeft`), unlike the free refills that run out.
    */
   async watchFullEnergyAd() {
+    // PPH ceiling: accounts at or above MAX_PPH_CEILING skip all ads.
+    if ((Number(this.user_data?.profitPerHour) || 0) >= MAX_PPH_CEILING) {
+      this.logger.info(`Energy Ad skipped — PPH ${(Number(this.user_data?.profitPerHour) || 0).toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
+      return false;
+    }
     if ((await this.adsLeftThisHour()) <= 0) {
       this.logger.log(`Skipping Energy Ad — ad budget reached (${MAX_ADS_PER_HOUR}/hour).`);
       return false;
@@ -771,6 +788,11 @@ export default class RigniteFarmer extends BaseFarmer {
    * tracked by `batteryAdLeft` on the /me response.
    */
   async watchBatteryAd() {
+    // PPH ceiling: accounts at or above MAX_PPH_CEILING skip all ads.
+    if ((Number(this.user_data?.profitPerHour) || 0) >= MAX_PPH_CEILING) {
+      this.logger.info(`Battery Ad skipped — PPH ${(Number(this.user_data?.profitPerHour) || 0).toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
+      return false;
+    }
     if ((await this.adsLeftThisHour()) <= 0) {
       this.logger.log(`Skipping Battery Ad — ad budget reached (${MAX_ADS_PER_HOUR}/hour).`);
       return false;
@@ -831,6 +853,11 @@ export default class RigniteFarmer extends BaseFarmer {
     }
     if (Number(user.batteryEnergy ?? 0) >= cap) {
       this.logger.info("No battery charge needed (battery 100%).");
+      return 0;
+    }
+    // PPH ceiling: accounts at or above MAX_PPH_CEILING skip tapping.
+    if ((Number(user.profitPerHour) || 0) >= MAX_PPH_CEILING) {
+      this.logger.info(`Tap skipped — PPH ${(Number(user.profitPerHour) || 0).toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
       return 0;
     }
 
@@ -900,6 +927,13 @@ export default class RigniteFarmer extends BaseFarmer {
     const pct = Math.round((battery / cap) * 100);
     if (battery >= cap) {
       this.logger.success(`Battery charged to 100% (${taps} taps, +${gained} coins, ${boosts} refill${boosts === 1 ? "" : "s"}).`);
+
+    // Skip the ceiling guard if PPH not computed yet.
+    const pph = Number(this.user_data?.profitPerHour) || 0;
+    if (pph >= MAX_PPH_CEILING) {
+      this.logger.info(`Tap skipped — PPH ${pph.toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
+      return 0;
+    }
     } else if (taps) {
       this.logger.info(`Tapped ${taps}× (+${gained} coins); battery ${pct}%, energy ${energy}/${user.maxEnergy}.`);
     } else {
