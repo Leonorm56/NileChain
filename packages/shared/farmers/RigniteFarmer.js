@@ -39,7 +39,7 @@ const BOOST_TARGET_MULTITAP = 5;
 const BOOST_TARGET_MAX_ENERGY = 3500;
 
 /** Maximum battery level before we stop upgrading it. */
-const MAX_BATTERY_LEVEL = 25;
+const MAX_BATTERY_LEVEL = 44;
 
 /** PPH gate: accounts above this must max the battery before Phase 2 deepening. */
 const BATTERY_GATE_PPH = 200000;
@@ -50,10 +50,16 @@ const LATE_BATTERY_LEVEL = 30;
 
 /** Third-tier battery gate: at this PPH the battery target rises to L30→L40. */
 const THIRD_BATTERY_GATE_PPH = 600000;
-const THIRD_BATTERY_LEVEL = 40;
+const THIRD_BATTERY_LEVEL = 44;
 
 /** Maximum live PPH before the account stops farming (hard ceiling). */
 const MAX_PPH_CEILING = 650000;
+
+/** Energy limit target once PPH reaches the 650K ceiling. */
+const CEILING_ENERGY_TARGET = 7500;
+
+/** Energy gate: below this PPH the farmer does not buy energy_limit boosts. */
+const ENERGY_GATE_PPH = 200000;
 
 /** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
 const MAX_ADS_PER_HOUR = 2;
@@ -488,7 +494,7 @@ export default class RigniteFarmer extends BaseFarmer {
     // Battery gate: three tiers —
     //   200K+ PPH → battery must reach L25 before Phase 2 deepening
     //   450K+ PPH → battery must reach L30 before Phase 2 deepening
-    //   600K+ PPH → battery must reach L40 before Phase 2 deepening
+    //   600K+ PPH → battery must reach L44 before Phase 2 deepening
     // Accounts at 200K or below skip straight to deepening.
     this.logger.newline();
     const pph = Number(user?.profitPerHour) || 0;
@@ -497,6 +503,10 @@ export default class RigniteFarmer extends BaseFarmer {
     const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
     const thirdGateMet = pph > THIRD_BATTERY_GATE_PPH;
     const batteryTarget = thirdGateMet ? THIRD_BATTERY_LEVEL : lateGateMet ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
+    // Always log the active battery tier so the battery rules are visible every run.
+    this.logger.log(
+      `Battery rule — PPH ${pph.toLocaleString()}, target L${batteryTarget}, now L${curBatteryLevel}.`,
+    );
     if (gateMet && curBatteryLevel < batteryTarget) {
       this.logger.log(`Upgrading Battery — PPH ${pph}, must reach L${batteryTarget} before deepening (L${curBatteryLevel} now).`);
       const battery = await this.upgradeBattery().catch((e) => {
@@ -663,9 +673,10 @@ export default class RigniteFarmer extends BaseFarmer {
   }
 
   /**
-   * Buy tap boosts until 5 taps/click, then raise the energy limit to at most
-   * BOOST_TARGET_MAX_ENERGY (3.5k) — never beyond it. Best effort on coins: a
-   * refusal means not affordable, so we stop and retry next run.
+   * Buy tap boosts until 5 taps/click, then raise the energy limit tiered by
+   * PPH: below 200K no energy_limit upgrades, 200K+ up to 3.5k, and 7.5k once
+   * PPH reaches the 650K ceiling. Never beyond the active target. Best effort
+   * on coins: a refusal means not affordable, so we stop and retry next run.
    */
   async buyTapBoosts() {
     let tapLvl = Number(this.user_data?.multitapLevel) || 1;
@@ -677,13 +688,37 @@ export default class RigniteFarmer extends BaseFarmer {
       this.logger.success(`Tap boost → ${tapLvl} taps/click.`);
     }
 
+    // Energy limit tiered by PPH like the battery gates:
+    //   below 200K → no energy_limit upgrades (coins go to buildings)
+    //   200K+      → up to 3.5k (BOOST_TARGET_MAX_ENERGY)
+    //   650K+      → up to 7.5k (CEILING_ENERGY_TARGET)
+    const pphNow = Number(this.user_data?.profitPerHour) || 0;
+    const energyTarget =
+      pphNow >= MAX_PPH_CEILING
+        ? CEILING_ENERGY_TARGET
+        : pphNow >= ENERGY_GATE_PPH
+        ? BOOST_TARGET_MAX_ENERGY
+        : 0;
     let maxE = Number(this.user_data?.maxEnergy) || 0;
-    while (maxE < BOOST_TARGET_MAX_ENERGY && !this.signal?.aborted) {
-      const res = await this.upgradeBoost("energy_limit").catch(() => null);
-      const next = Number(res?.maxEnergy) || 0;
-      if (!res || next <= maxE || next > BOOST_TARGET_MAX_ENERGY) break;
-      maxE = next;
-      this.logger.success(`Energy boost → ${maxE} max.`);
+    if (energyTarget > 0) {
+      // Always log the active tier so the energy rules are visible every run.
+      this.logger.log(
+        `Energy boost — PPH ${pphNow.toLocaleString()}, target ${energyTarget.toLocaleString()}, now ${maxE.toLocaleString()}.`,
+      );
+      while (maxE < energyTarget && !this.signal?.aborted) {
+        const res = await this.upgradeBoost("energy_limit").catch((e) => {
+          this.logger.info(`Energy boost upgrade refused: ${this.readError(e)}`);
+          return null;
+        });
+        const next = Number(res?.maxEnergy) || 0;
+        if (!res || next <= maxE || next > energyTarget) break;
+        maxE = next;
+        this.logger.success(`Energy boost → ${maxE} max.`);
+      }
+    } else {
+      this.logger.info(
+        `Energy boost skipped — PPH ${pphNow.toLocaleString()} below the ${ENERGY_GATE_PPH / 1000}K gate (now ${maxE.toLocaleString()}).`,
+      );
     }
 
     // Boost replies carry partial state — refresh so tapping sees new levels.
@@ -742,11 +777,6 @@ export default class RigniteFarmer extends BaseFarmer {
    * ad pool (`adEnergyLeft`), unlike the free refills that run out.
    */
   async watchFullEnergyAd() {
-    // PPH ceiling: accounts at or above MAX_PPH_CEILING skip all ads.
-    if ((Number(this.user_data?.profitPerHour) || 0) >= MAX_PPH_CEILING) {
-      this.logger.info(`Energy Ad skipped — PPH ${(Number(this.user_data?.profitPerHour) || 0).toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
-      return false;
-    }
     if ((await this.adsLeftThisHour()) <= 0) {
       this.logger.log(`Skipping Energy Ad — ad budget reached (${MAX_ADS_PER_HOUR}/hour).`);
       return false;
@@ -788,11 +818,6 @@ export default class RigniteFarmer extends BaseFarmer {
    * tracked by `batteryAdLeft` on the /me response.
    */
   async watchBatteryAd() {
-    // PPH ceiling: accounts at or above MAX_PPH_CEILING skip all ads.
-    if ((Number(this.user_data?.profitPerHour) || 0) >= MAX_PPH_CEILING) {
-      this.logger.info(`Battery Ad skipped — PPH ${(Number(this.user_data?.profitPerHour) || 0).toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
-      return false;
-    }
     if ((await this.adsLeftThisHour()) <= 0) {
       this.logger.log(`Skipping Battery Ad — ad budget reached (${MAX_ADS_PER_HOUR}/hour).`);
       return false;
@@ -855,12 +880,6 @@ export default class RigniteFarmer extends BaseFarmer {
       this.logger.info("No battery charge needed (battery 100%).");
       return 0;
     }
-    // PPH ceiling: accounts at or above MAX_PPH_CEILING skip tapping.
-    if ((Number(user.profitPerHour) || 0) >= MAX_PPH_CEILING) {
-      this.logger.info(`Tap skipped — PPH ${(Number(user.profitPerHour) || 0).toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
-      return 0;
-    }
-
     // Phase-1 prep: buy tap boosts (capped at 5 taps / 3.5k max energy) so the
     // session taps with the strongest tap/energy before the battery is drained.
     await this.buyTapBoosts();
@@ -927,13 +946,6 @@ export default class RigniteFarmer extends BaseFarmer {
     const pct = Math.round((battery / cap) * 100);
     if (battery >= cap) {
       this.logger.success(`Battery charged to 100% (${taps} taps, +${gained} coins, ${boosts} refill${boosts === 1 ? "" : "s"}).`);
-
-    // Skip the ceiling guard if PPH not computed yet.
-    const pph = Number(this.user_data?.profitPerHour) || 0;
-    if (pph >= MAX_PPH_CEILING) {
-      this.logger.info(`Tap skipped — PPH ${pph.toLocaleString()} at the ${MAX_PPH_CEILING / 1000}K ceiling.`);
-      return 0;
-    }
     } else if (taps) {
       this.logger.info(`Tapped ${taps}× (+${gained} coins); battery ${pct}%, energy ${energy}/${user.maxEnergy}.`);
     } else {

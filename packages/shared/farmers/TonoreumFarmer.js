@@ -1588,9 +1588,6 @@ export default class TonoreumFarmer extends BaseFarmer {
     await this.executeTask("City Upgrades", () => this.upgradeCity());
     await this.executeTask("City Claims", () => this.cityClaims());
     await this.executeTask("Tap Ore", () => this.breakOre());
-    await this.executeTask("Achievements", () => this.claimAchievements());
-    await this.executeTask("Friends", () => this.logReferrals());
-    await this.executeTask("Withdraw", () => this.withdraw());
     await this.executeTask("TON Prizes", () => this.withdrawTonPrizes());
   }
 
