@@ -57,7 +57,7 @@ const THIRD_BATTERY_LEVEL = 44;
 const MAX_PPH_CEILING = 650000;
 
 /** Energy limit target once PPH reaches the 650K ceiling. */
-const CEILING_ENERGY_TARGET = 7500;
+const CEILING_ENERGY_TARGET = 6500;
 
 /** Energy gate: below this PPH the farmer does not buy energy_limit boosts. */
 const ENERGY_GATE_PPH = 200000;
@@ -692,7 +692,7 @@ export default class RigniteFarmer extends BaseFarmer {
     // Energy limit tiered by PPH like the battery gates:
     //   below 200K → no energy_limit upgrades (coins go to buildings)
     //   200K+      → up to 3.5k (BOOST_TARGET_MAX_ENERGY)
-    //   650K+      → up to 7.5k (CEILING_ENERGY_TARGET)
+    //   650K+      → up to 6.5k (CEILING_ENERGY_TARGET)
     const pphNow = Number(this.user_data?.profitPerHour) || 0;
     const energyTarget =
       pphNow >= MAX_PPH_CEILING
