@@ -41,8 +41,9 @@ const BOOST_TARGET_MAX_ENERGY = 3500;
 /** Maximum battery level before we stop upgrading it. */
 const MAX_BATTERY_LEVEL = 44;
 
-/** PPH gate: accounts above this must max the battery before Phase 2 deepening. */
+/** PPH gate: accounts above this must reach FIRST_BATTERY_LEVEL before Phase 2. */
 const BATTERY_GATE_PPH = 200000;
+const FIRST_BATTERY_LEVEL = 17;
 
 /** Second-tier battery gate: at this PPH the battery target rises to LATE_BATTERY_LEVEL. */
 const LATE_BATTERY_GATE_PPH = 450000;
@@ -502,7 +503,7 @@ export default class RigniteFarmer extends BaseFarmer {
     const gateMet = pph > BATTERY_GATE_PPH;
     const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
     const thirdGateMet = pph > THIRD_BATTERY_GATE_PPH;
-    const batteryTarget = thirdGateMet ? THIRD_BATTERY_LEVEL : lateGateMet ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
+    const batteryTarget = thirdGateMet ? THIRD_BATTERY_LEVEL : lateGateMet ? LATE_BATTERY_LEVEL : FIRST_BATTERY_LEVEL;
     // Always log the active battery tier so the battery rules are visible every run.
     this.logger.log(
       `Battery rule — PPH ${pph.toLocaleString()}, target L${batteryTarget}, now L${curBatteryLevel}.`,
@@ -533,7 +534,7 @@ export default class RigniteFarmer extends BaseFarmer {
     // Re-read after the attempt above: a successful reply carries fresh state.
     coins = Number(this.user_data?.coins) ?? coins;
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
-    const effectiveTarget = (Number(this.user_data?.profitPerHour) || pph) > THIRD_BATTERY_GATE_PPH ? THIRD_BATTERY_LEVEL : (Number(this.user_data?.profitPerHour) || pph) > LATE_BATTERY_GATE_PPH ? LATE_BATTERY_LEVEL : MAX_BATTERY_LEVEL;
+    const effectiveTarget = (Number(this.user_data?.profitPerHour) || pph) > THIRD_BATTERY_GATE_PPH ? THIRD_BATTERY_LEVEL : (Number(this.user_data?.profitPerHour) || pph) > LATE_BATTERY_GATE_PPH ? LATE_BATTERY_LEVEL : FIRST_BATTERY_LEVEL;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
     // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
