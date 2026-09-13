@@ -168,7 +168,10 @@ export default function createRunner(FarmerClass) {
       this.account = account;
       this.farmer = account.farmer;
 
-      this.logger = this.constructor.logger; // Use static logger
+      /** Per-account logger tagged with the account ID, so concurrent
+       * accounts can be told apart (and grep-filtered) in one shared log. */
+      this.logger = new ConsoleLogger(true);
+      this.logger.tag = `[${account.id}]`;
       this.utils = this.constructor.utils; // Use static utils
       this.random = this.account.random(); // Seeded RNG
 
