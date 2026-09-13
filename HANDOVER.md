@@ -32,7 +32,11 @@ NILECHAIN/
 └── HANDOVER.md               # this file
 ```
 
-**Workspace:** uses `pnpm`. Root scripts: `pnpm build:farmer` (= `pnpm -F nilechain-farmer build`).
+**Workspace:** uses `pnpm`. Only the Chrome extension is ever needed — build it with:
+```bash
+pnpm --filter nilechain-farmer exec rimraf --glob dist-extension && pnpm --filter nilechain-farmer build-extension
+```
+Never run the full `pnpm build:farmer` (PWA/thenile/bridge are not used). Fresh artifacts land in `apps/nilechain-farmer/dist-bundle/nilechain-farmer-v*.zip` (+ `.crx`).
 
 ---
 

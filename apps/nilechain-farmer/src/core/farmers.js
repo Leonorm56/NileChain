@@ -7,20 +7,22 @@ import DreamcoinProFarmer from "@nile/shared/farmers/DreamcoinProFarmer.js";
 import SlpyFarmer from "@nile/shared/farmers/SlpyFarmer.js";
 import SurfEarnFarmer from "@nile/shared/farmers/SurfEarnFarmer.js";
 import TonoreumFarmer from "@nile/shared/farmers/TonoreumFarmer.js";
-import MakegramFarmer from "@nile/shared/farmers/MakegramFarmer.js";
 import RigniteFarmer from "@nile/shared/farmers/RigniteFarmer.js";
 import UsdtflowFarmer from "@nile/shared/farmers/UsdtflowFarmer.js";
-import SoulfarmFarmer from "@nile/shared/farmers/SoulfarmFarmer.js";
+import MoolaFarmer from "@nile/shared/farmers/MoolaFarmer.js";
+import UtyaFarmer from "@nile/shared/farmers/UtyaFarmer.js";
+import FlamesFarmer from "@nile/shared/farmers/FlamesFarmer.js";
 
 const farmerClasses = [
   DreamcoinProFarmer,
-  MakegramFarmer,
   RigniteFarmer,
   SlpyFarmer,
   SurfEarnFarmer,
   TonoreumFarmer,
   UsdtflowFarmer,
-  SoulfarmFarmer,
+  MoolaFarmer,
+  UtyaFarmer,
+  FlamesFarmer,
 ];
 
 const farmersIconGlob = import.meta.glob(

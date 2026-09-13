@@ -45,6 +45,10 @@ const MAX_BATTERY_LEVEL = 44;
 const BATTERY_GATE_PPH = 200000;
 const FIRST_BATTERY_LEVEL = 17;
 
+/** Mid-tier battery gate: at this PPH the battery target rises to MID_BATTERY_LEVEL. */
+const MID_BATTERY_GATE_PPH = 300000;
+const MID_BATTERY_LEVEL = 25;
+
 /** Second-tier battery gate: at this PPH the battery target rises to LATE_BATTERY_LEVEL. */
 const LATE_BATTERY_GATE_PPH = 450000;
 const LATE_BATTERY_LEVEL = 30;
@@ -492,8 +496,9 @@ export default class RigniteFarmer extends BaseFarmer {
     }
 
     // ================= BATTERY UPGRADE =====================================
-    // Battery gate: three tiers —
-    //   200K+ PPH → battery must reach L25 before Phase 2 deepening
+    // Battery gate: four tiers —
+    //   200K+ PPH → battery must reach L17 before Phase 2 deepening
+    //   300K+ PPH → battery must reach L25 before Phase 2 deepening
     //   450K+ PPH → battery must reach L30 before Phase 2 deepening
     //   600K+ PPH → battery must reach L44 before Phase 2 deepening
     // Accounts at 200K or below skip straight to deepening.
@@ -501,9 +506,16 @@ export default class RigniteFarmer extends BaseFarmer {
     const pph = Number(user?.profitPerHour) || 0;
     const curBatteryLevel = Number(user?.batteryLevel) || 0;
     const gateMet = pph > BATTERY_GATE_PPH;
+    const midGateMet = pph > MID_BATTERY_GATE_PPH;
     const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
     const thirdGateMet = pph > THIRD_BATTERY_GATE_PPH;
-    const batteryTarget = thirdGateMet ? THIRD_BATTERY_LEVEL : lateGateMet ? LATE_BATTERY_LEVEL : FIRST_BATTERY_LEVEL;
+    const batteryTarget = thirdGateMet
+      ? THIRD_BATTERY_LEVEL
+      : lateGateMet
+        ? LATE_BATTERY_LEVEL
+        : midGateMet
+          ? MID_BATTERY_LEVEL
+          : FIRST_BATTERY_LEVEL;
     // Always log the active battery tier so the battery rules are visible every run.
     this.logger.log(
       `Battery rule — PPH ${pph.toLocaleString()}, target L${batteryTarget}, now L${curBatteryLevel}.`,
@@ -534,7 +546,15 @@ export default class RigniteFarmer extends BaseFarmer {
     // Re-read after the attempt above: a successful reply carries fresh state.
     coins = Number(this.user_data?.coins) ?? coins;
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
-    const effectiveTarget = (Number(this.user_data?.profitPerHour) || pph) > THIRD_BATTERY_GATE_PPH ? THIRD_BATTERY_LEVEL : (Number(this.user_data?.profitPerHour) || pph) > LATE_BATTERY_GATE_PPH ? LATE_BATTERY_LEVEL : FIRST_BATTERY_LEVEL;
+    const pphNow = Number(this.user_data?.profitPerHour) || pph;
+    const effectiveTarget =
+      pphNow > THIRD_BATTERY_GATE_PPH
+        ? THIRD_BATTERY_LEVEL
+        : pphNow > LATE_BATTERY_GATE_PPH
+          ? LATE_BATTERY_LEVEL
+          : pphNow > MID_BATTERY_GATE_PPH
+            ? MID_BATTERY_LEVEL
+            : FIRST_BATTERY_LEVEL;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
     // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
