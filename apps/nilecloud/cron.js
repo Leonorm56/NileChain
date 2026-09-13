@@ -47,19 +47,31 @@ if (app.cron.enabled) {
   });
 
   if (app.cron.mode === "sequential") {
-    // Battery sweep first — flat batteries drop production to 9%, so
-    // charge them before the farmers run. Self-throttling (<20% + quota).
+    // Two independent loops. The farmers job used to hold sweep + Rignite
+    // hostage behind multi-hour Tonoreum passes (batteries drain in ~23
+    // min), so the fast loop owns sweep + Rignite and the slow loop owns
+    // everything else. Each loop is still strictly back-to-back inside.
+    const byId = Object.fromEntries(
+      enabledFarmers.map((F) => [F.id, F])
+    );
+
+    const fast = new CronRunner("sequential");
     if (env("BATTERY_SWEEP_ENABLED", "true") !== "false") {
-      runner.register("*/10 * * * *", batterySweep, "Battery Sweep");
+      fast.register("*/10 * * * *", batterySweep, "Battery Sweep");
     }
-    // All farmers side by side in one job; each still farms its accounts
-    // one at a time (FARMER_<ID>_MAX_CONCURRENCY).
-    const names = enabledFarmers.map((FarmerClass) => FarmerClass.title).join(", ");
-    runner.register("*/10 * * * *", async () => {
-      console.log(`▶️ Starting farmers (parallel): ${names}`);
-      await Promise.allSettled(enabledFarmers.map((FarmerClass) => FarmerClass.run()));
-      console.log(`✅ Finished farmers (parallel): ${names}`);
-    }, `Farmers (parallel: ${names})`);
+    if (byId["rignite"]) {
+      const R = byId["rignite"];
+      fast.register("*/10 * * * *", () => R.run(), "Rignite");
+    }
+
+    const slow = new CronRunner("sequential");
+    for (const F of enabledFarmers) {
+      if (F.id === "rignite") continue;
+      slow.register(F.interval || "*/10 * * * *", () => F.run(), F.title);
+    }
+
+    fast.start();
+    slow.start();
   } else {
     enabledFarmers.forEach((FarmerClass) => {
       runner.register(
