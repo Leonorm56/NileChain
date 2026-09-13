@@ -2,6 +2,7 @@ import "./config/env.js";
 
 import CronRunner from "@nile/shared/lib/CronRunner.js";
 import app from "./config/app.js";
+import batterySweep from "./actions/battery-sweep.js";
 import expireSubscriptions from "./actions/expire-subscriptions.js";
 import farmers from "./farmers/index.js";
 import { fileURLToPath } from "node:url";
@@ -46,6 +47,11 @@ if (app.cron.enabled) {
   });
 
   if (app.cron.mode === "sequential") {
+    // Battery sweep first — flat batteries drop production to 9%, so
+    // charge them before the farmers run. Self-throttling (<20% + quota).
+    if (env("BATTERY_SWEEP_ENABLED", "true") !== "false") {
+      runner.register("*/10 * * * *", batterySweep, "Battery Sweep");
+    }
     // All farmers side by side in one job; each still farms its accounts
     // one at a time (FARMER_<ID>_MAX_CONCURRENCY).
     const names = enabledFarmers.map((FarmerClass) => FarmerClass.title).join(", ");
