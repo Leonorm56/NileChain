@@ -31,27 +31,38 @@ if (app.cron.enabled) {
   /**  Farmers — respect FARMER_<ID>_ENABLED env vars */
   const minimumRating = env("MINIMUM_FARMER_RATING", 0);
 
-  Object.values(farmers)
-    .filter((FarmerClass) => {
-      const envKey = `FARMER_${FarmerClass.id.toUpperCase().replace(/-/g, "_")}_ENABLED`;
-      const envEnabled = env(envKey, "true");
-      const isEnabled = FarmerClass.enabled && envEnabled !== "false";
-      if (!isEnabled) {
-        console.log(`⏭  ${FarmerClass.title} disabled (${envKey}=${envEnabled})`);
-      }
-      return (
-        isEnabled &&
-        FarmerClass.rating >= minimumRating &&
-        FarmerClass.interval
-      );
-    })
-    .forEach((FarmerClass) => {
+  const enabledFarmers = Object.values(farmers).filter((FarmerClass) => {
+    const envKey = `FARMER_${FarmerClass.id.toUpperCase().replace(/-/g, "_")}_ENABLED`;
+    const envEnabled = env(envKey, "true");
+    const isEnabled = FarmerClass.enabled && envEnabled !== "false";
+    if (!isEnabled) {
+      console.log(`⏭  ${FarmerClass.title} disabled (${envKey}=${envEnabled})`);
+    }
+    return (
+      isEnabled &&
+      FarmerClass.rating >= minimumRating &&
+      FarmerClass.interval
+    );
+  });
+
+  if (app.cron.mode === "sequential") {
+    // All farmers side by side in one job; each still farms its accounts
+    // one at a time (FARMER_<ID>_MAX_CONCURRENCY).
+    const names = enabledFarmers.map((FarmerClass) => FarmerClass.title).join(", ");
+    runner.register("*/10 * * * *", async () => {
+      console.log(`▶️ Starting farmers (parallel): ${names}`);
+      await Promise.allSettled(enabledFarmers.map((FarmerClass) => FarmerClass.run()));
+      console.log(`✅ Finished farmers (parallel): ${names}`);
+    }, `Farmers (parallel: ${names})`);
+  } else {
+    enabledFarmers.forEach((FarmerClass) => {
       runner.register(
         FarmerClass.interval,
         () => FarmerClass.run(),
         FarmerClass.title,
       );
     });
+  }
 
   /** Start Runner */
   runner.start();

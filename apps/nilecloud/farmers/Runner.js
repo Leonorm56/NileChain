@@ -119,7 +119,8 @@ export default function createRunner(FarmerClass) {
     static withdrawalLedgerKey = `withdrawals:${FarmerClass.id}`;
 
     /** Max accounts to farm concurrently (default: 1 = sequential). */
-    static maxConcurrency = FarmerClass.maxConcurrency || 1;
+    static maxConcurrency =
+      Number(process.env[`${envKey}_MAX_CONCURRENCY`]) || FarmerClass.maxConcurrency || 1;
 
     /** Staggering window (seconds) and jitter (seconds) */
     static staggerWindowSeconds = 10;
