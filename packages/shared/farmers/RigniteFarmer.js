@@ -1281,10 +1281,8 @@ export default class RigniteFarmer extends BaseFarmer {
     await this.ensureAdMode();
 
     await this.logUserInfo();
-    // The battery ad always runs first — a flat battery drops production to
-    // 9%, so the battery gets the hourly ad budget before energy.
-    await this.executeTask("Battery Ad", () => this.watchBatteryAd());
     await this.executeTask("Energy Ad", () => this.watchFullEnergyAd());
+    await this.executeTask("Battery Ad", () => this.watchBatteryAd());
     await this.executeTask("Tap", () => this.tapUntilBatteryFull());
     await this.executeTask("Collect", () => this.collectEverything());
     await this.executeTask("Upgrades", () => this.upgradeItems());
