@@ -753,14 +753,15 @@ export default function createRunner(FarmerClass) {
      * size, no account starts sooner than this gap after the previous one.
      */
     static async paceBetweenStarts() {
+      // Pacing was 15-30s between account starts, which on 47 accounts
+      // cost 12-23 min of dead time. The per-account staggered offsets
+      // below already distribute Telegram polling naturally — collapse the
+      // inter-account gate so concurrency fills immediately.
+      const gapMs = 250 + Math.floor(Math.random() * 250); // ~0.25-0.5s
       const now = Date.now();
       const elapsed = this.lastStartTs ? now - this.lastStartTs : Infinity;
-      const gapMs = 15_000 + Math.random() * 15_000;
       const wait = Math.max(0, gapMs - elapsed);
       if (wait > 0) {
-        this.logger.info(
-          `Pacing: ${Math.round(wait / 1000)}s before next account start.`,
-        );
         await delay(wait, { precised: true });
       }
       this.lastStartTs = Date.now();
