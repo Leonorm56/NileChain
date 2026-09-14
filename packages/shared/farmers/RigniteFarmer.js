@@ -888,7 +888,12 @@ export default class RigniteFarmer extends BaseFarmer {
    * dry before the battery is full, `/boost/full-energy` tops it back up until
    * the daily free-refill pool is exhausted.
    */
+  /** Tap until the battery is full OR the tap-phase time budget is exceeded.
+   *  Hard cap at 20 s (was unbounded); the battery already gets most of its
+   *  energy from the ad step, so a long tap tail adds little but costs cycle
+   *  minutes across 47 accounts. */
   async tapUntilBatteryFull() {
+    const TAP_BUDGET_MS = 20_000;
     let user = this.user_data;
     if (!user) return 0;
 
@@ -903,7 +908,11 @@ export default class RigniteFarmer extends BaseFarmer {
     }
     // Phase-1 prep: buy tap boosts (capped at 5 taps / 3.5k max energy) so the
     // session taps with the strongest tap/energy before the battery is drained.
-    await this.buyTapBoosts();
+    // Bounded so a slow chain can't eat the whole tap budget.
+    await Promise.race([
+      this.buyTapBoosts(),
+      this.utils.delay(2_000, { precised: true }),
+    ]).catch(() => {});
     user = this.user_data;
 
     const multitap = Math.max(1, Number(user.multitapLevel) || 1);
@@ -915,6 +924,7 @@ export default class RigniteFarmer extends BaseFarmer {
     let taps = 0;
     let gained = 0;
     let guard = 0;
+    const tapStartedAt = Date.now();
 
     const patchFrom = (res) => {
       this.user_data = { ...this.user_data, ...this.activeMerge(res) };
@@ -927,6 +937,10 @@ export default class RigniteFarmer extends BaseFarmer {
 
     while (!this.signal?.aborted && guard++ < 200) {
       if (battery >= cap) break;
+      if (Date.now() - tapStartedAt >= TAP_BUDGET_MS) {
+        this.logger.info(`Tap budget hit (${TAP_BUDGET_MS / 1000}s) at ${battery}/${cap}.`);
+        break;
+      }
 
       // Out of energy — use a free full-energy refill so we can keep tapping.
       const maxTaps = Math.floor((energy || 0) / multitap);
