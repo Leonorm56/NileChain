@@ -375,6 +375,7 @@ export default class TonoreumFarmer extends BaseFarmer {
 
   /** Register the account if it is new, then load its state */
   async login() {
+    this.stateRefusal = null;
     const registration = await this.registerUser();
     this.debugger.log("Registration:", registration);
 
@@ -388,17 +389,42 @@ export default class TonoreumFarmer extends BaseFarmer {
    *
    * A missing `torpower` is how the drop reports an account it will not serve
    * — the page treats the same case as a hard error.
+   *
+   * It also refuses outright with `400 {"msg":"Mining is active"}` for an
+   * account that is mid-cycle, which is not the account's fault: nine of the
+   * ten farmed accounts answer exactly that way. Throwing there killed the run
+   * five tasks before `City Claims`, so a returned expedition was never
+   * collected — and since a pending claim blocks a fresh expedition, those
+   * accounts sat idle with their rewards stranded. A refusal is recorded now
+   * and the run degrades to the claim pass instead of dying.
    */
   async refreshUserData() {
-    const data = await this.getMiningPower();
+    const data = await this.getMiningPower().catch((error) => {
+      const refusal = error?.response?.data?.msg;
+
+      /** Not a refusal the account can act on — a timeout, a 5xx, a dead proxy. */
+      if (!refusal) throw error;
+
+      this.stateRefusal = refusal;
+      return null;
+    });
+
     this.debugger.log("Mining power:", data);
 
-    if (!data || data.torpower === undefined || data.torpower === null) {
-      throw new Error(data?.msg || data?.error || "Failed to load account");
+    if (data && data.torpower !== undefined && data.torpower !== null) {
+      this.stateRefusal = null;
+      this.user_data = data;
+      return this.user_data;
     }
 
-    this.user_data = data;
-    return this.user_data;
+    if (data === null && this.stateRefusal) {
+      this.logger.warn(
+        `Account state refused (${this.stateRefusal}) — claims only this run.`,
+      );
+      return null;
+    }
+
+    throw new Error(data?.msg || data?.error || "Failed to load account");
   }
 
   /** Get User Details */
@@ -1580,6 +1606,16 @@ export default class TonoreumFarmer extends BaseFarmer {
 
   async process() {
     await this.login();
+
+    /**
+     * A refused state call leaves `user_data` empty, so nothing that reads it
+     * can run — but the claim pass reads no state at all, and it is the only
+     * thing that collects a returned expedition. Run that, then end the cycle.
+     */
+    if (this.stateRefusal) {
+      await this.executeTask("City Claims", () => this.cityClaims());
+      return;
+    }
 
     await this.logUserInfo();
     await this.executeTask("Mining", () => this.startMining());
