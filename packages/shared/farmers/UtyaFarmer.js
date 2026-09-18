@@ -42,6 +42,23 @@ export default class UtyaFarmer extends BaseFarmer {
   }
 
   /* --------------------------------------------------------------------- */
+  /* Referral                                                              */
+  /* --------------------------------------------------------------------- */
+
+  /**
+   * Get Referral Link
+   *
+   * The faucet issues every account its own invite link and `/api/me` returns
+   * it verbatim as `${telegramLink}?start=ref_<userId>` — checked against the
+   * live API for five accounts — so the same link can be built without a
+   * round trip. `Runner.updatePrimaryFarmerLink` calls this once per account
+   * and logs a hard error for anything thrown, so it must always answer.
+   */
+  getReferralLink() {
+    return `${this.telegramLink}?start=ref_${this.getUserId()}`;
+  }
+
+  /* --------------------------------------------------------------------- */
   /* Transport                                                             */
   /* --------------------------------------------------------------------- */
 
