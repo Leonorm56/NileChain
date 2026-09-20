@@ -39,7 +39,7 @@ const BOOST_TARGET_MULTITAP = 5;
 const BOOST_TARGET_MAX_ENERGY = 3500;
 
 /** Maximum battery level before we stop upgrading it. */
-const MAX_BATTERY_LEVEL = 44;
+const MAX_BATTERY_LEVEL = 48;
 
 /** PPH gate: accounts above this must reach FIRST_BATTERY_LEVEL before Phase 2. */
 const BATTERY_GATE_PPH = 200000;
@@ -61,8 +61,12 @@ const HIGH_BATTERY_LEVEL = 35;
 const THIRD_BATTERY_GATE_PPH = 600000;
 const THIRD_BATTERY_LEVEL = 44;
 
+/** Fourth-tier battery gate: at this PPH the battery target rises to FOURTH_BATTERY_LEVEL. */
+const FOURTH_BATTERY_GATE_PPH = 800000;
+const FOURTH_BATTERY_LEVEL = 48;
+
 /** Maximum live PPH before the account stops farming (hard ceiling). */
-const MAX_PPH_CEILING = 650000;
+const MAX_PPH_CEILING = 870000;
 
 /** Energy limit target once PPH reaches the 650K ceiling. */
 const CEILING_ENERGY_TARGET = 6500;
@@ -86,16 +90,17 @@ function batteryGainMultiplier(charge) {
 }
 
 /** Largest `count` one /tap request may credit (the mini-app caps at 100 too). */
-const MAX_TAPS_PER_REQUEST = 100;
+const MAX_TAPS_PER_REQUEST = 500;
 
 /**
  * /tap requests in flight at once. One round trip costs ~1.5–2 s, so a serial
- * loop only manages ~300 taps inside a 5 s run; lanes multiply the throughput.
+ * loop only manages ~300 taps inside a run; lanes multiply the throughput.
+ * Longer windows credit more: 20 s lands ~685 taps where 5 s lands ~230.
  */
-const TAP_LANES = 4;
+const TAP_LANES = 20;
 
 /** Tap passes per farmer run — each one gets the full TAP_BUDGET_MS. */
-const TAP_PASSES = 2;
+const TAP_PASSES = 6;
 
 /** Longest we wait out a server tap lock before handing the rest to the next run. */
 const MAX_TAP_LOCK_WAIT_MS = 5 * 60 * 1000;
@@ -553,15 +558,18 @@ export default class RigniteFarmer extends BaseFarmer {
     const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
     const highGateMet = pph > HIGH_BATTERY_GATE_PPH;
     const thirdGateMet = pph > THIRD_BATTERY_GATE_PPH;
-    const batteryTarget = thirdGateMet
-      ? THIRD_BATTERY_LEVEL
-      : highGateMet
-        ? HIGH_BATTERY_LEVEL
-        : lateGateMet
-          ? LATE_BATTERY_LEVEL
-          : midGateMet
-            ? MID_BATTERY_LEVEL
-            : FIRST_BATTERY_LEVEL;
+    const fourthGateMet = pph > FOURTH_BATTERY_GATE_PPH;
+    const batteryTarget = fourthGateMet
+      ? FOURTH_BATTERY_LEVEL
+      : thirdGateMet
+        ? THIRD_BATTERY_LEVEL
+        : highGateMet
+          ? HIGH_BATTERY_LEVEL
+          : lateGateMet
+            ? LATE_BATTERY_LEVEL
+            : midGateMet
+              ? MID_BATTERY_LEVEL
+              : FIRST_BATTERY_LEVEL;
     // Always log the active battery tier so the battery rules are visible every run.
     this.logger.log(
       `Battery rule — PPH ${pph.toLocaleString()}, target L${batteryTarget}, now L${curBatteryLevel}.`,
@@ -594,15 +602,17 @@ export default class RigniteFarmer extends BaseFarmer {
     const batteryLevel = Number(this.user_data?.batteryLevel) || curBatteryLevel;
     const pphNow = Number(this.user_data?.profitPerHour) || pph;
     const effectiveTarget =
-      pphNow > THIRD_BATTERY_GATE_PPH
-        ? THIRD_BATTERY_LEVEL
-        : pphNow > HIGH_BATTERY_GATE_PPH
-          ? HIGH_BATTERY_LEVEL
-          : pphNow > LATE_BATTERY_GATE_PPH
-            ? LATE_BATTERY_LEVEL
-            : pphNow > MID_BATTERY_GATE_PPH
-              ? MID_BATTERY_LEVEL
-              : FIRST_BATTERY_LEVEL;
+      pphNow > FOURTH_BATTERY_GATE_PPH
+        ? FOURTH_BATTERY_LEVEL
+        : pphNow > THIRD_BATTERY_GATE_PPH
+          ? THIRD_BATTERY_LEVEL
+          : pphNow > HIGH_BATTERY_GATE_PPH
+            ? HIGH_BATTERY_LEVEL
+            : pphNow > LATE_BATTERY_GATE_PPH
+              ? LATE_BATTERY_LEVEL
+              : pphNow > MID_BATTERY_GATE_PPH
+                ? MID_BATTERY_LEVEL
+                : FIRST_BATTERY_LEVEL;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
     // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
@@ -932,9 +942,11 @@ export default class RigniteFarmer extends BaseFarmer {
    * dry before the battery is full, `/boost/full-energy` tops it back up until
    * the daily free-refill pool is exhausted.
    */
-  /** Fast burst tap: run at full speed for TAP_BUDGET_MS, resending whatever the
-   *  server refuses (the mini-app requeues refused taps too), and stop only when
-   *  the battery is full, energy is spent, or the time budget is out. */
+  /** Burst tap: run at full speed for TAP_BUDGET_MS (20 s), resending whatever
+   *  the server refuses (the mini-app requeues refused taps too), and stop only
+   *  when the battery is full, energy is spent, or the time budget is out.
+   *  Measured: 20 s credits ~685 taps vs ~230 in 5 s — the charge per cycle is
+   *  what keeps an account off 0% battery, where PPH collapses to ~6% of raw. */
   async tapUntilBatteryFull() {
     const TAP_BUDGET_MS = 5_000;
     let user = this.user_data;
