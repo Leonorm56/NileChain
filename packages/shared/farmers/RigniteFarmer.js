@@ -53,7 +53,11 @@ const MID_BATTERY_LEVEL = 25;
 const LATE_BATTERY_GATE_PPH = 450000;
 const LATE_BATTERY_LEVEL = 30;
 
-/** Third-tier battery gate: at this PPH the battery target rises to L30→L40. */
+/** High-tier battery gate: at this PPH the battery target rises to HIGH_BATTERY_LEVEL. */
+const HIGH_BATTERY_GATE_PPH = 500000;
+const HIGH_BATTERY_LEVEL = 35;
+
+/** Third-tier battery gate: at this PPH the battery target rises to THIRD_BATTERY_LEVEL. */
 const THIRD_BATTERY_GATE_PPH = 600000;
 const THIRD_BATTERY_LEVEL = 44;
 
@@ -69,6 +73,44 @@ const ENERGY_GATE_PPH = 200000;
 /** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
 const MAX_ADS_PER_HOUR = 2;
 const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Battery credit per tap collapses as the bar fills — the mini-app applies
+ * `Ht(charge)`: full credit below 60%, then 0.5, then 0.3, and nothing at all
+ * once the battery reads 100%. A tap is worth `energyPerTap * 50 * multiplier`
+ * battery, which is why the last stretch of a charge costs far more energy per
+ * point than the first.
+ */
+function batteryGainMultiplier(charge) {
+  return charge < 0.6 ? 1 : charge < 0.85 ? 0.5 : charge < 1 ? 0.3 : 0;
+}
+
+/** Largest `count` one /tap request may credit (the mini-app caps at 100 too). */
+const MAX_TAPS_PER_REQUEST = 100;
+
+/**
+ * /tap requests in flight at once. One round trip costs ~1.5–2 s, so a serial
+ * loop only manages ~300 taps inside a 5 s run; lanes multiply the throughput.
+ */
+const TAP_LANES = 4;
+
+/** Tap passes per farmer run — each one gets the full TAP_BUDGET_MS. */
+const TAP_PASSES = 2;
+
+/** Longest we wait out a server tap lock before handing the rest to the next run. */
+const MAX_TAP_LOCK_WAIT_MS = 5 * 60 * 1000;
+
+/**
+ * Fast burst: the whole run taps for TAP_BUDGET_MS and the server sets the
+ * credit rate — refused taps are resent rather than paced away.
+ */
+const TAP_PACE_MS = 1;
+
+/** Back off this long after a batch the server refused before retrying it. */
+const TAP_REFUSAL_BACKOFF_MS = 25;
+
+/** Cap on the refusal backoff — however long the server keeps refusing, keep tapping. */
+const TAP_MAX_REFUSAL_BACKOFF_MS = 200;
 
 /**
  * In-process mirror of each account's ad-watch log, used when the host gives
@@ -496,10 +538,11 @@ export default class RigniteFarmer extends BaseFarmer {
     }
 
     // ================= BATTERY UPGRADE =====================================
-    // Battery gate: four tiers —
+    // Battery gate: five tiers —
     //   200K+ PPH → battery must reach L17 before Phase 2 deepening
     //   300K+ PPH → battery must reach L25 before Phase 2 deepening
     //   450K+ PPH → battery must reach L30 before Phase 2 deepening
+    //   500K+ PPH → battery must reach L35 before Phase 2 deepening
     //   600K+ PPH → battery must reach L44 before Phase 2 deepening
     // Accounts at 200K or below skip straight to deepening.
     this.logger.newline();
@@ -508,14 +551,17 @@ export default class RigniteFarmer extends BaseFarmer {
     const gateMet = pph > BATTERY_GATE_PPH;
     const midGateMet = pph > MID_BATTERY_GATE_PPH;
     const lateGateMet = pph > LATE_BATTERY_GATE_PPH;
+    const highGateMet = pph > HIGH_BATTERY_GATE_PPH;
     const thirdGateMet = pph > THIRD_BATTERY_GATE_PPH;
     const batteryTarget = thirdGateMet
       ? THIRD_BATTERY_LEVEL
-      : lateGateMet
-        ? LATE_BATTERY_LEVEL
-        : midGateMet
-          ? MID_BATTERY_LEVEL
-          : FIRST_BATTERY_LEVEL;
+      : highGateMet
+        ? HIGH_BATTERY_LEVEL
+        : lateGateMet
+          ? LATE_BATTERY_LEVEL
+          : midGateMet
+            ? MID_BATTERY_LEVEL
+            : FIRST_BATTERY_LEVEL;
     // Always log the active battery tier so the battery rules are visible every run.
     this.logger.log(
       `Battery rule — PPH ${pph.toLocaleString()}, target L${batteryTarget}, now L${curBatteryLevel}.`,
@@ -550,16 +596,18 @@ export default class RigniteFarmer extends BaseFarmer {
     const effectiveTarget =
       pphNow > THIRD_BATTERY_GATE_PPH
         ? THIRD_BATTERY_LEVEL
-        : pphNow > LATE_BATTERY_GATE_PPH
-          ? LATE_BATTERY_LEVEL
-          : pphNow > MID_BATTERY_GATE_PPH
-            ? MID_BATTERY_LEVEL
-            : FIRST_BATTERY_LEVEL;
+        : pphNow > HIGH_BATTERY_GATE_PPH
+          ? HIGH_BATTERY_LEVEL
+          : pphNow > LATE_BATTERY_GATE_PPH
+            ? LATE_BATTERY_LEVEL
+            : pphNow > MID_BATTERY_GATE_PPH
+              ? MID_BATTERY_LEVEL
+              : FIRST_BATTERY_LEVEL;
 
     // ================= FARMING PHASE 2 — DEEPEN ========================
     // Runs once the full farm (MAX_FARM_SIZE) is owned. While above the
     // battery gate the account pauses deepening until the battery reaches
-    // the tier-appropriate target (L25 at 200K+, L30 at 450K+).
+    // the tier-appropriate target (L17 at 200K+, L25 at 300K+, L30 at 450K+, L35 at 500K+, L44 at 600K+).
     this.logger.newline();
     if (ownedCount() < MAX_FARM_SIZE) {
       this.logger.info(
@@ -695,7 +743,7 @@ export default class RigniteFarmer extends BaseFarmer {
 
   /**
    * Buy tap boosts until 5 taps/click, then raise the energy limit tiered by
-   * PPH: below 200K no energy_limit upgrades, 200K+ up to 3.5k, and 7.5k once
+   * PPH: below 200K no energy_limit upgrades, 200K+ up to 3.5k, and 6.5k once
    * PPH reaches the 650K ceiling. Never beyond the active target. Best effort
    * on coins: a refusal means not affordable, so we stop and retry next run.
    */
@@ -722,10 +770,6 @@ export default class RigniteFarmer extends BaseFarmer {
         : 0;
     let maxE = Number(this.user_data?.maxEnergy) || 0;
     if (energyTarget > 0) {
-      // Always log the active tier so the energy rules are visible every run.
-      this.logger.log(
-        `Energy boost — PPH ${pphNow.toLocaleString()}, target ${energyTarget.toLocaleString()}, now ${maxE.toLocaleString()}.`,
-      );
       while (maxE < energyTarget && !this.signal?.aborted) {
         const res = await this.upgradeBoost("energy_limit").catch((e) => {
           this.logger.info(`Energy boost upgrade refused: ${this.readError(e)}`);
@@ -888,12 +932,11 @@ export default class RigniteFarmer extends BaseFarmer {
    * dry before the battery is full, `/boost/full-energy` tops it back up until
    * the daily free-refill pool is exhausted.
    */
-  /** Tap until the battery is full OR the tap-phase time budget is exceeded.
-   *  Hard cap at 20 s (was unbounded); the battery already gets most of its
-   *  energy from the ad step, so a long tap tail adds little but costs cycle
-   *  minutes across 47 accounts. */
+  /** Fast burst tap: run at full speed for TAP_BUDGET_MS, resending whatever the
+   *  server refuses (the mini-app requeues refused taps too), and stop only when
+   *  the battery is full, energy is spent, or the time budget is out. */
   async tapUntilBatteryFull() {
-    const TAP_BUDGET_MS = 20_000;
+    const TAP_BUDGET_MS = 5_000;
     let user = this.user_data;
     if (!user) return 0;
 
@@ -924,7 +967,19 @@ export default class RigniteFarmer extends BaseFarmer {
     let taps = 0;
     let gained = 0;
     let guard = 0;
+    // Taps the server already charged energy for but did not credit. Resent —
+    // the mini-app requeues these instead of spending a fresh batch on them.
+    let pending = 0;
+    // Epoch-ms until which the server's own tap lock refuses taps.
+    let lockUntil = 0;
+
+    this.logger.log(`Tapping to 100% — battery ${Math.round((battery / cap) * 100)}% of ${cap.toLocaleString()}.`);
+    this.debugger.log(
+      `~${batteryGainMultiplier(battery / cap) * multitap * 50} battery per tap at this charge.`,
+    );
     const tapStartedAt = Date.now();
+    // Grows while the server is refusing, resets on the next credit.
+    let paceMs = TAP_PACE_MS;
 
     const patchFrom = (res) => {
       this.user_data = { ...this.user_data, ...this.activeMerge(res) };
@@ -935,16 +990,29 @@ export default class RigniteFarmer extends BaseFarmer {
       fullEnergyLeft = Number(merged.fullEnergyLeft ?? fullEnergyLeft);
     };
 
-    while (!this.signal?.aborted && guard++ < 200) {
+    while (!this.signal?.aborted && guard++ < 5_000) {
       if (battery >= cap) break;
       if (Date.now() - tapStartedAt >= TAP_BUDGET_MS) {
         this.logger.info(`Tap budget hit (${TAP_BUDGET_MS / 1000}s) at ${battery}/${cap}.`);
         break;
       }
 
+      // The server locks tapping outright on some responses (`locked` +
+      // `unlockAt`). Wait the lock out — the old loop saw `accepted: 0`, called
+      // it a dead end and left the battery short with energy still in the tank.
+      if (lockUntil > Date.now()) {
+        const wait = Math.min(lockUntil - Date.now(), MAX_TAP_LOCK_WAIT_MS);
+        if (Date.now() - tapStartedAt + wait >= TAP_BUDGET_MS) break;
+        this.logger.info(
+          `Tap locked by the server — waiting ${Math.ceil(wait / 1000)}s (until ${new Date(lockUntil).toISOString()}).`,
+        );
+        await this.utils.delay(wait, { signal: this.signal }).catch(() => {});
+        continue;
+      }
+
       // Out of energy — use a free full-energy refill so we can keep tapping.
-      const maxTaps = Math.floor((energy || 0) / multitap);
-      if (maxTaps < 1) {
+      const energyTaps = Math.floor((energy || 0) / multitap);
+      if (energyTaps < 1 && pending < 1) {
         if (fullEnergyLeft > 0) {
           const boost = await this.fullEnergy().catch((e) => {
             this.logger.warn("Full-energy boost failed:", this.readError(e));
@@ -959,32 +1027,102 @@ export default class RigniteFarmer extends BaseFarmer {
         break;
       }
 
-      const count = Math.min(100, maxTaps);
+      // One /tap round trip costs ~1.5–2 s, so serial batches cap a 5 s run at
+      // ~300 taps. Fire TAP_LANES requests at once instead. Lanes are bounded by
+      // the request cap, the taps the server already charged for, and the energy
+      // actually on hand — never more.
+      const laneCounts = [];
+      let leftPending = pending;
+      let leftEnergy = energyTaps;
+      while (laneCounts.length < TAP_LANES) {
+        const fromPending = Math.min(leftPending, MAX_TAPS_PER_REQUEST);
+        const fromEnergy = Math.min(
+          MAX_TAPS_PER_REQUEST - fromPending,
+          Math.max(0, leftEnergy),
+        );
+        const laneCount = fromPending + fromEnergy;
+        if (laneCount < 1) break;
+        leftPending -= fromPending;
+        leftEnergy -= fromEnergy;
+        laneCounts.push(laneCount);
+      }
+      const sent = laneCounts.reduce((a, b) => a + b, 0);
       const prevCoins = coins;
-      const result = await this.tap(count).catch((e) => {
-        this.logger.warn("Tap failed:", this.readError(e));
-        return null;
-      });
-      if (!result) break;
+      const results = await Promise.all(
+        laneCounts.map((count) =>
+          this.tap(count).catch((e) => {
+            this.logger.warn("Tap failed:", this.readError(e));
+            return null;
+          }),
+        ),
+      );
+      if (!results.some(Boolean)) break;
 
-      const accepted = Number(result.accepted ?? count) || 0;
+      let accepted = 0;
+      let refused = 0;
+      let lockedUntil = 0;
+      laneCounts.forEach((count, i) => {
+        const result = results[i];
+        if (!result) {
+          // The request never landed, so those taps were never charged — hold
+          // them for a resend like any other refusal.
+          refused += count;
+          return;
+        }
+        const got = Number(result.accepted ?? count) || 0;
+        accepted += got;
+        refused += Math.max(0, count - got);
+        if (result.locked) {
+          lockedUntil = Math.max(lockedUntil, Number(result.unlockAt) || 0);
+        }
+        patchFrom(result);
+      });
       taps += accepted;
-      patchFrom(result);
       gained += Math.max(0, coins - prevCoins);
 
+      // A lock can arrive on an ordinary tap response: hold the batch and wait.
+      if (lockedUntil) {
+        lockUntil = lockedUntil;
+        pending = refused;
+        this.debugger.log(
+          `Tap lanes locked: ${refused} tap(s) held until ${new Date(lockUntil).toISOString()}.`,
+        );
+        continue;
+      }
+
+      pending = refused;
       this.debugger.log(
-        `Tap batch (${accepted}/${count}): +${Math.max(0, coins - prevCoins)} coins, energy ${energy}/${user.maxEnergy}, battery ${Math.round((battery / cap) * 100)}%.`,
+        `Tap batch (${accepted}/${sent} over ${laneCounts.length} lanes): +${Math.max(0, coins - prevCoins)} coins, energy ${energy}/${user.maxEnergy}, battery ${Math.round((battery / cap) * 100)}%, ${refused} refused.`,
       );
-      if (accepted < 1) break;
+
+      // Refusals are not a dead end: the server credits part of a batch and
+      // expects the rest resent (the mini-app requeues them). Keep tapping while
+      // energy lasts — back off while the server is refusing so we are not
+      // hammering it, and speed back up on the next credit. Only the energy pool
+      // and the time guard end the run.
+      if (accepted > 0) {
+        // Per-lane cost, not per tap: the lanes already ran in parallel.
+        paceMs = Math.min(Math.ceil(accepted / TAP_LANES) * TAP_PACE_MS, 5_000);
+      } else if (refused > 0) {
+        paceMs = Math.min(Math.max(paceMs * 2, TAP_REFUSAL_BACKOFF_MS), TAP_MAX_REFUSAL_BACKOFF_MS);
+      }
+      if (Date.now() - tapStartedAt + paceMs < TAP_BUDGET_MS) {
+        await this.utils.delay(paceMs, { signal: this.signal }).catch(() => {});
+      }
     }
 
     const pct = Math.round((battery / cap) * 100);
     if (battery >= cap) {
       this.logger.success(`Battery charged to 100% (${taps} taps, +${gained} coins, ${boosts} refill${boosts === 1 ? "" : "s"}).`);
     } else if (taps) {
-      this.logger.info(`Tapped ${taps}× (+${gained} coins); battery ${pct}%, energy ${energy}/${user.maxEnergy}.`);
+      const held = pending > 0 ? `, ${pending} held` : "";
+      this.logger.info(
+        `Tapped ${taps}× (+${gained} coins) — battery ${pct}%, energy ${energy}/${user.maxEnergy}${held}.`,
+      );
     } else {
-      this.logger.info(`No battery charge needed (battery ${pct}%).`);
+      // Reached only with taps === 0 and the battery short of full: no energy
+      // left to spend, so say that rather than claiming nothing was needed.
+      this.logger.info(`No taps possible — battery ${pct}%, energy ${energy}/${user.maxEnergy}.`);
     }
     return taps;
   }
@@ -1056,9 +1194,56 @@ export default class RigniteFarmer extends BaseFarmer {
     await this.ensureAdMode();
 
     await this.logUserInfo();
+    // Order matters: fill the energy bar, spend it on taps (tapping is what
+    // charges the battery), then take the battery ad so its direct top-up
+    // lands last instead of being spent into curve-discounted taps.
     await this.executeTask("Energy Ad", () => this.watchFullEnergyAd());
+    // Two tap passes, each with its own TAP_BUDGET_MS: the server credits only
+    // ~240 taps per 5 s window, so one pass leaves taps on the table.
+    for (let pass = 0; pass < TAP_PASSES; pass++) {
+      await this.executeTask("Tap", () => this.tapUntilBatteryFull());
+    }
     await this.executeTask("Battery Ad", () => this.watchBatteryAd());
-    await this.executeTask("Tap", () => this.tapUntilBatteryFull());
+    await this.executeTask("Daily Streak", async () => {
+      const daily = await this.getDaily();
+      const streakBefore = daily?.streak;
+      let claimed = null;
+      let claimedState = null;
+      let claimError = null;
+      if (daily?.canClaim) {
+        try {
+          claimed = await this.claimDaily();
+          claimedState = claimed?.state;
+        } catch (e) {
+          claimError = e;
+        }
+      }
+      // Some Rignite API responses leave canClaim false even when claimable —
+      // attempt the claim anyway so the streak actually increments.
+      if (!claimed && daily !== null && !claimError) {
+        try {
+          claimed = await this.claimDaily();
+          claimedState = claimed?.state;
+        } catch (e) {
+          claimError = e;
+        }
+      }
+      // 400 from the game server = already claimed today (or invalid) — treat as
+      // "already claimed" instead of crashing the whole cycle.
+      if (claimError && claimError.response?.status === 400) {
+        this.logger.info(`Daily streak already claimed today (400).`);
+        return;
+      }
+      if (claimedState) {
+        this.user_data = { ...this.user_data, ...claimedState };
+      }
+      const streakAfter = (claimedState && claimedState.streak) || streakBefore || "?";
+      if (claimed) {
+        this.logger.success(`Daily streak claimed — streak ${streakAfter}, +${claimed?.coins ?? daily?.coins ?? 0} coins.`);
+      } else {
+        this.logger.info(`Daily streak already claimed — streak ${streakAfter}.`);
+      }
+    });
     await this.executeTask("Collect", () => this.collectEverything());
     await this.executeTask("Upgrades", () => this.upgradeItems());
   }
