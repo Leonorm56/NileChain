@@ -5,7 +5,8 @@ import { exportBackup, importBackup } from "../../../lib/backup.js";
 
 import farmers from "../../../farmers/index.js";
 import fsp from "fs/promises";
-import { initDataAgeHours } from "../../../lib/sessionHealth.js";
+import cache from "../../../lib/cache.js";
+import { INIT_DATA_STALE_HOURS, MINT_FAILURE_ALERT_THRESHOLD, initDataAgeHours } from "../../../lib/sessionHealth.js";
 import path from "path";
 import { spawn } from "child_process";
 import updateProxies from "../../../actions/update-proxies.js";
@@ -221,31 +222,30 @@ export default async function (fastify, opts) {
         },
       });
 
-      /** Enrich each farmer with session health */
+      /** Enrich each farmer with session health (reads live cache counters) */
       for (const account of accounts) {
         for (const farmer of account.farmers || []) {
           const ageHours = initDataAgeHours(farmer.initData);
-          const ec = farmer.errorCount || 0;
+          const consecutiveFailures =
+            (await cache.get(`mint-failures:${farmer.farmer}:${account.id}`)) || 0;
           let health = "healthy";
           let healthReason = null;
 
-          if (ageHours !== null && ageHours >= 18) {
+          if (ageHours !== null && ageHours >= INIT_DATA_STALE_HOURS) {
             health = "dead";
             healthReason = `init data ${ageHours.toFixed(1)}h old`;
-          } else if (ec >= 5) {
+          } else if (consecutiveFailures >= MINT_FAILURE_ALERT_THRESHOLD) {
             health = "dead";
-            healthReason = `${ec} errors`;
-          } else if (ageHours !== null && ageHours >= 12) {
+            healthReason = `${consecutiveFailures} mint failures in a row`;
+          } else if (consecutiveFailures >= 2) {
             health = "degraded";
-            healthReason = `init data ${ageHours.toFixed(1)}h old`;
-          } else if (ec >= 2) {
-            health = "degraded";
-            healthReason = `${ec} errors`;
+            healthReason = `${consecutiveFailures} mint failures`;
           }
 
           farmer.dataValues.sessionHealth = health;
           farmer.dataValues.sessionHealthReason = healthReason;
           farmer.dataValues.initDataAgeHours = ageHours;
+          farmer.dataValues.consecutiveMintFailures = consecutiveFailures;
         }
       }
 
