@@ -1217,7 +1217,24 @@ export default class RigniteFarmer extends BaseFarmer {
     }
     await this.executeTask("Battery Ad", () => this.watchBatteryAd());
     await this.executeTask("Daily Streak", async () => {
-      const daily = await this.getDaily();
+      // This read is the only call in the cycle with no handling of its own, and
+      // Rignite rate-limits it (429) when every account asks from the same IP in
+      // the same pass. An escaping 429 aborted `process()` and cost the account
+      // its Collect and Upgrades — the streak is worth a few coins, the rest of
+      // the cycle is worth a lot more, so a failed read just skips the task.
+      let daily;
+      try {
+        daily = await this.getDaily();
+      } catch (e) {
+        if (e?.response?.status === 429) {
+          this.logger.info(
+            "Daily streak rate-limited (429) — skipped this cycle.",
+          );
+        } else {
+          this.logger.warn("Daily streak unavailable:", this.readError(e));
+        }
+        return;
+      }
       const streakBefore = daily?.streak;
       let claimed = null;
       let claimedState = null;

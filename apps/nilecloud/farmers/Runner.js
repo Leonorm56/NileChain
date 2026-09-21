@@ -12,6 +12,7 @@ import userAgents, {
 import ConsoleLogger from "@nile/shared/lib/ConsoleLogger.js";
 import { delay } from "@nile/shared/utils/delay.js";
 import GramClient from "../lib/GramClient.js";
+import refreshInitData from "../lib/refreshInitData.js";
 import axios from "axios";
 import bot from "../lib/bot.js";
 import cache from "../lib/cache.js";
@@ -458,35 +459,46 @@ export default function createRunner(FarmerClass) {
         this.account.session &&
         !this.farmer?.isBanned
       ) {
-        try {
-          /** Create Telegram Client */
-          this.client = await GramClient.create(this.account.session);
-
-          /** Connect + refresh the web app data */
-          const setup = (async () => {
-            await this.client.connect();
-            if (this.constructor.type === "webapp") {
-              await this.updateWebAppData();
-            }
-          })();
-          /** Ignore late rejections once the race below has settled. */
-          setup.catch(() => {});
-          await Promise.race([
-            setup,
-            delay(8_000, { precised: true }).then(() => {
-              throw new Error(
-                "Telegram init-data refresh timed out (MTProto stalled)",
-              );
-            }),
-          ]);
-        } catch (e) {
-          this.logger.error("Failed to update WebAppData", e.message);
-          /** Release the stalled socket so it doesn't linger until the next
-           *  cycle and block the port/process restarts. */
+        /** One connect + refresh, bounded by a hard timeout so a stalled
+         *  Telegram (MTProto) connection can't freeze the whole sequential
+         *  cycle (seen as EADDRINUSE crash loops). */
+        const attemptRefresh = async () => {
           try {
-            await this.client?.destroy?.();
-          } catch {}
-        }
+            /** Create Telegram Client */
+            this.client = await GramClient.create(this.account.session);
+
+            /** Connect + refresh the web app data */
+            const setup = (async () => {
+              await this.client.connect();
+              if (this.constructor.type === "webapp") {
+                await this.updateWebAppData();
+              }
+            })();
+            /** Ignore late rejections once the race below has settled. */
+            setup.catch(() => {});
+            await Promise.race([
+              setup,
+              delay(8_000, { precised: true }).then(() => {
+                throw new Error(
+                  "Telegram init-data refresh timed out (MTProto stalled)",
+                );
+              }),
+            ]);
+          } catch (e) {
+            /** Release the stalled socket so it doesn't linger until the next
+             *  cycle and block the port/process restarts. */
+            try {
+              await this.client?.destroy?.();
+            } catch {}
+            throw e;
+          }
+        };
+
+        await refreshInitData({
+          attempt: attemptRefresh,
+          onFailure: (e) =>
+            this.logger.error("Failed to update WebAppData", e.message),
+        });
       }
 
       /** Set Telegram Web App */
