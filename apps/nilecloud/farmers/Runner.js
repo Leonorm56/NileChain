@@ -13,6 +13,11 @@ import ConsoleLogger from "@nile/shared/lib/ConsoleLogger.js";
 import { delay } from "@nile/shared/utils/delay.js";
 import GramClient from "../lib/GramClient.js";
 import refreshInitData from "../lib/refreshInitData.js";
+import {
+  initDataAgeHours,
+  isDeadSessionError,
+  shouldAlert,
+} from "../lib/sessionHealth.js";
 import axios from "axios";
 import bot from "../lib/bot.js";
 import cache from "../lib/cache.js";
@@ -113,6 +118,10 @@ export default function createRunner(FarmerClass) {
     static isProcessingQueue = false;
     static feedDone = false;
     static lastResults = new Map();
+
+    /** Accounts whose Telegram session is dead this cycle (can't be fixed in
+     *  code — reported once per cycle so they get re-logged in). */
+    static deadSessions = new Map();
 
     /** Fleet-wide withdrawal budget (see reserveWithdrawalSlot) */
     static withdrawPerHour = withdrawPerHour;
@@ -462,7 +471,19 @@ export default function createRunner(FarmerClass) {
         /** One connect + refresh, bounded by a hard timeout so a stalled
          *  Telegram (MTProto) connection can't freeze the whole sequential
          *  cycle (seen as EADDRINUSE crash loops). */
+        /**
+         * One connect + refresh. Each attempt fully releases the previous
+         * connection before opening its own.
+         *
+         * Two clients on one session provoke refusals — measured on this box:
+         * four concurrent clients on a healthy session, two of them refused,
+         * while the same session minted 8/8 when used one client at a time. The
+         * old code started its retry while the timed-out attempt was still in
+         * flight, which is exactly that duplicate pattern.
+         */
         const attemptRefresh = async () => {
+          await this.releaseClient();
+
           try {
             /** Create Telegram Client */
             this.client = await GramClient.create(this.account.session);
@@ -485,20 +506,51 @@ export default function createRunner(FarmerClass) {
               }),
             ]);
           } catch (e) {
-            /** Release the stalled socket so it doesn't linger until the next
-             *  cycle and block the port/process restarts. */
-            try {
-              await this.client?.destroy?.();
-            } catch {}
+            /** Hand the session back before anything else touches it. */
+            await this.releaseClient();
             throw e;
           }
         };
 
-        await refreshInitData({
+        const refresh = await refreshInitData({
           attempt: attemptRefresh,
-          onFailure: (e) =>
-            this.logger.error("Failed to update WebAppData", e.message),
+          onFailure: (e, attemptNo) =>
+            this.logger.error(
+              `Failed to update WebAppData (attempt ${attemptNo})${
+                isDeadSessionError(e) ? " — session refused" : ""
+              }:`,
+              e.message,
+            ),
         });
+
+        /**
+         * Count failures across cycles rather than judging one of them.
+         *
+         * A single refusal is meaningless here: the session that answered
+         * `SESSION_REVOKED` twice in a row minted 8/8 minutes later. What matters
+         * is a run of failures — that is when an account can no longer renew the
+         * init data it farms with, and cannot fix itself.
+         */
+        if (refresh.ok) {
+          await cache.delete(this.mintFailureKey());
+        } else {
+          const key = this.mintFailureKey();
+          const consecutiveFailures = ((await cache.get(key)) || 0) + 1;
+          await cache.set(key, consecutiveFailures);
+
+          const ageHours = initDataAgeHours(this.farmer?.initData);
+
+          if (shouldAlert({ consecutiveFailures, ageHours })) {
+            this.noteDeadSession({
+              ageHours,
+              reason: `${consecutiveFailures} mint failures in a row`,
+            });
+          } else {
+            this.logger.error(
+              `[${this.account.id}] Mint failed ${consecutiveFailures}x in a row — watching, not alerting yet`,
+            );
+          }
+        }
       }
 
       /** Set Telegram Web App */
@@ -547,6 +599,48 @@ export default function createRunner(FarmerClass) {
       const auth = await this.fetchAuth();
       const headers = await this.getAuthHeaders(auth);
       this.farmer.setHeaders(headers);
+    }
+
+    /** Cache key for this account's current run of failed mints */
+    mintFailureKey() {
+      return `mint-failures:${this.constructor.id}:${this.account.id}`;
+    }
+
+    /**
+     * Close this instance's Telegram client and forget it.
+     *
+     * Clients used to be destroyed only when a refresh failed, so every
+     * successful cycle left a live connection holding that account's session —
+     * measured: 35 open Telegram connections on a box with 40 minutes uptime.
+     * A leftover client turns the account's own next connection into a
+     * duplicate, and a duplicate is what Telegram refuses.
+     */
+    async releaseClient() {
+      const client = this.client;
+      this.client = null;
+
+      if (!client) {
+        return;
+      }
+
+      try {
+        /** Bounded — a hung socket must not stall the cycle that is closing it */
+        await Promise.race([
+          Promise.resolve(client.destroy?.()),
+          delay(3_000, { precised: true }),
+        ]);
+      } catch {}
+    }
+
+    /** Record this account's dead session for the cycle's Telegram alert */
+    noteDeadSession({ ageHours = null, reason = null } = {}) {
+      this.constructor.deadSessions.set(this.account.id, {
+        id: this.account.id,
+        title: this.account.title,
+        username: this.account.user?.username || null,
+        ageHours,
+        reason,
+      });
     }
 
     /**
@@ -674,6 +768,15 @@ export default function createRunner(FarmerClass) {
           instance.currentTask,
           error.message || "Unknown error!",
         );
+      } finally {
+        /**
+         * Hand the connection back when the account's turn ends.
+         *
+         * Without this, every successful cycle leaves a live client behind, and
+         * the account's next cycle then opens a second connection on a session
+         * that is still held — the duplicate Telegram refuses.
+         */
+        await instance.releaseClient();
       }
     }
 
@@ -973,6 +1076,7 @@ export default function createRunner(FarmerClass) {
         /** Reset feeding flag */
         this.feedDone = false;
         this.lastResults.clear();
+        this.deadSessions.clear();
 
         /**
          * Start the sequence processor (stays alive until feeding is done).
@@ -1010,6 +1114,19 @@ export default function createRunner(FarmerClass) {
             },
           };
         });
+
+        /** Alert on dead sessions — these accounts stop earning until a fresh
+         *  phone login, so they are worth naming explicitly. Sent every cycle
+         *  (a fixed session clears the warning) as one message per farmer. */
+        try {
+          await bot?.sendDeadSessionMessage({
+            id: this.id,
+            title: `${this.emoji} ${this.title}`,
+            accounts: [...this.deadSessions.values()],
+          });
+        } catch (error) {
+          this.logger.error("Failed to send dead session notification:", error);
+        }
 
         /** Send Farming Summary Message */
         try {

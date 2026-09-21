@@ -9,6 +9,12 @@
  * a 401 GENERIC which costs the account its entire cycle. Retrying once on a
  * fresh connection recovers the stalls that are transient.
  *
+ * Every failure is retried. There is deliberately no "fatal" class: a session
+ * that answers `SESSION_REVOKED` twice in a row minted successfully eight times
+ * out of eight minutes later on the rignite box, so refusing to retry would
+ * throw away the recovery. Persistence of failure is what matters, and that is
+ * counted across cycles by the caller.
+ *
  * Never throws: a refresh that cannot succeed is reported, not raised, so the
  * caller can decide to carry on with the init data it already has.
  *

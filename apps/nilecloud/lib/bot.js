@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import app from "../config/app.js";
 import cache from "./cache.js";
 import logger from "./logger.js";
+import { formatDeadSessionLines } from "./sessionHealth.js";
 import utils from "./utils.js";
 
 class GroupBot extends Bot {
@@ -200,6 +201,47 @@ class GroupBot extends Bot {
       );
     } catch (error) {
       logger.error(error);
+    }
+  }
+
+  /** Send Dead Session Message
+   *
+   * Accounts whose Telegram session is revoked cannot mint fresh init data, so
+   * they stop earning until they are logged in again by phone. Code can't fix
+   * that, so it is reported: one message per farmer, under the same cache key,
+   * so the list is updated in place rather than repeated every cycle. When
+   * nothing is dead the previous warning is removed, so the group never shows
+   * accounts that have since been re-logged.
+   */
+  async sendDeadSessionMessage({ id, title, accounts = [] }) {
+    const cacheKey = `messages.dead-session.${id}`;
+
+    try {
+      /** Nothing dead — clear a previous warning, once */
+      if (accounts.length === 0) {
+        const previous = await cache.get(cacheKey);
+
+        if (previous) {
+          try {
+            await this.api.deleteMessage(app.chat.id, previous);
+          } catch (error) {
+            logger.error("Failed to remove dead session message:", error);
+          }
+
+          /** Sentinel: cache.get returns a falsy value next cycle */
+          await cache.set(cacheKey, 0);
+        }
+
+        return;
+      }
+
+      return await this.sendGroupMessage(
+        cacheKey,
+        formatDeadSessionLines({ title, accounts }),
+        { ["message_thread_id"]: app.chat.threads.error },
+      );
+    } catch (error) {
+      logger.error("Error sending dead session message:", error);
     }
   }
 
