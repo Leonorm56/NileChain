@@ -499,7 +499,7 @@ export default function createRunner(FarmerClass) {
             setup.catch(() => {});
             await Promise.race([
               setup,
-              delay(8_000, { precised: true }).then(() => {
+              delay(20_000, { precised: true }).then(() => {
                 throw new Error(
                   "Telegram init-data refresh timed out (MTProto stalled)",
                 );
