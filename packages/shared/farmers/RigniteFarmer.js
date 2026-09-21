@@ -118,6 +118,16 @@ const TAP_REFUSAL_BACKOFF_MS = 25;
 const TAP_MAX_REFUSAL_BACKOFF_MS = 200;
 
 /**
+ * Back off this long when a whole tap burst is refused at the request level
+ * (the API's generic `{error:"Error"}`, a 502, a timeout) rather than the taps
+ * being declined. Louder than a tap refusal because the API itself is unwell.
+ */
+const TAP_BURST_FAILURE_BACKOFF_MS = 500;
+
+/** Cap on the burst-failure backoff, so a dead API is not hammered. */
+const TAP_MAX_BURST_BACKOFF_MS = 2_000;
+
+/**
  * In-process mirror of each account's ad-watch log, used when the host gives
  * no persistent `farmer.storage` (long-lived node runner) and as a write-back
  * cache when it does. Values are arrays of epoch-ms watch timestamps.
@@ -438,6 +448,22 @@ export default class RigniteFarmer extends BaseFarmer {
 
   readError(error) {
     return error?.response?.data?.error || error?.message || "Unknown error";
+  }
+
+  /**
+   * A short label for a failed call that says *why*: the HTTP status when there
+   * was a response, the network code when there was not, and the API's own
+   * error string. The fleet logged 13k identical "Tap failed: Error" lines that
+   * named neither the status nor the endpoint, which made the cause unknowable.
+   */
+  describeError(error) {
+    const status = error?.response?.status;
+    const reason = this.readError(error);
+    const label = [status ?? error?.code ?? "no-response", reason]
+      .filter(Boolean)
+      .join(" ");
+
+    return label;
   }
 
   /* --------------------------------------------------------------------- */
@@ -1060,15 +1086,38 @@ export default class RigniteFarmer extends BaseFarmer {
       }
       const sent = laneCounts.reduce((a, b) => a + b, 0);
       const prevCoins = coins;
+      /** Distinct reasons a lane failed, collected so one burst is one log line. */
+      const laneErrors = new Set();
       const results = await Promise.all(
         laneCounts.map((count) =>
           this.tap(count).catch((e) => {
-            this.logger.warn("Tap failed:", this.readError(e));
+            laneErrors.add(this.describeError(e));
             return null;
           }),
         ),
       );
-      if (!results.some(Boolean)) break;
+      const failedLanes = results.filter((result) => !result).length;
+
+      if (failedLanes) {
+        this.logger.warn(
+          `Tap burst: ${failedLanes}/${laneCounts.length} lane(s) failed — ${[...laneErrors].join("; ")}.`,
+        );
+      }
+
+      if (failedLanes === laneCounts.length) {
+        // Every lane was refused at the request level, so the API itself is
+        // unwell rather than declining taps. Nothing was charged, so the held
+        // taps are still owed to us — back off and send them again. The old loop
+        // called this a dead end and ended the pass with taps left to spend,
+        // which is how a transient 502 cost an account the rest of its burst.
+        paceMs = Math.min(
+          Math.max(paceMs * 2, TAP_BURST_FAILURE_BACKOFF_MS),
+          TAP_MAX_BURST_BACKOFF_MS,
+        );
+        if (Date.now() - tapStartedAt + paceMs >= TAP_BUDGET_MS) break;
+        await this.utils.delay(paceMs, { signal: this.signal }).catch(() => {});
+        continue;
+      }
 
       let accepted = 0;
       let refused = 0;
@@ -1112,7 +1161,15 @@ export default class RigniteFarmer extends BaseFarmer {
       // energy lasts — back off while the server is refusing so we are not
       // hammering it, and speed back up on the next credit. Only the energy pool
       // and the time guard end the run.
-      if (accepted > 0) {
+      if (failedLanes > 0) {
+        // A lane failed at the request level while others credited, so the API
+        // is struggling — do not snap back to the fast pace a clean credit
+        // earns, which is exactly what provoked the failure.
+        paceMs = Math.min(
+          Math.max(paceMs * 2, TAP_REFUSAL_BACKOFF_MS),
+          TAP_MAX_REFUSAL_BACKOFF_MS,
+        );
+      } else if (accepted > 0) {
         // Per-lane cost, not per tap: the lanes already ran in parallel.
         paceMs = Math.min(Math.ceil(accepted / TAP_LANES) * TAP_PACE_MS, 5_000);
       } else if (refused > 0) {

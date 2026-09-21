@@ -2,7 +2,6 @@ import "./config/env.js";
 
 import CronRunner from "@nile/shared/lib/CronRunner.js";
 import app from "./config/app.js";
-import batterySweep from "./actions/battery-sweep.js";
 import expireSubscriptions from "./actions/expire-subscriptions.js";
 import farmers from "./farmers/index.js";
 import { fileURLToPath } from "node:url";
@@ -47,11 +46,16 @@ if (app.cron.enabled) {
   });
 
   if (app.cron.mode === "sequential") {
-    // Battery sweep first — flat batteries drop production to 9%, so
-    // charge them before the farmers run. Self-throttling (<20% + quota).
-    if (env("BATTERY_SWEEP_ENABLED", "true") !== "false") {
-      runner.register("*/10 * * * *", batterySweep, "Battery Sweep");
-    }
+    // No sweep before the farmers. The battery sweep used to run here and it
+    // called `prepare()` — a full Telegram connect plus init-data refresh — for
+    // every account, then farmed none of them. In sequential mode CronRunner
+    // awaits each job in turn, so that put a 48-account refresh in front of
+    // every cycle and made each account refresh twice per cycle. Telegram
+    // throttled the doubled connections (29% of refreshes timed out), and the
+    // sweep's own logins invalidated the sessions the farmers were still using
+    // (SESSION_TAKEN on taps). The farm cycle already charges the battery with
+    // its own Battery Ad task, so the sweep only cost time.
+    //
     // All farmers side by side in one job; each still farms its accounts
     // one at a time (FARMER_<ID>_MAX_CONCURRENCY).
     const names = enabledFarmers.map((FarmerClass) => FarmerClass.title).join(", ");
