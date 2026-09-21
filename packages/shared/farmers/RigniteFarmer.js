@@ -66,7 +66,7 @@ const FOURTH_BATTERY_GATE_PPH = 800000;
 const FOURTH_BATTERY_LEVEL = 48;
 
 /** Maximum live PPH before the account stops farming (hard ceiling). */
-const MAX_PPH_CEILING = 870000;
+const MAX_PPH_CEILING = 650000;
 
 /** Energy limit target once PPH reaches the 650K ceiling. */
 const CEILING_ENERGY_TARGET = 6500;
