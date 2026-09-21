@@ -486,7 +486,7 @@ export default function createRunner(FarmerClass) {
 
           try {
             /** Create Telegram Client */
-            this.client = await GramClient.create(this.account.session);
+            this.client = await GramClient.create(this.account.session, this.proxy);
 
             /** Connect + refresh the web app data */
             const setup = (async () => {
