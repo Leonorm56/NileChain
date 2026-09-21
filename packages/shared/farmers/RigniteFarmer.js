@@ -128,6 +128,15 @@ const TAP_BURST_FAILURE_BACKOFF_MS = 500;
 const TAP_MAX_BURST_BACKOFF_MS = 2_000;
 
 /**
+ * How long without a refusal before the tap burst is restored to full width.
+ * A burst the API refuses (429/502/timeout) halves the next burst's lane width,
+ * which then grows back one lane per clean burst. Without this the pass kept
+ * firing 20 parallel taps into a 429 limiter and spending its whole budget on
+ * requests the API had already said no to.
+ */
+const TAP_LANE_RECOVER_MS = 2_000;
+
+/**
  * In-process mirror of each account's ad-watch log, used when the host gives
  * no persistent `farmer.storage` (long-lived node runner) and as a write-back
  * cache when it does. Values are arrays of epoch-ms watch timestamps.
@@ -1018,6 +1027,14 @@ export default class RigniteFarmer extends BaseFarmer {
     const tapStartedAt = Date.now();
     // Grows while the server is refusing, resets on the next credit.
     let paceMs = TAP_PACE_MS;
+    // Lanes in the next burst: halved when the API refuses a burst outright,
+    // grown a lane per clean burst, and restored in full once the limiter has
+    // been quiet for TAP_LANE_RECOVER_MS. Carried on the instance because a
+    // cycle runs six passes back to back — without that, every pass would pay
+    // for the lesson again by firing a full-width burst into a limiter that had
+    // already said no.
+    let laneWidth = this.tapLaneWidth ?? TAP_LANES;
+    let lastRefusedAt = this.tapRefusedAt ?? 0;
 
     const patchFrom = (res) => {
       this.user_data = { ...this.user_data, ...this.activeMerge(res) };
@@ -1066,13 +1083,20 @@ export default class RigniteFarmer extends BaseFarmer {
       }
 
       // One /tap round trip costs ~1.5–2 s, so serial batches cap a 5 s run at
-      // ~300 taps. Fire TAP_LANES requests at once instead. Lanes are bounded by
-      // the request cap, the taps the server already charged for, and the energy
-      // actually on hand — never more.
+      // ~300 taps. Fire the lanes at once instead, up to `laneWidth`. Lanes are
+      // bounded by the request cap, the taps the server already charged for, and
+      // the energy actually on hand — never more.
+      // Quiet since the last refusal means the limiter has let go, so go
+      // straight back to full width instead of crawling up a lane at a time.
+      if (lastRefusedAt && Date.now() - lastRefusedAt >= TAP_LANE_RECOVER_MS) {
+        laneWidth = TAP_LANES;
+        lastRefusedAt = 0;
+      }
+
       const laneCounts = [];
       let leftPending = pending;
       let leftEnergy = energyTaps;
-      while (laneCounts.length < TAP_LANES) {
+      while (laneCounts.length < laneWidth) {
         const fromPending = Math.min(leftPending, MAX_TAPS_PER_REQUEST);
         const fromEnergy = Math.min(
           MAX_TAPS_PER_REQUEST - fromPending,
@@ -1099,9 +1123,14 @@ export default class RigniteFarmer extends BaseFarmer {
       const failedLanes = results.filter((result) => !result).length;
 
       if (failedLanes) {
+        // The API refused part or all of the burst: ask for less next time.
+        laneWidth = Math.max(1, Math.floor(laneWidth / 2));
+        lastRefusedAt = Date.now();
         this.logger.warn(
-          `Tap burst: ${failedLanes}/${laneCounts.length} lane(s) failed — ${[...laneErrors].join("; ")}.`,
+          `Tap burst: ${failedLanes}/${laneCounts.length} lane(s) failed — ${[...laneErrors].join("; ")}. Narrowing to ${laneWidth} lane(s).`,
         );
+      } else {
+        laneWidth = Math.min(TAP_LANES, laneWidth + 1);
       }
 
       if (failedLanes === laneCounts.length) {
@@ -1179,6 +1208,9 @@ export default class RigniteFarmer extends BaseFarmer {
         await this.utils.delay(paceMs, { signal: this.signal }).catch(() => {});
       }
     }
+
+    this.tapLaneWidth = laneWidth;
+    this.tapRefusedAt = lastRefusedAt;
 
     const pct = Math.round((battery / cap) * 100);
     if (battery >= cap) {
