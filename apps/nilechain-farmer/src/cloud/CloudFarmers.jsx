@@ -1,4 +1,4 @@
-import { HiOutlinePower, HiOutlineXMark, HiPlay } from "react-icons/hi2";
+import { HiOutlinePower, HiOutlineXMark, HiOutlineArrowPath, HiPlay } from "react-icons/hi2";
 import { cn, matchesAccountSearch } from "@/utils";
 import { useMemo, useState } from "react";
 
@@ -15,6 +15,7 @@ import { useCallback } from "react";
 import useCloudManagerActivateFarmerMutation from "@/hooks/useCloudManagerActivateFarmerMutation";
 import useCloudManagerDisconnectFarmerMutation from "@/hooks/useCloudManagerDisconnectFarmerMutation";
 import useCloudManagerFarmersQuery from "@/hooks/useCloudManagerFarmersQuery";
+import useCloudManagerReloginFarmerMutation from "@/hooks/useCloudManagerReloginFarmerMutation";
 import useCloudManagerRunFarmersMutation from "@/hooks/useCloudManagerRunFarmersMutation";
 
 const AccountDetailsDialog = ({ account, children }) => {
@@ -39,11 +40,18 @@ const FarmerActionButton = ({ variant, ...props }) => (
   />
 );
 
+const HEALTH_COLORS = {
+  healthy: "bg-green-500",
+  degraded: "bg-yellow-500",
+  dead: "bg-red-500",
+};
+
 export default function CloudFarmers() {
   const [search, setSearch] = useState("");
   const runFarmersMutation = useCloudManagerRunFarmersMutation();
   const activateFarmerMutation = useCloudManagerActivateFarmerMutation();
   const disconnectFarmerMutation = useCloudManagerDisconnectFarmerMutation();
+  const reloginFarmerMutation = useCloudManagerReloginFarmerMutation();
   const farmersQuery = useCloudManagerFarmersQuery();
 
   /* Group Farmers by Type */
@@ -117,6 +125,20 @@ export default function CloudFarmers() {
         .finally(farmersQuery.refetch);
     },
     [disconnectFarmerMutation.mutateAsync, farmersQuery.refetch],
+  );
+
+  /* Re-login Farmer */
+  const reloginFarmer = useCallback(
+    (id) => {
+      toast
+        .promise(reloginFarmerMutation.mutateAsync(id), {
+          success: "Session cleared — re-login with phone/code/password",
+          loading: "Clearing session...",
+          error: "Error...",
+        })
+        .finally(farmersQuery.refetch);
+    },
+    [reloginFarmerMutation.mutateAsync, farmersQuery.refetch],
   );
 
   return farmersQuery.isPending ? (
@@ -193,12 +215,18 @@ export default function CloudFarmers() {
                           </h5>
                           {typeof farmer.active !== "undefined" ? (
                             <span
+                              title={
+                                farmer.sessionHealthReason
+                                  ? `${farmer.sessionHealth}: ${farmer.sessionHealthReason}`
+                                  : farmer.sessionHealth || (!farmer.isBanned && farmer.active ? "active" : "inactive")
+                              }
                               className={cn(
                                 "shrink-0 size-2 rounded-full",
                                 "border-2 border-white",
-                                !farmer.isBanned && farmer.active
-                                  ? "bg-green-500"
-                                  : "bg-red-500",
+                                HEALTH_COLORS[farmer.sessionHealth] ||
+                                  (!farmer.isBanned && farmer.active
+                                    ? "bg-green-500"
+                                    : "bg-red-500"),
                               )}
                             />
                           ) : null}
@@ -223,6 +251,17 @@ export default function CloudFarmers() {
                       >
                         <HiOutlinePower className="size-4" />
                       </FarmerActionButton>
+                      {/* Re-login Button (only for broken/degraded) */}
+                      {(farmer.sessionHealth === "dead" ||
+                        farmer.sessionHealth === "degraded") && (
+                        <FarmerActionButton
+                          title="Clear session & re-login"
+                          onClick={() => reloginFarmer(farmer.id)}
+                          variant={"activate"}
+                        >
+                          <HiOutlineArrowPath className="size-4" />
+                        </FarmerActionButton>
+                      )}
                       {/* Terminate Button */}
                       <FarmerActionButton
                         title="Disconnect Farmer"

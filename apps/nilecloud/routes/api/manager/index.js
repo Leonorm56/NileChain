@@ -5,6 +5,7 @@ import { exportBackup, importBackup } from "../../../lib/backup.js";
 
 import farmers from "../../../farmers/index.js";
 import fsp from "fs/promises";
+import { initDataAgeHours } from "../../../lib/sessionHealth.js";
 import path from "path";
 import { spawn } from "child_process";
 import updateProxies from "../../../actions/update-proxies.js";
@@ -219,6 +220,35 @@ export default async function (fastify, opts) {
           exclude: !fastify.app.displayAccountTitle ? ["title"] : [],
         },
       });
+
+      /** Enrich each farmer with session health */
+      for (const account of accounts) {
+        for (const farmer of account.farmers || []) {
+          const ageHours = initDataAgeHours(farmer.initData);
+          const ec = farmer.errorCount || 0;
+          let health = "healthy";
+          let healthReason = null;
+
+          if (ageHours !== null && ageHours >= 18) {
+            health = "dead";
+            healthReason = `init data ${ageHours.toFixed(1)}h old`;
+          } else if (ec >= 5) {
+            health = "dead";
+            healthReason = `${ec} errors`;
+          } else if (ageHours !== null && ageHours >= 12) {
+            health = "degraded";
+            healthReason = `init data ${ageHours.toFixed(1)}h old`;
+          } else if (ec >= 2) {
+            health = "degraded";
+            healthReason = `${ec} errors`;
+          }
+
+          farmer.dataValues.sessionHealth = health;
+          farmer.dataValues.sessionHealthReason = healthReason;
+          farmer.dataValues.initDataAgeHours = ageHours;
+        }
+      }
+
       return accounts;
     });
 
@@ -269,6 +299,47 @@ export default async function (fastify, opts) {
           { isBanned: true, active: false },
           { where: { id: request.body.id } },
         );
+      },
+    );
+
+    /** Re-login Farmer (clear session so it can be re-authenticated) */
+    fastify.post(
+      "/farmers/relogin",
+      { schema: farmerSchema },
+      async (request, reply) => {
+        const farmer = await fastify.db.Farmer.findOne({
+          where: { id: request.body.id },
+          include: [{ association: "account" }],
+        });
+
+        if (!farmer || !farmer.account) {
+          return reply.badRequest("Farmer not found!");
+        }
+
+        const account = farmer.account;
+
+        /** Clear session file */
+        if (account.session) {
+          try {
+            const sessionPath = path.join(
+              fastify.app.basePath,
+              "sessions",
+              `session_${account.session}.json`,
+            );
+            await fsp.unlink(sessionPath).catch(() => {});
+          } catch {}
+        }
+
+        /** Clear session and reset farmer state */
+        await account.update({ session: null });
+        await farmer.update({
+          errorCount: 0,
+          isBanned: false,
+          active: true,
+          initData: null,
+        });
+
+        return reply.send({ success: true });
       },
     );
 

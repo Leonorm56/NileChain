@@ -161,22 +161,25 @@ export default async function (fastify, opts) {
         );
 
         if (account?.session) {
+          /** Best-effort Telegram logout — don't let a broken session block the clear */
           try {
-            /** Create Client */
             const client = await fastify.lib.GramClient.create(account.session);
-
-            /** Connect */
-            await client.connect();
-
-            /** Logout */
-            await client.logout();
+            await Promise.race([
+              client.connect().then(() => client.logout()),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("timeout")), 5000),
+              ),
+            ]);
           } catch (error) {
             if (process.env.NODE_ENV === "development") {
               console.error("Error logging out account:", error);
             }
-          } finally {
-            await account.update({ session: null });
           }
+        }
+
+        /** Always clear session — even if Telegram logout failed */
+        if (account) {
+          await account.update({ session: null });
         }
 
         return {
