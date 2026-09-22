@@ -486,11 +486,33 @@ export default function createRunner(FarmerClass) {
 
           try {
             /** Create Telegram Client */
-            this.client = await GramClient.create(this.account.session, this.proxy);
+            /**
+             * No proxy on the Telegram client, deliberately.
+             *
+             * `this.proxy` is an HTTP proxy (see `createAgent`) used for the
+             * farmer's API calls. gramjs cannot bring MTProto up through it:
+             * measured on this box, a proxied `connect()` resolves in ~1.1s
+             * with `connected=false`, while the same session with no proxy
+             * connects in ~1.9s with `connected=true`. That silent failure is
+             * what produced "Cannot send requests while disconnected" on every
+             * mint. Proxies still apply to the HTTP API.
+             */
+            this.client = await GramClient.create(this.account.session);
 
             /** Connect + refresh the web app data */
             const setup = (async () => {
               await this.client.connect();
+              /**
+               * gramjs swallows a failed connection: `connect()` resolves while
+               * the sender is still down, so the next call dies with a bare
+               * "Cannot send requests while disconnected. Please reconnect."
+               * Fail here instead, while the reason is still legible.
+               */
+              if (!this.client.connected) {
+                throw new Error(
+                  "Telegram client did not connect (MTProto unreachable)",
+                );
+              }
               if (this.constructor.type === "webapp") {
                 await this.updateWebAppData();
               }
@@ -630,6 +652,19 @@ export default function createRunner(FarmerClass) {
           delay(3_000, { precised: true }),
         ]);
       } catch {}
+
+      /**
+       * Evict the instance along with the socket.
+       *
+       * `GramClient.create` returns the cached instance for a session name, so
+       * a destroyed client that stayed in the cache was handed straight back on
+       * the next cycle — measured: `GramClient.create` after a release returns
+       * the *same* destroyed object, and every call on it fails immediately with
+       * "Cannot send requests while disconnected".
+       */
+      if (client._name) {
+        GramClient.delete(client._name);
+      }
     }
 
     /** Record this account's dead session for the cycle's Telegram alert */

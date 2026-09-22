@@ -1,6 +1,8 @@
 import * as bcrypt from "bcryptjs";
 import * as dateFns from "date-fns";
 
+import crypto from "crypto";
+
 import { exportBackup, importBackup } from "../../../lib/backup.js";
 
 import farmers from "../../../farmers/index.js";
@@ -340,6 +342,108 @@ export default async function (fastify, opts) {
         });
 
         return reply.send({ success: true });
+      },
+    );
+
+    /**
+     * Clone Session — recover an account without the phone or login code
+     *
+     * Mints a brand-new, independent session from the account's existing
+     * authorised session using Telegram's login-token flow: the current session
+     * accepts a token exported by a fresh client, so nothing is sent to a phone
+     * and no code is typed. Accounts with 2FA enabled need that password.
+     */
+    fastify.post(
+      "/farmers/clone-session",
+      {
+        schema: {
+          body: {
+            type: "object",
+            required: ["id"],
+            properties: {
+              id: { type: "string" },
+              password: { type: "string" },
+              passwords: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      },
+      async (request, reply) => {
+        const farmer = await fastify.db.Farmer.findOne({
+          where: { id: request.body.id },
+          include: [{ association: "account" }],
+        });
+
+        if (!farmer || !farmer.account) {
+          return reply.badRequest("Farmer not found!");
+        }
+
+        const account = farmer.account;
+
+        if (!account.session) {
+          return reply.badRequest("Account has no session to clone from");
+        }
+
+        /** Read the session string the account is currently using */
+        const currentPath = path.join(
+          fastify.app.basePath,
+          "sessions",
+          `session_${account.session}.json`,
+        );
+
+        let sessionString;
+
+        try {
+          const file = JSON.parse(await fsp.readFile(currentPath, "utf8"));
+
+          sessionString = typeof file === "string" ? file : file?.session;
+        } catch {
+          return reply.badRequest("Session file is missing or unreadable");
+        }
+
+        if (!sessionString) {
+          return reply.badRequest("Session file holds no session string");
+        }
+
+        /** Candidate 2FA passwords, most specific first */
+        const passwords = [
+          request.body.password,
+          ...(request.body.passwords || []),
+        ].filter((value) => typeof value === "string" && value.length > 0);
+
+        let cloned;
+
+        try {
+          cloned = await fastify.lib.GramClient.cloneSession(sessionString, {
+            passwords,
+          });
+        } catch (error) {
+          return reply.badRequest(`Clone failed: ${error.message}`);
+        }
+
+        /** Store the new session under a fresh name and point the account at it */
+        const session = crypto.randomBytes(8).toString("hex");
+
+        await fastify.lib.GramClient.writeSession(session, cloned.session);
+        await account.update({ session });
+        await farmer.update({
+          errorCount: 0,
+          isBanned: false,
+          active: true,
+          initData: null,
+        });
+
+        /** Drop the replaced session file */
+        await fsp.unlink(currentPath).catch(() => {});
+
+        return reply.send({
+          success: true,
+          session,
+          user: {
+            id: cloned.user?.id ?? null,
+            username: cloned.user?.username ?? null,
+          },
+        });
       },
     );
 

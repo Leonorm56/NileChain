@@ -5,6 +5,15 @@ import logger from "./logger.js";
 import { formatDeadSessionLines } from "./sessionHealth.js";
 import utils from "./utils.js";
 
+/**
+ * Dead-session Telegram alerts.
+ *
+ * Off unless explicitly switched on with DEAD_SESSION_ALERTS=1. The alert
+ * duplicates what the Cloud Farmers view already shows (sessionHealth per
+ * account), so it stays quiet by default.
+ */
+const DEAD_SESSION_ALERTS_ENABLED = env("DEAD_SESSION_ALERTS") === "1";
+
 class GroupBot extends Bot {
   /** Send Group Message
    *
@@ -217,6 +226,24 @@ class GroupBot extends Bot {
     const cacheKey = `messages.dead-session.${id}`;
 
     try {
+      /** Alerts switched off — remove any message an earlier build left behind,
+       *  then stay quiet. Nothing is posted while disabled. */
+      if (!DEAD_SESSION_ALERTS_ENABLED) {
+        const previous = await cache.get(cacheKey);
+
+        if (previous) {
+          try {
+            await this.api.deleteMessage(app.chat.id, previous);
+          } catch (error) {
+            logger.error("Failed to remove dead session message:", error);
+          }
+
+          await cache.set(cacheKey, 0);
+        }
+
+        return;
+      }
+
       /** Nothing dead — clear a previous warning, once */
       if (accounts.length === 0) {
         const previous = await cache.get(cacheKey);
