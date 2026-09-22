@@ -2,6 +2,9 @@ import { Api, Logger } from "telegram";
 import { computeCheck } from "telegram/Password.js";
 
 import BaseTelegramWebClient from "@nile/shared/lib/BaseTelegramWebClient.js";
+import toSocksProxy, {
+  DEFAULT_SOCKS_TIMEOUT_SECONDS,
+} from "./socksProxy.js";
 import fsp from "node:fs/promises";
 import { getCurrentPath } from "./path.js";
 import generateFingerprint from "./fingerprint.js";
@@ -13,6 +16,11 @@ const { __dirname } = getCurrentPath(import.meta.url);
 /** Telegram API credentials. Must match BaseTelegramWebClient. */
 const API_ID = 2496;
 const API_HASH = "8da85b0d5bfe62527e5b244c209159c3";
+
+/** Seconds a SOCKS dial gets (mtproto over the account's own proxy) */
+const SOCKS_TIMEOUT_SECONDS = Number(
+  process.env.TELEGRAM_SOCKS_TIMEOUT_SECONDS,
+) || DEFAULT_SOCKS_TIMEOUT_SECONDS;
 
 class GramClient extends BaseTelegramWebClient {
   /**
@@ -52,23 +60,16 @@ class GramClient extends BaseTelegramWebClient {
     this._resetStartStage();
   }
 
-  /** Parse Proxy */
+  /**
+   * Parse Proxy
+   *
+   * `MTProxy` deliberately absent — see `socksProxy.js`. gramjs skips its SOCKS
+   * branch when the object carries that key at all, so the old `MTProxy: false`
+   * meant the proxy was never used for Telegram and every account dialled from
+   * this box's IP.
+   */
   static parseProxy(proxy) {
-    if (!proxy) return null;
-
-    const [creds, hostPort] = proxy.split("@");
-    const [username, password] = creds.split(":");
-    const [ip, port] = hostPort.split(":");
-
-    return {
-      ip,
-      username,
-      password,
-      port: parseInt(port, 10),
-      MTProxy: false,
-      socksType: 5,
-      timeout: 2,
-    };
+    return toSocksProxy(proxy, SOCKS_TIMEOUT_SECONDS);
   }
 
   /** Start Handler */

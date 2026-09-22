@@ -12,6 +12,12 @@ import userAgents, {
 import ConsoleLogger from "@nile/shared/lib/ConsoleLogger.js";
 import { delay } from "@nile/shared/utils/delay.js";
 import GramClient from "../lib/GramClient.js";
+import {
+  MintStalledError,
+  assertSessionReplies,
+  isSessionSilentError,
+} from "../lib/mintStall.js";
+import cloneAccountSession from "../lib/sessionRecovery.js";
 import refreshInitData from "../lib/refreshInitData.js";
 import {
   initDataAgeHours,
@@ -131,6 +137,28 @@ export default function createRunner(FarmerClass) {
     /** Max accounts to farm concurrently (default: 1 = sequential). */
     static maxConcurrency =
       Number(process.env[`${envKey}_MAX_CONCURRENCY`]) || FarmerClass.maxConcurrency || 1;
+
+    /** How long a live session gets to answer before it counts as dead. */
+    static sessionReplyTimeoutMs = 8_000;
+
+    /**
+     * How long a session rebuild may take. The rebuild waits on the account's own
+     * session, which is the one that just stopped answering, so it needs a bound
+     * of its own rather than riding on the mint's.
+     */
+    static sessionRebuildTimeoutMs = 45_000;
+
+    /**
+     * Candidate 2FA passwords for rebuilding a dead session, comma separated.
+     *
+     * A session can only be rebuilt without a login code while the account's own
+     * session still authorises us; when the account has 2FA, one of these must
+     * match or the rebuild stops at SESSION_PASSWORD_NEEDED.
+     */
+    static twoFactorPasswords = (process.env.TELEGRAM_2FA_PASSWORDS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
 
     /** Staggering window (seconds) and jitter (seconds) */
     static staggerWindowSeconds = 10;
@@ -487,32 +515,49 @@ export default function createRunner(FarmerClass) {
           try {
             /** Create Telegram Client */
             /**
-             * No proxy on the Telegram client, deliberately.
+             * The account's own proxy carries the MTProto connection too.
              *
-             * `this.proxy` is an HTTP proxy (see `createAgent`) used for the
-             * farmer's API calls. gramjs cannot bring MTProto up through it:
-             * measured on this box, a proxied `connect()` resolves in ~1.1s
-             * with `connected=false`, while the same session with no proxy
-             * connects in ~1.9s with `connected=true`. That silent failure is
-             * what produced "Cannot send requests while disconnected" on every
-             * mint. Proxies still apply to the HTTP API.
+             * It used to be left off because gramjs looked like it couldn't dial
+             * through it: a proxied `connect()` resolved in ~1.1s with
+             * `connected=false` while the same session without a proxy connected
+             * in ~1.9s. The real cause was `parseProxy` handing gramjs an object
+             * with an `MTProxy` key, which makes gramjs skip its SOCKS branch
+             * entirely (see `lib/socksProxy.js`) — so the proxy was ignored, not
+             * unusable, and every account dialled from this box's IP. Measured
+             * after the fix: a mint over the proxy completes against a real
+             * session.
              */
-            this.client = await GramClient.create(this.account.session);
+            this.client = await GramClient.create(
+              this.account.session,
+              this.account.proxy,
+            );
+
+            /**
+             * Hold this attempt's client in the closure: a timed-out attempt is
+             * abandoned while `this.client` already points at the next one.
+             */
+            const client = this.client;
 
             /** Connect + refresh the web app data */
             const setup = (async () => {
-              await this.client.connect();
+              await client.connect();
               /**
                * gramjs swallows a failed connection: `connect()` resolves while
                * the sender is still down, so the next call dies with a bare
                * "Cannot send requests while disconnected. Please reconnect."
                * Fail here instead, while the reason is still legible.
                */
-              if (!this.client.connected) {
+              if (!client.connected) {
                 throw new Error(
                   "Telegram client did not connect (MTProto unreachable)",
                 );
               }
+              /**
+               * A connection coming up proves nothing about the session: the
+               * accounts that fail to authenticate every cycle connect fine and
+               * then never get an answer (see `assertSessionAnswers`).
+               */
+              await this.assertSessionAnswers(client);
               if (this.constructor.type === "webapp") {
                 await this.updateWebAppData();
               }
@@ -522,7 +567,7 @@ export default function createRunner(FarmerClass) {
             await Promise.race([
               setup,
               delay(20_000, { precised: true }).then(() => {
-                throw new Error(
+                throw new MintStalledError(
                   "Telegram init-data refresh timed out (MTProto stalled)",
                 );
               }),
@@ -543,6 +588,19 @@ export default function createRunner(FarmerClass) {
               }:`,
               e.message,
             ),
+          /**
+           * A session that never answers has nothing left to try: no retry, no
+           * rebuild (the rebuild waits on that same session). These are the
+           * accounts that fail to authenticate every cycle — they stop spending
+           * 40s per cycle on mints that cannot work, and are reported as needing
+           * a re-login instead.
+           */
+          isFatalStall: isSessionSilentError,
+          /**
+           * A stall with a live session is rebuilt rather than retried again:
+           * the session answered, so a rebuild can use it to authorise a new one.
+           */
+          recover: () => this.recoverStalledSession(),
         });
 
         /**
@@ -664,6 +722,73 @@ export default function createRunner(FarmerClass) {
        */
       if (client._name) {
         GramClient.delete(client._name);
+      }
+    }
+
+    /**
+     * Fail fast when the session is connected but cannot be talked to.
+     *
+     * Without this the account burns the full 20s mint ceiling twice per cycle,
+     * forever, and never renews its init data (see `mintStall.js`).
+     */
+    async assertSessionAnswers(client = this.client) {
+      await assertSessionReplies(client, {
+        timeoutMs: this.constructor.sessionReplyTimeoutMs,
+      });
+    }
+
+    /**
+     * Rebuild a session that stopped answering, without a phone login.
+     *
+     * The session we already hold authorises a brand-new one, so the account
+     * comes back on its own instead of waiting for a manual re-login. Returns
+     * false when the account cannot be rebuilt (2FA password missing, session
+     * refused), which stops the mint from retrying a session that cannot work.
+     */
+    async recoverStalledSession() {
+      try {
+        /**
+         * Bounded, and it has to be: rebuilding waits on the account's own
+         * session to accept the login token — the very session that just stopped
+         * answering. Unbounded, recovery would hang the cycle worse than the
+         * ceiling it replaced.
+         */
+        const { session } = await Promise.race([
+          cloneAccountSession({
+            GramClient,
+            account: this.account,
+            farmer: this.farmer,
+            sessionsPath: GramClient.getStoragePath(),
+            passwords: this.constructor.twoFactorPasswords,
+            proxy: this.account.proxy,
+          }),
+          delay(this.constructor.sessionRebuildTimeoutMs, { precised: true }).then(
+            () => {
+              throw new Error(
+                `Session rebuild timed out after ${this.constructor.sessionRebuildTimeoutMs}ms`,
+              );
+            },
+          ),
+        ]);
+
+        /** `account.update` above already repointed this run at the new session */
+        this.logger.success(
+          `[${this.account.id}] Session rebuilt as ${session} — minting on it now`,
+        );
+
+        return true;
+      } catch (e) {
+        this.logger.error(
+          `[${this.account.id}] Session rebuild failed, this account needs a re-login:`,
+          e.message,
+        );
+
+        this.noteDeadSession({
+          ageHours: initDataAgeHours(this.farmer?.initData),
+          reason: "session stopped answering — re-login required",
+        });
+
+        return false;
       }
     }
 
