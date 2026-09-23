@@ -74,8 +74,18 @@ const CEILING_ENERGY_TARGET = 6500;
 /** Energy gate: below this PPH the farmer does not buy energy_limit boosts. */
 const ENERGY_GATE_PPH = 200000;
 
-/** Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. */
-const MAX_ADS_PER_HOUR = 2;
+/**
+ * Rolling-hour ad budget shared by the Energy/Battery boost-ad tasks. The
+ * game's own remaining counts (`adEnergyLeft`, `batteryAdLeft`) are the real
+ * limit — this only bounds how much wall clock one account can spend watching
+ * ads, since each watch costs 10–15s.
+ *
+ * It was 2, and that starved the fleet: taps need energy, the full-energy ad is
+ * the only thing that refills it, so a spent 2/hour budget meant six tap passes
+ * in a row found the bar at ~1/6,500 and credited nothing, leaving every
+ * account parked at 2% battery.
+ */
+const MAX_ADS_PER_HOUR = 6;
 const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
 
 /**
@@ -87,6 +97,18 @@ const AD_BUDGET_WINDOW_MS = 60 * 60 * 1000;
  */
 function batteryGainMultiplier(charge) {
   return charge < 0.6 ? 1 : charge < 0.85 ? 0.5 : charge < 1 ? 0.3 : 0;
+}
+
+/**
+ * How many more boost ads the server says this account may watch, or null when
+ * it does not say. Missing must stay "unknown", never 0: reading an absent
+ * field as zero would switch the energy ad off — the exact state that starved
+ * the fleet. Only an explicit 0 from the server stops the ad.
+ */
+function serverAdCount(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Largest `count` one /tap request may credit (the mini-app caps at 100 too). */
@@ -892,6 +914,22 @@ export default class RigniteFarmer extends BaseFarmer {
       return false;
     }
 
+    // The server's own remaining count is the real limit when it reports one.
+    const energyAdsLeft = serverAdCount(this.user_data?.adEnergyLeft);
+    if (energyAdsLeft !== null && energyAdsLeft <= 0) {
+      this.logger.info("Skipping Energy Ad — none left on the account.");
+      return false;
+    }
+
+    // A watch refills the bar to max, so a bar that already reads full would
+    // spend one of the hour's watches on nothing at all.
+    const barMax = Number(this.user_data?.maxEnergy) || 0;
+    const barNow = Number(this.user_data?.energy) || 0;
+    if (barMax > 0 && barNow >= barMax) {
+      this.logger.info(`Skipping Energy Ad — energy already full (${barNow}/${barMax}).`);
+      return false;
+    }
+
     const intent = await this.adIntent("full_energy").catch((e) => {
       this.logger.warn("Full-energy ad intent failed:", this.readError(e));
       return null;
@@ -970,12 +1008,31 @@ export default class RigniteFarmer extends BaseFarmer {
   }
 
   /**
-   * Tap until the battery is recharged to 100%. Before tapping it buys the
-   * tap boosts (5 taps/click, 3.5k max ⚡) and watches one full-energy ad so
-   * the session starts at 100% energy. Every tap charges the battery and the
-   * `/tap` response reports fresh battery/energy/coins fields. When energy runs
-   * dry before the battery is full, `/boost/full-energy` tops it back up until
-   * the daily free-refill pool is exhausted.
+   * Whether another tap pass could achieve anything: the battery is not already
+   * full, and there is either energy on the bar or a free refill in the pool.
+   * Energy is what a pass spends, and nothing refills it mid-cycle — the
+   * full-energy ad runs once, at the top of the cycle.
+   */
+  canStillTap() {
+    const user = this.user_data || {};
+    const cap = Number(user.batteryCap) || 0;
+    const battery = Number(user.batteryEnergy) || 0;
+    if (cap > 0 && battery >= cap) return false;
+
+    const multitap = Math.max(1, Number(user.multitapLevel) || 1);
+    const energy = Number(user.energy) || 0;
+    const refills = Number(user.fullEnergyLeft) || 0;
+    return Math.floor(energy / multitap) >= 1 || refills > 0;
+  }
+
+  /**
+   * Tap until the battery is recharged to 100%. The cycle buys the tap boosts
+   * (5 taps/click) and watches one full-energy ad before the passes, so a pass
+   * starts with the strongest tap and the fullest bar it can. Every tap charges
+   * the battery and the `/tap` response reports fresh battery/energy/coins
+   * fields. When energy runs dry before the battery is full, `/boost/full-energy`
+   * tops it back up until the daily free-refill pool is exhausted — and a pass
+   * with nothing left to spend returns at once instead of retrying.
    */
   /** Burst tap: run at full speed for TAP_BUDGET_MS (20 s), resending whatever
    *  the server refuses (the mini-app requeues refused taps too), and stop only
@@ -996,14 +1053,17 @@ export default class RigniteFarmer extends BaseFarmer {
       this.logger.info("No battery charge needed (battery 100%).");
       return 0;
     }
-    // Phase-1 prep: buy tap boosts (capped at 5 taps / 3.5k max energy) so the
-    // session taps with the strongest tap/energy before the battery is drained.
-    // Bounded so a slow chain can't eat the whole tap budget.
-    await Promise.race([
-      this.buyTapBoosts(),
-      this.utils.delay(2_000, { precised: true }),
-    ]).catch(() => {});
-    user = this.user_data;
+    // Nothing to tap with and nothing to refill from: this pass would break on
+    // its first iteration anyway, so say so once rather than paying a burst (and
+    // formerly the boost chain) to rediscover it. The fleet logged 2,666 of
+    // these against 651 passes that actually credited taps.
+    if (!this.canStillTap()) {
+      const barPct = cap > 0 ? Math.round(((Number(user.batteryEnergy) || 0) / cap) * 100) : 0;
+      this.logger.info(
+        `No taps possible — battery ${barPct}%, energy ${Number(user.energy) || 0}/${Number(user.maxEnergy) || 0}, no refills left.`,
+      );
+      return 0;
+    }
 
     const multitap = Math.max(1, Number(user.multitapLevel) || 1);
     let battery = Number(user.batteryEnergy) ?? 0;
@@ -1299,10 +1359,17 @@ export default class RigniteFarmer extends BaseFarmer {
     // charges the battery), then take the battery ad so its direct top-up
     // lands last instead of being spent into curve-discounted taps.
     await this.executeTask("Energy Ad", () => this.watchFullEnergyAd());
-    // Two tap passes, each with its own TAP_BUDGET_MS: the server credits only
-    // ~240 taps per 5 s window, so one pass leaves taps on the table.
+    // Boosts belong to the cycle rather than to each pass: buying them per pass
+    // cost up to 12s of tap budget a cycle, and the losing promise of that race
+    // kept mutating user_data while a burst was already in flight.
+    await this.executeTask("Tap Boosts", () => this.buyTapBoosts());
+    // Six tap passes, each with its own TAP_BUDGET_MS: the server credits only
+    // ~240 taps per 5 s window, so one pass leaves taps on the table. Energy is
+    // all a pass spends and nothing refills it mid-cycle, so once the bar is
+    // spent the remaining passes would only repeat an empty one.
     for (let pass = 0; pass < TAP_PASSES; pass++) {
       await this.executeTask("Tap", () => this.tapUntilBatteryFull());
+      if (!this.canStillTap()) break;
     }
     await this.executeTask("Battery Ad", () => this.watchBatteryAd());
     await this.executeTask("Daily Streak", async () => {
@@ -1411,7 +1478,12 @@ export default class RigniteFarmer extends BaseFarmer {
             id: "tap-to-full",
             icon: "hand.raised.fill",
             title: "Tap Battery to 100%",
-            action: this.tapUntilBatteryFull.bind(this),
+            action: async () => {
+              // A cycle buys its boosts before its passes; a manual tap from the
+              // UI has no such step, so it buys them itself.
+              await this.buyTapBoosts().catch(() => {});
+              return this.tapUntilBatteryFull();
+            },
             dispatch: false,
           },
           {
