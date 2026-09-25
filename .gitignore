@@ -4,3 +4,8 @@ whiskers/*.exe
 whiskers/*.zip
 whiskers/the-nile
 dist.pem
+
+# Local AI agent tooling
+.claude/
+.kilo/
+.freebuff/

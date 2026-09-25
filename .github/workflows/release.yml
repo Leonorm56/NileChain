@@ -57,8 +57,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            apps/nilechain-farmer/dist-bundle/*.crx
-            apps/nilechain-farmer/dist-bundle/*.zip
+            apps/nilechain-farmer/dist-bundle/nilechain-farmer-v*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
 

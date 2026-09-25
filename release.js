@@ -59,7 +59,6 @@ execSync("git push origin main");
 
 const assets = [
   `"${distBundleDir}/nilechain-farmer-v${version}.zip"`,
-  `"${distBundleDir}/nilechain-farmer-v${version}.crx"`,
 ].join(" ");
 
 execSync(
