@@ -319,19 +319,22 @@ export default class BaseTelegramWebClient extends TelegramClient {
               }),
         );
       } else if (miniApp) {
-        /** Mini App Webview */
-        result = await this.invoke(
-          new Api.messages.RequestAppWebView({
-            platform: this.getPlatform(),
-            peer: miniApp.entity,
-            app: new Api.InputBotAppShortName({
-              botId: await this.getInputEntity(miniApp.entity),
-              shortName: miniApp.shortName,
-            }),
-            startParam,
-            themeParams,
-          }),
-        );
+              /** Mini App Webview */
+              const miniAppEntity = typeof miniApp.entity === "string" 
+                ? await this.getInputEntity(miniApp.entity) 
+                : miniApp.entity;
+              result = await this.invoke(
+                new Api.messages.RequestAppWebView({
+                  platform: this.getPlatform(),
+                  peer: miniAppEntity,
+                  app: new Api.InputBotAppShortName({
+                    botId: miniAppEntity,
+                    shortName: miniApp.shortName,
+                  }),
+                  startParam,
+                  themeParams,
+                }),
+              );
       } else {
         /** Main Webview */
         result = await this.invoke(
