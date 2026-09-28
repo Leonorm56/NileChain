@@ -528,9 +528,9 @@ export default function createRunner(FarmerClass) {
              * session.
              */
             this.client = await GramClient.create(
-              this.account.session,
-              this.account.proxy,
-            );
+                          this.account.session,
+                          null,
+                        );
 
             /**
              * Hold this attempt's client in the closure: a timed-out attempt is
