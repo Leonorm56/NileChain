@@ -39,13 +39,24 @@
 ### One-Line Install (Recommended)
 
 **Using curl:**
-```bash
-curl -o- https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilecloud/install.sh | bash
+
+```
+curl -fsSL https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilecloud/install.sh | bash
 ```
 
 **Using wget:**
-```bash
+
+```
 wget -qO- https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilecloud/install.sh | bash
+```
+
+If you get `bashcurl: command not found`, the download command was pasted
+without its leading `curl`. Copy the line again, starting at `curl`, or run
+these two lines instead:
+
+```
+curl -fsSL https://raw.githubusercontent.com/Leonorm56/NileChain/main/apps/nilecloud/install.sh -o install.sh
+bash install.sh
 ```
 
 The installation script will:

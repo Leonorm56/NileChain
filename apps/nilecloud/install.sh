@@ -103,7 +103,15 @@ fi
 
 
 print_heading "Running database migrations and seeders..."
-pnpm -F nilecloud db:migrate && pnpm -F nilecloud db:seed
+if ! pnpm -F nilecloud db:migrate; then
+    print_subheading "Database migrations failed — fix the error above and re-run this script."
+    exit 1
+fi
+
+if ! pnpm -F nilecloud db:seed; then
+    print_subheading "Database seeders failed — fix the error above and re-run this script."
+    exit 1
+fi
 
 print_heading "Starting NileCloud with PM2..."
 pm2 startOrRestart apps/nilecloud/ecosystem.config.cjs --update-env
