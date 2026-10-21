@@ -12,6 +12,9 @@ export default memo(function CaptchaOptionsGroup({
   sharedSettings,
   dispatchAndConfigureSharedSettings,
 }) {
+  const isBoterdrop = sharedSettings?.captchaProvider === "boterdrop";
+  const isEzSolver = sharedSettings?.captchaProvider === "ezsolver";
+  const isSelfHosted = isBoterdrop || isEzSolver;
   return (
     <SettingsGroup
       id={"captcha"}
@@ -42,12 +45,22 @@ export default memo(function CaptchaOptionsGroup({
         <Select.Item value="solvecaptcha">SolveCaptcha</Select.Item>
         <Select.Item value="captchasonic">CaptchaSonic</Select.Item>
         <Select.Item value="nocaptchaai">NoCaptchaAI</Select.Item>
+        <Select.Item value="boterdrop">Boterdrop (self-hosted)</Select.Item>
+        <Select.Item value="ezsolver">EzSolver (local)</Select.Item>
       </Select>
 
-      {/* Captcha API Key */}
-      <SettingsLabel>Captcha API Key</SettingsLabel>
+      {/* Captcha API Key (or solver address for self-hosted) */}
+      <SettingsLabel>
+        {isSelfHosted ? "Solver Address" : "Captcha API Key"}
+      </SettingsLabel>
       <SettingsInput
-        placeholder="Captcha API Key"
+        placeholder={
+          isEzSolver
+            ? "http://127.0.0.1:8191"
+            : isBoterdrop
+              ? "http://127.0.0.1:8000"
+              : "Captcha API Key"
+        }
         initialValue={sharedSettings?.captchaApiKey}
         onConfirm={(captchaApiKey) =>
           dispatchAndConfigureSharedSettings("captchaApiKey", captchaApiKey)

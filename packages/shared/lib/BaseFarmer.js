@@ -4,6 +4,21 @@ import seedrandom from "seedrandom";
 import utils from "../utils/bundle.js";
 
 /**
+ * The HTTP-date shapes `Retry-After` may carry. Both remaining forms name UTC
+ * explicitly, so `Date.parse` reads them unambiguously. Matching the shape
+ * first matters instead of trusting `Date.parse` alone: V8's legacy fallback
+ * happily reads "+1" or "5.5" as a date, which would turn a malformed header
+ * into a spurious retry. (The obsolete asctime form is deliberately unsupported
+ * - it carries no timezone, and V8 would read it as local time.)
+ */
+const HTTP_DATE_PATTERNS = [
+  /** IMF-fixdate, e.g. "Sun, 06 Nov 1994 08:49:37 GMT" */
+  /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/,
+  /** RFC 850, e.g. "Sunday, 06-Nov-94 08:49:37 GMT" */
+  /^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \d{2}-[A-Z][a-z]{2}-\d{2} \d{2}:\d{2}:\d{2} GMT$/,
+];
+
+/**
  * Promo tags some users graft onto their Telegram display name for airdrop
  * referrals. They must not ride along into the name the farmer hands to a drop
  * (account registration, profile sync, ...), so the display-name accessors
@@ -18,6 +33,109 @@ const PROMO_NAME_PATTERNS = [
   // so a plain "pirate" inside a real name is not touched.
   /pirate(?:[\s‍️]*[\u{1F3F4}\u{2620}\u{1F4B0}])+[\s‍️\u{1F3F4}\u{2620}\u{1F4B0}]*/giu,
 ];
+
+/**
+ * Read a `Retry-After` header as a wait in seconds, or null when the header is
+ * absent or unusable. RFC 9110 allows two forms - a non-negative integer count
+ * of seconds, or an HTTP date - and both appear in the wild. A date that has
+ * already passed is a valid "retry now" signal (0), not a missing one.
+ */
+function parseRetryAfterHeader(value, now = Date.now()) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  /** Delta-seconds form */
+  if (/^\d+$/.test(raw)) {
+    return Number(raw);
+  }
+
+  if (!HTTP_DATE_PATTERNS.some((pattern) => pattern.test(raw))) {
+    return null;
+  }
+
+  const at = Date.parse(raw);
+  if (Number.isNaN(at)) {
+    return null;
+  }
+
+  return Math.max(0, Math.ceil((at - now) / 1000));
+}
+
+/**
+ * Retry policy defaults: two further attempts, and never sleep longer than a
+ * minute. A longer advertised wait belongs to the next farming cycle, not this
+ * one - holding a run open for five minutes serves nobody.
+ */
+const RETRY_DEFAULTS = { maxAttempts: 2, maxWaitSeconds: 60 };
+
+/**
+ * Read the wait a failure asks us to observe, or null when it asks for nothing.
+ *
+ * The body field wins over the header because the legacy farming APIs report
+ * the delay there. A numeric string is accepted for the same reason the old
+ * truthiness check accepted one; a body value that cannot be read as a number
+ * falls through to the header rather than retrying blind.
+ *
+ * @param {unknown} error
+ * @returns {number|null} seconds to wait, or null for "do not retry"
+ */
+export const retryDelaySeconds = (error) => {
+  const body = error?.response?.data?.retry_after;
+  const fromBody = typeof body === "string" ? Number(body.trim()) : body;
+
+  if (typeof fromBody === "number" && Number.isFinite(fromBody) && fromBody > 0) {
+    return fromBody;
+  }
+
+  return parseRetryAfterHeader(error?.response?.headers?.["retry-after"]);
+};
+
+/**
+ * Decide whether a failed request should be replayed, and how long to wait
+ * first. Pure, so the policy can be tested without an HTTP round trip.
+ *
+ * @param {{error?: unknown, attemptsMade?: number, maxAttempts?: number,
+ *   maxWaitSeconds?: number, aborted?: boolean}} [input]
+ * @returns {{retry: boolean, waitSeconds: number|null, reason: string}}
+ */
+export const planRetry = ({
+  error,
+  attemptsMade = 0,
+  maxAttempts = RETRY_DEFAULTS.maxAttempts,
+  maxWaitSeconds = RETRY_DEFAULTS.maxWaitSeconds,
+  aborted = false,
+} = {}) => {
+  const waitSeconds = retryDelaySeconds(error);
+
+  if (waitSeconds === null) {
+    return { retry: false, waitSeconds: null, reason: "not-signalled" };
+  }
+
+  /** Without a config there is nothing to replay. */
+  if (!error?.config) {
+    return { retry: false, waitSeconds, reason: "no-config" };
+  }
+
+  if (aborted) {
+    return { retry: false, waitSeconds, reason: "aborted" };
+  }
+
+  if (attemptsMade >= maxAttempts) {
+    return { retry: false, waitSeconds, reason: "attempts-exhausted" };
+  }
+
+  if (waitSeconds > maxWaitSeconds) {
+    return { retry: false, waitSeconds, reason: "wait-too-long" };
+  }
+
+  return { retry: true, waitSeconds, reason: "signalled" };
+};
 
 export default class BaseFarmer {
   static id = "base-farmer";
@@ -478,6 +596,51 @@ export default class BaseFarmer {
     }
   }
 
+  /**
+   * Register Retry Interceptor
+   *
+   * A 429 or 503 is the server asking for time, not a verdict. Without this the
+   * request simply failed, so an account that was merely throttled got parked
+   * instead of waited out, and a throttled origin looked like a dead farmer.
+   *
+   * Only failures that advertise a wait are replayed - a connection reset or a
+   * 404 is left to the caller, exactly as before.
+   *
+   * @param {{maxAttempts?: number, maxWaitSeconds?: number}} [options]
+   * @returns {number} the interceptor id, so the caller can eject it
+   */
+  registerRetryInterceptor(options = {}) {
+    const maxAttempts = options.maxAttempts ?? RETRY_DEFAULTS.maxAttempts;
+    const maxWaitSeconds = options.maxWaitSeconds ?? RETRY_DEFAULTS.maxWaitSeconds;
+
+    return this.api.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        const config = error?.config;
+
+        const plan = planRetry({
+          error,
+          attemptsMade: config?.retryAttempts ?? 0,
+          maxAttempts,
+          maxWaitSeconds,
+          aborted: this.signal?.aborted === true,
+        });
+
+        if (!plan.retry) {
+          return Promise.reject(error);
+        }
+
+        /* Counted before sleeping, so a replayed request that fails the same way
+         * cannot start this over from zero. */
+        config.retryAttempts = (config.retryAttempts ?? 0) + 1;
+
+        await this.utils.delay(plan.waitSeconds * 1000);
+
+        return this.api(config);
+      },
+    );
+  }
+
   /** Get Auth */
   fetchAuth() {
     return Promise.resolve(true);
@@ -500,11 +663,7 @@ export default class BaseFarmer {
 
   /** Determine if the request should be retried */
   shouldRetryRequest(error) {
-    const retryAfter = error.response?.data?.retry_after;
-    if (retryAfter) {
-      return true;
-    }
-    return false;
+    return retryDelaySeconds(error) !== null;
   }
 
   /** Restore cached auth data */

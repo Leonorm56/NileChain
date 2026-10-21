@@ -1,7 +1,7 @@
 {
   "name": "nilechain-farmer",
   "private": true,
-  "version": "1.0.15",
+  "version": "1.0.16",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,9 @@
     "generate-pwa-assets": "pwa-assets-generator --preset minimal public/icon.png",
     "clean": "rimraf --glob dist dist-extension dist-thenile dist-bridge dist-bundle",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test test/**/*.test.js",
+    "check-package": "node ./scripts/check-packaged-extension.js"
   },
   "dependencies": {
     "@fontsource/fira-code": "^5.2.7",

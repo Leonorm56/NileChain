@@ -23,6 +23,8 @@ import useTelegramClient from "./useTelegramClient";
 import useUserAgent from "./useUserAgent";
 import useValuesMemo from "./useValuesMemo";
 
+import { shouldOpenWebviewBot } from "@/lib/farmerOpen";
+
 export const BOT_TELEGRAM_WEB_APP_ACTION = `set-telegram-web-app:${
   import.meta.env.VITE_APP_BOT_HOST
 }`;
@@ -686,7 +688,7 @@ export default function useCore() {
           /** Open Telegram Link */
           await openTelegramLink(url, { version });
 
-          if (forceWebview && isShortApp === false) {
+          if (shouldOpenWebviewBot({ forceWebview })) {
             /** Wait */
             await delay(1000);
 

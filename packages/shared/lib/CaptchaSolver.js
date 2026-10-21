@@ -9,6 +9,8 @@ export default class CaptchaSolver {
     let taskBased = false;
     let taskType = "";
     let authProperty = "";
+    let boterdrop = false;
+    let ezsolver = false;
 
     switch (this.provider) {
       case "2captcha":
@@ -37,9 +39,26 @@ export default class CaptchaSolver {
         baseURL = "https://api.nocaptchaai.com";
         break;
 
+      case "boterdrop":
+        /* Self-hosted Boterdrop-Solver: 2nd constructor arg is its base URL,
+           e.g. new CaptchaSolver("boterdrop", "http://127.0.0.1:8000") */
+        boterdrop = true;
+        baseURL = (apiKey || "").replace(/\/+$/, "");
+        break;
+
+      case "ezsolver":
+        /* Local EzSolver: 2nd constructor arg is its base URL,
+           e.g. new CaptchaSolver("ezsolver", "http://127.0.0.1:8191") */
+        ezsolver = true;
+        baseURL = (apiKey || "").replace(/\/+$/, "");
+        break;
+
       default:
         throw new Error(`Unsupported captcha provider: ${this.provider}`);
     }
+
+    this.boterdrop = boterdrop;
+    this.ezsolver = ezsolver;
 
     this.taskBased = taskBased;
     this.authProperty = authProperty;
@@ -113,7 +132,14 @@ export default class CaptchaSolver {
   }
 
   /** Solve Turnstile */
-  async solveTurnstile({ siteKey, pageUrl }) {
+  async solveTurnstile({ siteKey, pageUrl, action, cdata }) {
+    if (this.boterdrop) {
+      return this.solveTurnstileViaBoterdrop({ siteKey, pageUrl, action, cdata });
+    }
+    if (this.ezsolver) {
+      return this.solveTurnstileViaEzSolver({ siteKey, pageUrl });
+    }
+
     const response = await this.getTurnstileRequest({ siteKey, pageUrl });
     const requestId = response.request;
 
@@ -131,5 +157,66 @@ export default class CaptchaSolver {
         throw new Error(`Captcha solving failed: ${result.request}`);
       }
     }
+  }
+
+  /** Solve Turnstile via self-hosted Boterdrop-Solver.
+   * Creates a task with GET /turnstile then polls GET /result until the
+   * solver answers 200 (success) or an error status (408/422/404/500). */
+  async solveTurnstileViaBoterdrop(
+    { siteKey, pageUrl, action, cdata },
+    { pollInterval = 1_000, timeout = 300_000 } = {},
+  ) {
+    const create = await this.api.get("/turnstile", {
+      params: {
+        url: pageUrl,
+        sitekey: siteKey,
+        ...(action ? { action } : {}),
+        ...(cdata ? { cdata } : {}),
+      },
+      validateStatus: () => true,
+    });
+    const taskId = create.data?.task_id;
+    if (create.status !== 202 || !taskId) {
+      throw new Error(
+        `Captcha solving failed: create returned ${create.status}`,
+      );
+    }
+
+    const startedAt = Date.now();
+    for (;;) {
+      if (Date.now() - startedAt > timeout) {
+        throw new Error("Captcha solving failed: timeout");
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      const res = await this.api.get("/result", {
+        params: { id: taskId },
+        validateStatus: () => true,
+      });
+      if (res.status === 200 && res.data?.status === "success" && res.data?.value) {
+        return res.data.value;
+      }
+      if (res.status === 202) {
+        continue; /* Still solving */
+      }
+      throw new Error(
+        `Captcha solving failed: ${res.data?.message || res.data?.value || `http ${res.status}`}`,
+      );
+    }
+  }
+
+  /** Solve Turnstile via local EzSolver.
+   * Single call: POST /solve {sitekey, siteurl} -> 200 {token}. */
+  async solveTurnstileViaEzSolver({ siteKey, pageUrl }, { timeout = 90 } = {}) {
+    const res = await this.api.post(
+      "/solve",
+      { sitekey: siteKey, siteurl: pageUrl, timeout },
+      { validateStatus: () => true },
+    );
+    if (res.status === 200 && res.data?.token) {
+      return res.data.token;
+    }
+    throw new Error(
+      `Captcha solving failed: ${res.data?.error || `http ${res.status}`}`,
+    );
   }
 }

@@ -73,18 +73,13 @@ pnpm build-extension
 
 **Output:**
 - **Unpacked:** `dist-extension/` - Load directly in Chrome
-- **Packed:** `dist-bundle/purrfect-farmer-v*.crx` - Installable extension
-- **Zip:** `dist-bundle/purrfect-farmer-v*.zip` - For distribution
-
-**Requirements:**
-- Extension private key (`dist.pem`) must be in project root for `.crx` generation
-- Generate key on first build or use existing key
+- **Zip:** `dist-bundle/nilechain-farmer-v*.zip` - For distribution (this is the only artifact you need)
 
 **Installation Steps:**
 1. Open Chrome and go to `chrome://extensions/`
 2. Enable "Developer mode" (top-right toggle)
-3. Option A: Drag and drop the `.crx` file
-4. Option B: Click "Load unpacked" and select `dist-extension` folder
+3. Click "Load unpacked" and select `dist-extension` folder
+4. Or extract the `.zip` and load the folder
 
 ---
 

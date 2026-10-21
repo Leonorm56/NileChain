@@ -25,7 +25,15 @@ if (TELEGRAM_WEB_HOSTS.includes(location.host)) {
       ? {
           launchButton: ".new-message-bot-commands.is-view",
           confirmButton: ".popup-button",
-          startButton: ".chat-input-control-button",
+          /**
+           * Web K renders the bot's START button inside the same
+           * `new-message-bot-commands` block the launch button lives in — on an
+           * unstarted bot that block has no `.is-view`. The chat-input control
+           * stays as a fallback, and isStartButton still gates on the text, so
+           * a wider selector cannot click anything that is not START.
+           */
+          startButton:
+            ".new-message-bot-commands, .chat-input-control-button, .btn-primary",
           joinButton:
             ".chat-join, .chat-input-control-button, .popup-button.btn.primary",
           webViewButton:
@@ -34,7 +42,7 @@ if (TELEGRAM_WEB_HOSTS.includes(location.host)) {
       : {
           launchButton: ".bot-menu.open",
           confirmButton: ".confirm-dialog-button",
-          startButton: ".join-subscribe-button",
+          startButton: ".join-subscribe-button, .btn-primary, .bot-menu",
           joinButton: ".join-subscribe-button, .Button.confirm-dialog-button",
           webViewButton:
             "button:has(.icon.icon-webapp), .Button:has(.inline-button-text)",
@@ -91,9 +99,19 @@ if (TELEGRAM_WEB_HOSTS.includes(location.host)) {
       element.textContent.trim().toUpperCase()
     );
 
-  /** Is it a Start Button */
+  /**
+   * Is it a Start Button
+   *
+   * Exact equality on the trimmed text missed the control whenever Telegram
+   * put anything else in the node, and the observer only looks at the nodes it
+   * is handed. "Start bot" / "Bot start" are the same button in other locales
+   * and builds, so all three forms are accepted; the text is still the gate,
+   * which is what keeps the wider selectors safe.
+   */
+  const START_BUTTON_TEXT = /^(start|start bot|bot start)$/i;
+
   const isStartButton = (element) =>
-    element.textContent.trim().toUpperCase() === "START";
+    START_BUTTON_TEXT.test(element.textContent.trim());
 
   /** Is it a Join Button */
   const isJoinButton = (element) =>

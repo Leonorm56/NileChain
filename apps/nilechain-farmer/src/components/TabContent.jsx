@@ -8,6 +8,7 @@ import TabContext from "@/contexts/TabContext";
 import TelegramWebAIcon from "@/assets/images/telegram-web-a.png?format=webp&w=80";
 import TelegramWebKIcon from "@/assets/images/telegram-web-k.png?format=webp&w=80";
 import { cn } from "@/utils";
+import { farmerOpenOptions } from "@/lib/farmerOpen";
 import useAppContext from "@/hooks/useAppContext";
 import usePrimaryFarmerLink from "@/hooks/usePrimaryFarmerLink";
 import useStorageState from "@/hooks/useStorageState";
@@ -102,17 +103,14 @@ export default memo(function TabContent({ tab }) {
         embedInNewWindow: tab.embedInNewWindow,
       });
     } else if (tab.type === "webapp") {
+      const openOptions = farmerOpenOptions(tab, { force: true });
+
       openTabTelegramBot(launchLink, {
+        ...openOptions,
         singleton: tab.singleton,
-        browserId: tab.id,
-        browserTitle: tab.title,
-        browserIcon: tab.icon,
-        embedWebPage: tab.embedWebPage,
-        embedInNewWindow: tab.embedInNewWindow,
         host: tab.host,
-        forceWebview: true,
-        webviewHost: FarmerClass?.host || tab.host,
-        webviewPath: FarmerClass?.path || null,
+        /* The farmer's own host is what the webview has to point at. */
+        webviewHost: openOptions.webviewHost || tab.host,
       });
     } else {
       openTabTelegramLink(launchLink);

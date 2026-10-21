@@ -4,7 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "generate-user-agents": "node generate-user-agents.js"
+    "generate-user-agents": "node generate-user-agents.js",
+    "test": "node --test lib/**/*.test.js farmers/**/*.test.js"
   },
   "dependencies": {
     "@faker-js/faker": "^10.4.0",

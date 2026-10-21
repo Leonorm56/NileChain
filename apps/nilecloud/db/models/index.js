@@ -4,7 +4,7 @@ import "../../config/env.js";
 
 import Sequelize from "sequelize";
 import databaseConfig from "../../config/database.js";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 import process from "process";
@@ -42,7 +42,7 @@ const models = fs.readdirSync(__dirname).filter((file) => {
 });
 
 for (const file of models) {
-  const model = await import(path.join(__dirname, file)).then((m) =>
+  const model = await import(pathToFileURL(path.join(__dirname, file)).href).then((m) =>
     m.default(sequelize, Sequelize.DataTypes),
   );
 

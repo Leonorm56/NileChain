@@ -3,30 +3,26 @@ import { customLogger } from "@/utils";
 import path from "path-browserify";
 
 // Import farmers directly — the pnpm symlink breaks import.meta.glob on this system
-import ArtFarmer from "@nile/shared/farmers/ArtFarmer.js";
-import DreamcoinProFarmer from "@nile/shared/farmers/DreamcoinProFarmer.js";
 import SlpyFarmer from "@nile/shared/farmers/SlpyFarmer.js";
 import SurfEarnFarmer from "@nile/shared/farmers/SurfEarnFarmer.js";
 import TonoreumFarmer from "@nile/shared/farmers/TonoreumFarmer.js";
 import RigniteFarmer from "@nile/shared/farmers/RigniteFarmer.js";
 import UsdtflowFarmer from "@nile/shared/farmers/UsdtflowFarmer.js";
-import MoolaFarmer from "@nile/shared/farmers/MoolaFarmer.js";
 import MrgFarmer from "@nile/shared/farmers/MrgFarmer.js";
 import UtyaFarmer from "@nile/shared/farmers/UtyaFarmer.js";
-import FlamesFarmer from "@nile/shared/farmers/FlamesFarmer.js";
+import EasyCoinFarmer from "@nile/shared/farmers/EasyCoinFarmer.js";
+import LootVaultFarmer from "@nile/shared/farmers/LootVaultFarmer.js";
 
 const farmerClasses = [
-  ArtFarmer,
-  DreamcoinProFarmer,
+  EasyCoinFarmer,
+  LootVaultFarmer,
+  MrgFarmer,
   RigniteFarmer,
   SlpyFarmer,
   SurfEarnFarmer,
   TonoreumFarmer,
   UsdtflowFarmer,
-  MoolaFarmer,
-  MrgFarmer,
   UtyaFarmer,
-  FlamesFarmer,
 ];
 
 const farmersIconGlob = import.meta.glob(

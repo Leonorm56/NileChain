@@ -3,6 +3,7 @@ import axios from "axios";
 import { createQueryClient } from "@/lib/createQueryClient";
 import useAppContext from "./useAppContext";
 import useDelayInterceptor from "./useDelayInterceptor";
+import useRetryInterceptor from "./useRetryInterceptor";
 import useDropFarmerAuth from "./useDropFarmerAuth";
 import useDropFarmerCloudSync from "./useDropFarmerCloudSync";
 import useDropFarmerCookiesRestore from "./useDropFarmerCookiesRestore";
@@ -111,6 +112,9 @@ export default function useDropFarmer() {
 
   /** API Delay */
   useDelayInterceptor(api, apiDelay);
+
+  /** API Retry */
+  useRetryInterceptor(api);
 
   /** TelegramWebApp */
   const {

@@ -238,6 +238,9 @@ export default function createRunner(FarmerClass) {
       /** Apply Delay */
       this.registerDelayInterceptor();
 
+      /** Replay throttled requests after the wait they advertise */
+      this.registerRetryInterceptor();
+
       /** Set XSRF */
       this.registerXSRFInterceptor();
 

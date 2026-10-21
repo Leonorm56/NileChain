@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Tests and packaged extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: latest
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test the shared package
+        run: pnpm -F @nile/shared test
+
+      # The extension is the only build that ships to users (see HANDOVER.md).
+      - name: Build the extension
+        run: pnpm -F nilechain-farmer exec rimraf --glob dist-extension && pnpm -F nilechain-farmer build-extension
+
+      # Fails if the built package would load broken: missing entry files,
+      # a manifest that drifted from package.json, or a bundle that no longer parses.
+      - name: Smoke-test the packaged extension
+        run: pnpm -F nilechain-farmer test

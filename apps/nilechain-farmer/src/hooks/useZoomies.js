@@ -9,6 +9,8 @@ import useProcessLock from "./useProcessLock";
 import useStorageState from "./useStorageState";
 import useValuesMemo from "./useValuesMemo";
 
+import { farmerOpenOptions } from "@/lib/farmerOpen";
+
 const INITIAL_POSITION = 0;
 
 export default function useZoomies(core) {
@@ -143,12 +145,8 @@ export default function useZoomies(core) {
         core.setActiveTab(current.drop?.id);
         core.closeOtherBots();
         core.openTelegramBot(current.drop.telegramLink, {
-          force,
-          browserId: current.drop.id,
-          browserTitle: current.drop.title,
-          browserIcon: current.drop.icon,
-          embedWebPage: current.drop.embedWebPage,
-          embedInNewWindow: current.drop.embedInNewWindow,
+          ...farmerOpenOptions(current.drop, { force }),
+          host: current.drop.host,
         });
       }
     },

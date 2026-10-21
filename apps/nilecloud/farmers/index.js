@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import createRunner from "./Runner.js";
+import { discoverFarmerClasses } from "./discover.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,15 +13,10 @@ const farmersDir = path.join(
   __dirname,
   "../node_modules/@nile/shared/farmers",
 );
-const farmerClasses = fs
-  .readdirSync(farmersDir)
-  .filter((file) => file.endsWith(".js"));
 
-for (const file of farmerClasses) {
-  const FarmerClass = await import(path.join(farmersDir, file)).then(
-    (m) => m.default,
-  );
+const farmerClasses = await discoverFarmerClasses(farmersDir);
 
+for (const FarmerClass of farmerClasses) {
   if (FarmerClass.published) {
     farmers[FarmerClass.id] = createRunner(FarmerClass);
   }
